@@ -4,6 +4,7 @@
    [clojure.test :as t :refer [deftest is]]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.baracus :as ba]
+   [oncurrent.zeno.admin :as admin]
    [oncurrent.zeno.ddb-raw-storage :as drs]
    [oncurrent.zeno.storage :as storage]
    [oncurrent.zeno.utils :as u]
@@ -13,7 +14,9 @@
   (au/test-async
    2000
    (ca/go
-     (let [raw-storage (drs/make-ddb-raw-storage "ddb-test-table")
+     (let [table-name "ddb-test-table"
+           _ (au/<? (admin/<create-ddb-table table-name))
+           raw-storage (drs/make-ddb-raw-storage table-name)
            k1 "key-1"
            ba1 (ba/byte-array [1 2 3 42])
            _ (is (= true (au/<? (storage/<write-k! raw-storage k1 ba1))))
@@ -26,7 +29,9 @@
   (au/test-async
    2000
    (ca/go
-     (let [raw-storage (drs/make-ddb-raw-storage "ddb-test-table")
+     (let [table-name "ddb-test-table"
+           _ (au/<? (admin/<create-ddb-table table-name))
+           raw-storage (drs/make-ddb-raw-storage table-name)
            k "xyz"
            v1 (ba/byte-array [2 3 45])
            v2 (ba/byte-array [7 123 8])

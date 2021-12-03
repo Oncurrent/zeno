@@ -104,46 +104,18 @@
                                             :request {:TableName table-name}}))]
       (= "ACTIVE" (some->> ret :Table :TableStatus)))))
 
-(defn <create-table
-  [ddb table-name options]
-  (au/go
-    (let [{:keys [create-attempt-delay-ms
-                  billing-mode
-                  max-create-attempts]} options]
-      (aws-async/invoke ddb
-                        {:op :CreateTable
-                         :request {:TableName table-name
-                                   :KeySchema [{:AttributeName "k"
-                                                :KeyType "HASH"}]
-                                   :AttributeDefinitions [{:AttributeName "k"
-                                                           :AttributeType "S"}]
-                                   :BillingMode billing-mode}})
-      (loop [attempts-left max-create-attempts]
-        (if (zero? attempts-left)
-          (throw
-           (ex-info (str "Could not create DynamoDB table `" table-name "`.")
-                    {:table-name table-name}))
-          (or (au/<? (<active-table? ddb table-name))
-              (do
-                (ca/<! (ca/timeout create-attempt-delay-ms))
-                (recur (dec attempts-left)))))))))
-
-(def default-options
-  {:billing-mode "PAY_PER_REQUEST"
-   :create-attempt-delay-ms 1000
-   :max-create-attempts 60})
-
-(defn make-ddb-raw-storage
-  ([table-name]
-   (make-ddb-raw-storage table-name {}))
-  ([table-name options]
-   (let [ddb-promise-chan (ca/promise-chan)]
-     (ca/go
-       (try
-         (let [ddb (aws/client {:api :dynamodb})]
-           (when-not (au/<? (<active-table? ddb table-name))
-             (au/<? (<create-table ddb table-name
-                                   (merge default-options options))))
-           (ca/>! ddb-promise-chan ddb))
-         (catch Exception e)))
-     (->DDBRawStorage table-name ddb-promise-chan))))
+(defn make-ddb-raw-storage [table-name]
+  (let [ddb-promise-chan (ca/promise-chan)]
+    (ca/go
+      (try
+        (let [ddb (aws/client {:api :dynamodb})]
+          (ca/>! ddb-promise-chan
+                 (if (au/<? (<active-table? ddb table-name))
+                   ddb
+                   (ex-info
+                    "DynamoDB table `" table-name
+                    "` does not exist or is not yet active."
+                    (u/sym-map table-name)))))
+        (catch Exception e
+          (ca/>! ddb-promise-chan e))))
+    (->DDBRawStorage table-name ddb-promise-chan)))
