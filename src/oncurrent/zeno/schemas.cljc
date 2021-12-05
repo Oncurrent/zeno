@@ -16,8 +16,13 @@
 (def session-token-schema l/string-schema)
 
 (l/def-record-schema serialized-value-schema
+  [:chunk-ids (l/array-schema id-schema)]
+  [:fp fingerprint-schema]
+  [:inline-bytes l/bytes-schema])
+
+(l/def-record-schema chunk-schema
   [:bytes l/bytes-schema]
-  [:fp fingerprint-schema])
+  [:chunk-i l/int-schema])
 
 (l/def-record-schema mutex-info-schema
   [:lease-id l/string-schema]

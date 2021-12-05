@@ -41,6 +41,28 @@
                                      "m-key"
                                      (l/map-schema l/int-schema)))))))))
 
+(deftest test-chunked-writing-and-reading-items
+  (au/test-async
+   1000
+   (ca/go
+     (let [raw-storage (storage/make-mem-raw-storage 10)
+           storage (storage/make-storage raw-storage)
+           v1 [2 3 45 2333 2 7777 6234333]]
+       (is (= nil (au/<? (storage/<get storage
+                                       "v-key"
+                                       (l/array-schema l/int-schema)))))
+       (is (= true (au/<? (storage/<add! storage
+                                         "v-key"
+                                         (l/array-schema l/int-schema)
+                                         v1))))
+       (is (= v1 (au/<? (storage/<get storage
+                                      "v-key"
+                                      (l/array-schema l/int-schema)))))
+       ;; There should 4 keys: "v-key", "FP-TO-SCH...", and two data chunks
+       (is (= 4 (-> (:*data raw-storage)
+                    (deref)
+                    (count))))))))
+
 (deftest test-swap
   (au/test-async
    1000
@@ -76,3 +98,27 @@
        (is (= 1 (au/<? (storage/<get storage
                                      i-k
                                      l/int-schema))))))))
+
+(deftest test-chunked-swap
+  (au/test-async
+   1000
+   (ca/go
+     (let [raw-storage (storage/make-mem-raw-storage 10)
+           storage (storage/make-storage raw-storage)
+           v-k "_v-key"
+           v1 [1700 810000 333444555 42 78 999999999]]
+       (is (= nil (au/<? (storage/<get storage
+                                       v-k
+                                       (l/array-schema l/int-schema)))))
+       (is (= v1 (au/<? (storage/<swap!
+                         storage
+                         v-k
+                         (l/array-schema l/int-schema)
+                         (constantly v1)))))
+       (is (= v1 (au/<? (storage/<get storage
+                                      v-k
+                                      (l/array-schema l/int-schema)))))
+       ;; There should 4 keys: "_v-key", "FP-TO-SCH...", and two data chunks
+       (is (= 4 (-> (:*data raw-storage)
+                    (deref)
+                    (count))))))))

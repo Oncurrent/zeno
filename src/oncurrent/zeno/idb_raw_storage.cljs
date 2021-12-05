@@ -100,6 +100,9 @@
           (<delete-k!* store-name k)
           (au/<?))))
 
+  (get-max-value-bytes [this]
+    40000000)
+
   (<read-k [this k]
     (au/go
       (-> (au/<? idb-promise-chan)

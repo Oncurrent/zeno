@@ -92,6 +92,9 @@
           (<delete-k!* table-name k)
           (au/<?))))
 
+  (get-max-value-bytes [this]
+    350000)
+
   (<read-k [this k]
     (au/go
       (-> (au/<? ddb-promise-chan)
