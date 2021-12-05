@@ -16,9 +16,15 @@
      (let [raw-storage (irs/make-idb-raw-storage "test" "store")
            k1 "key-1"
            ba1 (ba/byte-array [1 2 3 42])
-           _ (is (= true (au/<? (storage/<write-k! raw-storage k1 ba1))))
+           _ (is (= true (au/<? (storage/<delete-k! raw-storage k1))))
+           _ (is (= nil (au/<? (storage/<read-k raw-storage k1))))
+           _ (is (= true (au/<? (storage/<add-k! raw-storage k1 ba1))))
            ret (au/<? (storage/<read-k raw-storage k1))]
        (is (ba/equivalent-byte-arrays? ba1 ret))
+       (is (thrown-with-msg?
+            js/Error
+            #"exists"
+            (au/<? (storage/<add-k! raw-storage k1 ba1))))
        (is (= true (au/<? (storage/<delete-k! raw-storage k1))))
        (is (= nil (au/<? (storage/<read-k raw-storage k1))))))))
 

@@ -43,17 +43,26 @@
                   lease-length-ms
                   mutex-key
                   *shutdown?
-                  storage]} mutex-client]
+                  storage]} mutex-client
+          new-mutex-info {:lease-id (u/compact-random-uuid)
+                          :lease-length-ms lease-length-ms
+                          :owner client-name}
+          update-fn (fn [cur-mutex-info]
+                      (if (= cur-mutex-info old-mutex-info)
+                        new-mutex-info
+                        (throw (ex-info "Not owner of the mutex!"
+                                        (u/sym-map cur-mutex-info
+                                                   new-mutex-info
+                                                   old-mutex-info)))))]
       (when-not @*shutdown?
-        (let [new-mutex-info {:lease-id (u/compact-random-uuid)
-                              :lease-length-ms lease-length-ms
-                              :owner client-name}]
-          (if (au/<? (storage/<compare-and-set! storage
-                                                mutex-key
-                                                schemas/mutex-info-schema
-                                                old-mutex-info
-                                                new-mutex-info))
-            (handle-acquisition! mutex-client)
+        (try
+          (au/<? (storage/<swap! storage
+                                 mutex-key
+                                 schemas/mutex-info-schema
+                                 update-fn))
+          (handle-acquisition! mutex-client)
+          (catch #?(:clj Exception :cljs js/Error) e
+            (log/error (str "Lost mutex" (u/ex-msg-and-stacktrace e)))
             (handle-release! mutex-client)))))))
 
 (defn <attempt-acquisition! [mutex-client prior-lease-id]
@@ -94,8 +103,8 @@
                     (ca/<! (ca/timeout lease-length-ms)))
                   (au/<? (<attempt-acquisition! mutex-client lease-id)))))
             (catch #?(:clj Exception :cljs js/Error) e
-              (log/error "Error in aquire loop:\n"
-                         (u/ex-msg-and-stacktrace e))
+              (log/error (str "Error in aquire loop:\n"
+                              (u/ex-msg-and-stacktrace e)))
               ;; Don't spin too fast if there is a repeating exception
               (ca/<! (ca/timeout (:lease-length-ms mutex-client)))))))
       (catch #?(:clj Exception :cljs js/Error) e
@@ -104,7 +113,6 @@
 
 (def default-mutex-client-options
   {:lease-length-ms 4000
-   :mutex-storage-key-prefix "_MUTEX_"
    :on-acquire (constantly nil)
    :on-release (constantly nil)
    :refresh-ratio 3
@@ -123,8 +131,6 @@
   ;; - `:lease-length-ms` - After this amount of time (in milliseconds),
   ;;                        the lease is considered expired and other clients
   ;;                        can try to acquire the mutex.
-  ;; - `:mutex-storage-key-prefix` - Prepended to the `mutex-name` to make
-  ;;                                 the storage key for each mutex.
   ;; - `:on-acquire` - Callback to be called when the mutex is acquired. Called
   ;;                   from a newly-spawned go block.
   ;; - `:on-release` - Callback to be called when the mutex is released. Called
@@ -150,14 +156,13 @@
              (u/sym-map mutex-name))))
    (let [{:keys [client-name
                  lease-length-ms
-                 mutex-storage-key-prefix
                  on-acquire
                  on-release
                  retry-on-release
                  refresh-ratio]} (merge default-mutex-client-options
                                         {:client-name (u/compact-random-uuid)}
                                         options)
-         mutex-key (str mutex-storage-key-prefix mutex-name)
+         mutex-key (str storage/mutex-reference-key-prefix mutex-name)
          *acquired? (atom false)
          *shutdown? (atom false)
          client (u/sym-map mutex-name mutex-key storage client-name

@@ -24,6 +24,14 @@
   [:lease-length-ms l/int-schema]
   [:owner l/string-schema])
 
+(l/def-record-schema branch-info-schema
+  [:authenticators (l/array-schema authenticator-name-schema)]
+  [:source-tx-id id-schema]
+  [:use-temp-storage l/boolean-schema])
+
+(def branch-name-to-info-schema
+  (l/map-schema branch-info-schema))
+
 ;;;;;;;;;;;;;;;;; CRDT Schemas ;;;;;;;;;;;;;;;;;;;;;;;
 
 (l/def-enum-schema command-op-schema

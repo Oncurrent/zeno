@@ -19,17 +19,23 @@
           ret (au/<? (aws-async/invoke ddb arg))]
       (some-> ret :Item :v :B slurp ba/b64->byte-array))))
 
-(defn <write-k!* [ddb table-name k ba]
+(defn <add-k!* [ddb table-name k ba]
   (au/go
     (let [b64 (ba/byte-array->b64 ba)
           arg {:op :PutItem
-               :request {:TableName table-name
+               :request {:ConditionExpression "attribute_not_exists(k)"
+                         :TableName table-name
                          :Item {"k" {:S k}
                                 "v" {:B b64}}}}
           ret (au/<? (aws-async/invoke ddb arg))]
-      (or (= {} ret)
-          (throw (ex-info "<write-k! failed."
-                          (u/sym-map arg ret)))))))
+      (if-not (= :cognitect.anomalies/incorrect
+                 (:cognitect.anomalies/category ret))
+        (= {} ret)
+        (if (str/includes? (:__type ret) "ConditionalCheckFailedException")
+          (throw (ex-info (str "Key `" k "` already exists.")
+                          (u/sym-map k)))
+          (throw (ex-info (str "Unknown error in <add-k!: " (:__type ret))
+                          ret)))))))
 
 (defn <delete-k!* [ddb table-name k]
   (au/go
@@ -63,7 +69,7 @@
         (= new-b64 (some-> ret :Attributes :v :B slurp))
         (cond
           (str/includes? (:__type ret) "ResourceNotFoundException")
-          (au/<? (<write-k!* ddb table-name k new-ba))
+          (au/<? (<add-k!* ddb table-name k new-ba))
 
           (str/includes? (:__type ret) "ConditionalCheckFailedException")
           false
@@ -92,10 +98,10 @@
           (<read-k* table-name k)
           (au/<?))))
 
-  (<write-k! [this k ba]
+  (<add-k! [this k ba]
     (au/go
       (-> (au/<? ddb-promise-chan)
-          (<write-k!* table-name k ba)
+          (<add-k!* table-name k ba)
           (au/<?)))))
 
 (defn <active-table? [ddb table-name]
@@ -103,6 +109,39 @@
     (let [ret (au/<? (aws-async/invoke ddb {:op :DescribeTable
                                             :request {:TableName table-name}}))]
       (= "ACTIVE" (some->> ret :Table :TableStatus)))))
+
+(def default-ddb-table-options
+  {:billing-mode "PAY_PER_REQUEST"
+   :create-attempt-delay-ms 1000
+   :max-create-attempts 10})
+
+(defn <create-ddb-table
+  ([table-name]
+   (<create-ddb-table table-name {}))
+  ([table-name options]
+   (au/go
+     (let [ddb (aws/client {:api :dynamodb})
+           options* (merge default-ddb-table-options options)
+           {:keys [create-attempt-delay-ms
+                   billing-mode
+                   max-create-attempts]} options*]
+       (aws-async/invoke ddb
+                         {:op :CreateTable
+                          :request {:TableName table-name
+                                    :KeySchema [{:AttributeName "k"
+                                                 :KeyType "HASH"}]
+                                    :AttributeDefinitions [{:AttributeName "k"
+                                                            :AttributeType "S"}]
+                                    :BillingMode billing-mode}})
+       (loop [attempts-left max-create-attempts]
+         (if (zero? attempts-left)
+           (throw
+            (ex-info (str "Could not create DynamoDB table `" table-name "`.")
+                     {:table-name table-name}))
+           (or (au/<? (<active-table? ddb table-name))
+               (do
+                 (ca/<! (ca/timeout create-attempt-delay-ms))
+                 (recur (dec attempts-left))))))))))
 
 (defn make-ddb-raw-storage [table-name]
   (let [ddb-promise-chan (ca/promise-chan)]

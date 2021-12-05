@@ -18,17 +18,19 @@
    (ca/go
      (let [storage (storage/make-storage)
            v1 [2 3 45]
-           v2 [7 1234 8]
            m {"a" 47
               "b" 22}]
        (is (= nil (au/<? (storage/<get storage
                                        "v-key"
                                        (l/array-schema l/int-schema)))))
-       (is (= true (au/<? (storage/<put! storage
+       (is (= nil (au/<? (storage/<get storage
+                                       "m-key"
+                                       (l/array-schema l/int-schema)))))
+       (is (= true (au/<? (storage/<add! storage
                                          "v-key"
                                          (l/array-schema l/int-schema)
                                          v1))))
-       (is (= true (au/<? (storage/<put! storage
+       (is (= true (au/<? (storage/<add! storage
                                          "m-key"
                                          (l/map-schema l/int-schema)
                                          m))))
@@ -37,51 +39,40 @@
                                       (l/array-schema l/int-schema)))))
        (is (= m (au/<? (storage/<get storage
                                      "m-key"
-                                     (l/map-schema l/int-schema)))))
-       (is (= true (au/<? (storage/<put! storage
-                                         "v-key"
-                                         (l/array-schema l/int-schema)
-                                         v2))))
-       (is (= v2 (au/<? (storage/<get storage
-                                      "v-key"
-                                      (l/array-schema l/int-schema)))))
-       (is (= m (au/<? (storage/<get storage
-                                     "m-key"
                                      (l/map-schema l/int-schema)))))))))
 
-(deftest test-compare-and-set
+(deftest test-swap
   (au/test-async
    1000
    (ca/go
      (let [storage (storage/make-storage)
-           k "v-key"
+           v-k "_v-key"
            v1 [2 3 45]
-           v2 [7 1234 8]
-           v3 [8 777 1 988 8222]]
-       (is (= true (au/<? (storage/<compare-and-set!
-                           storage
-                           k
-                           (l/array-schema l/int-schema)
-                           nil
-                           v1))))
-       (is (= true (au/<? (storage/<compare-and-set!
-                           storage
-                           k
-                           (l/array-schema l/int-schema)
-                           v1
-                           v2))))
-       (is (= false (au/<? (storage/<compare-and-set!
-                            storage
-                            k
-                            (l/array-schema l/int-schema)
-                            v1
-                            v3))))
-       (is (= true (au/<? (storage/<compare-and-set!
-                           storage
-                           k
-                           (l/array-schema l/int-schema)
-                           v2
-                           v3))))
-       (is (= v3 (au/<? (storage/<get storage
-                                      k
-                                      (l/array-schema l/int-schema)))))))))
+           i-k "_i-key"]
+       (is (= nil (au/<? (storage/<get storage
+                                       v-k
+                                       (l/array-schema l/int-schema)))))
+       (is (= v1 (au/<? (storage/<swap!
+                         storage
+                         v-k
+                         (l/array-schema l/int-schema)
+                         (constantly v1)))))
+       (is (= v1 (au/<? (storage/<get storage
+                                      v-k
+                                      (l/array-schema l/int-schema)))))
+       (is (= nil (au/<? (storage/<get storage
+                                       i-k
+                                       l/int-schema))))
+       (is (= 0 (au/<? (storage/<swap!
+                        storage
+                        i-k
+                        l/int-schema
+                        (constantly 0)))))
+       (is (= 1 (au/<? (storage/<swap!
+                        storage
+                        i-k
+                        l/int-schema
+                        inc))))
+       (is (= 1 (au/<? (storage/<get storage
+                                     i-k
+                                     l/int-schema))))))))

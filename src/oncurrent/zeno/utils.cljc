@@ -22,8 +22,6 @@
 
 #?(:clj (set! *warn-on-reflection* true))
 
-(def root-crdt-id-info-reference "ROOT-CRDT-ID-INFO-REF_")
-
 (defmacro sym-map
   "Builds a map from symbols.
    Symbol names are turned into keywords and become the map's keys.

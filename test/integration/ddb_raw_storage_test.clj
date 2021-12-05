@@ -4,7 +4,6 @@
    [clojure.test :as t :refer [deftest is]]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.baracus :as ba]
-   [oncurrent.zeno.admin :as admin]
    [oncurrent.zeno.ddb-raw-storage :as drs]
    [oncurrent.zeno.storage :as storage]
    [oncurrent.zeno.utils :as u]
@@ -15,13 +14,19 @@
    2000
    (ca/go
      (let [table-name "ddb-test-table"
-           _ (au/<? (admin/<create-ddb-table table-name))
+           _ (au/<? (drs/<create-ddb-table table-name))
            raw-storage (drs/make-ddb-raw-storage table-name)
            k1 "key-1"
            ba1 (ba/byte-array [1 2 3 42])
-           _ (is (= true (au/<? (storage/<write-k! raw-storage k1 ba1))))
+           _ (is (= true (au/<? (storage/<delete-k! raw-storage k1))))
+           _ (is (= nil (au/<? (storage/<read-k raw-storage k1))))
+           _ (is (= true (au/<? (storage/<add-k! raw-storage k1 ba1))))
            ret (au/<? (storage/<read-k raw-storage k1))]
        (is (ba/equivalent-byte-arrays? ba1 ret))
+       (is (thrown-with-msg?
+            Exception
+            #"exists"
+            (au/<? (storage/<add-k! raw-storage k1 ba1))))
        (is (= true (au/<? (storage/<delete-k! raw-storage k1))))
        (is (= nil (au/<? (storage/<read-k raw-storage k1))))))))
 
@@ -30,7 +35,7 @@
    2000
    (ca/go
      (let [table-name "ddb-test-table"
-           _ (au/<? (admin/<create-ddb-table table-name))
+           _ (au/<? (drs/<create-ddb-table table-name))
            raw-storage (drs/make-ddb-raw-storage table-name)
            k "xyz"
            v1 (ba/byte-array [2 3 45])
