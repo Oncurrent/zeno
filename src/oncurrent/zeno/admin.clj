@@ -10,22 +10,32 @@
 
 (def default-create-branch-options
   {:authenticators []
+   :initial-branch-log-file nil
    :source-tx-id nil
    :use-temp-storage false})
+
+(defn check-options [options]
+  ;; TODO
+  )
 
 (defn <create-branch
   ([storage branch-name]
    (<create-branch storage branch-name {}))
   ([storage branch-name options]
    (au/go
-     (let [branch-info (merge default-create-branch-options options)]
-       (<)))))
+     (let [options* (merge default-create-branch-options options)
+           _ (check-options options*)]
+       ))))
 
 (defn <list-branches [storage]
   (au/go
     ))
 
 (defn <get-branch-info [storage branch-name]
+  (au/go
+    ))
+
+(defn <export-branch-log [storage branch-name output-file]
   (au/go
     ))
 
