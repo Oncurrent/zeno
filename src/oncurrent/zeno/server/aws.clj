@@ -1,4 +1,4 @@
-(ns oncurrent.zeno.ddb-raw-storage
+(ns oncurrent.zeno.server.aws
   (:require
    [clojure.core.async :as ca]
    [clojure.string :as str]

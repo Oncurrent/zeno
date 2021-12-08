@@ -4,18 +4,18 @@
    [clojure.test :as t :refer [deftest is]]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.baracus :as ba]
-   [oncurrent.zeno.ddb-raw-storage :as drs]
+   [oncurrent.zeno.server.aws :as aws]
    [oncurrent.zeno.storage :as storage]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
 (deftest test-read-write-delete
   (au/test-async
-   2000
+   20000
    (ca/go
      (let [table-name "ddb-test-table"
-           _ (au/<? (drs/<create-ddb-table table-name))
-           raw-storage (drs/make-ddb-raw-storage table-name)
+           _ (au/<? (aws/<create-ddb-table table-name))
+           raw-storage (aws/make-ddb-raw-storage table-name)
            k1 "key-1"
            ba1 (ba/byte-array [1 2 3 42])
            _ (is (= true (au/<? (storage/<delete-k! raw-storage k1))))
@@ -32,11 +32,11 @@
 
 (deftest test-compare-and-set
   (au/test-async
-   2000
+   20000
    (ca/go
      (let [table-name "ddb-test-table"
-           _ (au/<? (drs/<create-ddb-table table-name))
-           raw-storage (drs/make-ddb-raw-storage table-name)
+           _ (au/<? (aws/<create-ddb-table table-name))
+           raw-storage (aws/make-ddb-raw-storage table-name)
            k "xyz"
            v1 (ba/byte-array [2 3 45])
            v2 (ba/byte-array [7 123 8])
