@@ -9,11 +9,13 @@
 (def authenticator-name-schema l/string-schema)
 (def branch-id-schema l/string-schema)
 (def client-id-schema l/string-schema)
+(def cluster-member-id-schema l/string-schema)
 (def fingerprint-schema l/bytes-schema)
 (def id-schema l/string-schema)
+(def session-token-schema l/string-schema)
 (def subject-id-schema l/string-schema)
 (def timestamp-ms-schema l/long-schema)
-(def session-token-schema l/string-schema)
+(def ws-url-schema l/string-schema)
 
 (l/def-record-schema serialized-value-schema
   [:chunk-ids (l/array-schema id-schema)]
@@ -24,10 +26,7 @@
   [:bytes l/bytes-schema]
   [:chunk-i l/int-schema])
 
-(l/def-record-schema mutex-info-schema
-  [:lease-id l/string-schema]
-  [:lease-length-ms l/int-schema]
-  [:owner l/string-schema])
+;;;;;;;;;;;;;;;; Server Schemas ;;;;;;;;;;;;;;;;;;;;;;
 
 (l/def-record-schema branch-info-schema
   [:authenticators (l/array-schema authenticator-name-schema)]
@@ -36,6 +35,17 @@
 
 (def branch-name-to-info-schema
   (l/map-schema branch-info-schema))
+
+(def cluster-membership-list-schema
+  (l/array-schema cluster-member-id-schema))
+
+(l/def-record-schema mutex-info-schema
+  [:lease-id l/string-schema]
+  [:lease-length-ms l/int-schema]
+  [:owner l/string-schema])
+
+(l/def-record-schema cluster-member-info-schema
+  [:ws-url ws-url-schema])
 
 ;;;;;;;;;;;;;;;;; CRDT Schemas ;;;;;;;;;;;;;;;;;;;;;;;
 

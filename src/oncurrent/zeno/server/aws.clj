@@ -10,6 +10,8 @@
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
+(def s3-client (aws/client {:api :s3}))
+
 (defn <read-k* [ddb table-name k]
   (au/go
     (let [arg {:op :GetItem
@@ -161,3 +163,35 @@
         (catch Exception e
           (ca/>! ddb-promise-chan e))))
     (->DDBRawStorage table-name ddb-promise-chan)))
+
+
+(defn <s3-publish-member-urls [bucket k urls]
+  (au/go
+    (let [body (-> (str/join "\n" urls)
+                   (ba/utf8->byte-array))
+          s3-arg {:op :PutObject
+                  :request {:ACL "public-read"
+                            :Body body
+                            :Bucket bucket
+                            :CacheControl "no-cache"
+                            :ContentType "text/plain"
+                            :Key k}}
+          ret (au/<? (aws-async/invoke s3-client s3-arg))]
+      (if (:cognitect.anomalies/category ret)
+        (throw (ex-info (str ret)
+                        (u/sym-map s3-arg ret)))
+        true))))
+
+(defn <s3-get-published-member-urls [bucket k]
+  (au/go
+    (let [s3-arg {:op :GetObject
+                  :request {:Bucket bucket
+                            :Key k}}
+          ret (au/<? (aws-async/invoke s3-client s3-arg))]
+      (if (:cognitect.anomalies/category ret)
+        (throw (ex-info (str ret)
+                        (u/sym-map s3-arg ret)))
+        (let [ba (ba/byte-array (:ContentLength ret))]
+          (.read (:Body ret) ba)
+          (->> (ba/byte-array->utf8 ba)
+               (str/split-lines)))))))

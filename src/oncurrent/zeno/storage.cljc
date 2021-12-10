@@ -24,9 +24,11 @@
   (<read-k [this k])
   (<add-k! [this k ba]))
 
-;;;;;;;;;;;;; Storage Referenece Key Prefixes ;;;;;;;;
+;;;;;;;;;;;;; Storage Key Prefixes ;;;;;;;;;;;;;;;;;;;
 
-(def mutex-reference-key-prefix "_MUTEX_")
+(def cluster-membership-list-reference-key "_CLUSTER_MEMBERSHIP_LIST")
+(def member-info-key-prefix "MEMBER-INFO-")
+(def mutex-reference-key-prefix "_MUTEX-")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

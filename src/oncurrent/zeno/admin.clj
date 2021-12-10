@@ -1,10 +1,7 @@
 (ns oncurrent.zeno.admin
   (:require
    [clojure.core.async :as ca]
-   [cognitect.aws.client.api :as aws]
-   [cognitect.aws.client.api.async :as aws-async]
    [deercreeklabs.async-utils :as au]
-   [oncurrent.zeno.ddb-raw-storage :as drs]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
