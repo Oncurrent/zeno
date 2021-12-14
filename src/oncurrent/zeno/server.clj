@@ -114,8 +114,9 @@
 
 (defn <member-ids->member-urls [storage member-ids]
   (au/go
-    (let [<get-info #(storage/<get storage % storage/cluster-member-info-schema)
-          results-ch (->> member-info-keys
+    (let [<get-info #(storage/<get storage % schemas/cluster-member-info-schema)
+          results-ch (->> member-ids
+                          (map member-id->member-info-key)
                           (map <get-info)
                           (ca/merge))
           num-ids (count member-ids)]
@@ -134,29 +135,29 @@
                              storage/cluster-membership-list-reference-key
                              schemas/cluster-membership-list-schema))
           clients (map #(make-member-watch-client storage %)
-                       member-ids)])
-    (loop [member-id->client (zipmap member-ids clients)]
-      (let [prior-member-ids (keys member-id->client)
-            cur-member-ids (-> (storage/<get
-                                storage
-                                storage/cluster-membership-list-reference-key
-                                schemas/cluster-membership-list-schema)
-                               (au/<?)
-                               (set))
-            added-member-ids (set/difference cur-member-ids prior-member-ids)
-            stale-member-ids (set/difference prior-member-ids cur-member-ids)
-            cur-member-urls (au/<? (<member-ids->member-urls storage
-                                                             cur-member-ids))
-            published-member-urls (-> (<get-published-member-urls)
-                                      (au/<?)
-                                      (set))]
-        (when-not (= cur-member-urls published-member-urls)
-          (au/<? (<publish-member-urls cur-member-urls))))
-      (ca/<! (ca/timeout (* 60 1000)))
-      (when @*have-role?
-        (recur (-> member-id->client
-                   (add-member-clients storage added-member-ids)
-                   (del-member-clients storage stale-member-ids)))))))
+                       member-ids)]
+      (loop [member-id->client (zipmap member-ids clients)]
+        (let [prior-member-ids (keys member-id->client)
+              cur-member-ids (-> (storage/<get
+                                  storage
+                                  storage/cluster-membership-list-reference-key
+                                  schemas/cluster-membership-list-schema)
+                                 (au/<?)
+                                 (set))
+              added-member-ids (set/difference cur-member-ids prior-member-ids)
+              stale-member-ids (set/difference prior-member-ids cur-member-ids)
+              cur-member-urls (au/<? (<member-ids->member-urls storage
+                                                               cur-member-ids))
+              published-member-urls (-> (<get-published-member-urls)
+                                        (au/<?)
+                                        (set))]
+          (when-not (= cur-member-urls published-member-urls)
+            (au/<? (<publish-member-urls cur-member-urls)))
+          (ca/<! (ca/timeout (* 60 1000)))
+          (when @*have-role?
+            (recur (-> member-id->client
+                       (add-member-clients storage added-member-ids)
+                       (del-member-clients storage stale-member-ids)))))))))
 
 (defn <member-health-role [storage role-info *have-role?]
   (au/go
@@ -180,7 +181,7 @@
     (mapv (fn [role]
             (let [{:keys [<role-fn role-info mutex-name]} role
                   *have-role? (atom false)
-                  on-acq (fn []
+                  on-acq (fn [_]
                            (reset! *have-role? true)
                            (when <role-fn
                              (ca/go
@@ -193,9 +194,10 @@
                                     (str "Error in <role-fn for mutex `"
                                          mutex-name "`:\n"
                                          (u/ex-msg-and-stacktrace e))))))))
-                  on-rel #(reset! *have-role? false)
+                  on-rel (fn [_]
+                           (reset! *have-role? false))
                   opts (-> (select-keys role [:lease-length-ms])
-                           (assoc :client-name)
+                           (assoc :client-name ws-url)
                            (assoc :on-acquire on-acq)
                            (assoc :on-release on-rel))]
               (dm/make-distributed-mutex-client mutex-name storage opts)))

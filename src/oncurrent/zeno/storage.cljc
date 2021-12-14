@@ -18,11 +18,12 @@
   (<swap! [this reference-k schema update-fn]))
 
 (defprotocol IRawStorage
+  (<add-k! [this k ba])
   (<compare-and-set-k! [this k old-ba new-ba])
   (<delete-k! [this k])
   (get-max-value-bytes [this])
-  (<read-k [this k])
-  (<add-k! [this k ba]))
+  (<put-k! [this k ba])
+  (<read-k [this k]))
 
 ;;;;;;;;;;;;; Storage Key Prefixes ;;;;;;;;;;;;;;;;;;;
 
@@ -53,7 +54,7 @@
       (when-not (au/<? (<read-k raw-storage k))
         (->> (l/json schema)
              (l/serialize l/string-schema)
-             (<add-k! raw-storage k)
+             (<put-k! raw-storage k)
              (au/<?)))
       fp)))
 
@@ -241,6 +242,12 @@
   (<read-k [this k]
     (au/go
       (@*data k)))
+
+  (<put-k! [this k ba]
+    (au/go
+      (swap! *data (fn [m]
+                     (assoc m k ba)))
+      true))
 
   (<add-k! [this k ba]
     (au/go

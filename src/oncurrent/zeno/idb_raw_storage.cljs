@@ -26,11 +26,11 @@
                                 (ca/close! ch)))))
     ch))
 
-(defn <add-k!* [idb store-name k v]
+(defn <write-k!* [idb store-name op k v]
   (let [ch (ca/chan)
         tx (ocall idb :transaction store-name "readwrite")
         store (ocall tx :objectStore store-name)
-        req (ocall store :add #js {"k" k "v" v})]
+        req (ocall+ store op #js {"k" k "v" v})]
     (oset! req :onerror
            (fn [event]
              (ca/put! ch (ex-info (str "Error writing to indexedDB: \n"
@@ -109,10 +109,16 @@
           (<read-k* store-name k)
           (au/<?))))
 
+  (<put-k! [this k ba]
+    (au/go
+      (-> (au/<? idb-promise-chan)
+          (<write-k!* store-name :put k ba)
+          (au/<?))))
+
   (<add-k! [this k ba]
     (au/go
       (-> (au/<? idb-promise-chan)
-          (<add-k!* store-name k ba)
+          (<write-k!* store-name :add k ba)
           (au/<?)))))
 
 (defn <get-idb [db-name store-name db-version]

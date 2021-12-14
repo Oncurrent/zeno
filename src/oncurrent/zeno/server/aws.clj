@@ -39,6 +39,20 @@
           (throw (ex-info (str "Unknown error in <add-k!: " (:__type ret))
                           ret)))))))
 
+(defn <put-k!* [ddb table-name k ba]
+  (au/go
+    (let [b64 (ba/byte-array->b64 ba)
+          arg {:op :PutItem
+               :request {:TableName table-name
+                         :Item {"k" {:S k}
+                                "v" {:B b64}}}}
+          ret (au/<? (aws-async/invoke ddb arg))]
+      (if-not (= :cognitect.anomalies/incorrect
+                 (:cognitect.anomalies/category ret))
+        (= {} ret)
+        (throw (ex-info (str "Unknown error in <put-k!: " (:__type ret))
+                        ret))))))
+
 (defn <delete-k!* [ddb table-name k]
   (au/go
     (let [arg {:op :DeleteItem
@@ -107,6 +121,12 @@
     (au/go
       (-> (au/<? ddb-promise-chan)
           (<add-k!* table-name k ba)
+          (au/<?))))
+
+  (<put-k! [this k ba]
+    (au/go
+      (-> (au/<? ddb-promise-chan)
+          (<put-k!* table-name k ba)
           (au/<?)))))
 
 (defn <active-table? [ddb table-name]
