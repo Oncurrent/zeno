@@ -4,7 +4,8 @@
    [deercreeklabs.async-utils :as au]
    [oncurrent.zeno.client.impl :as impl]
    [oncurrent.zeno.client.state-subscriptions :as state-subscriptions]
-   [oncurrent.zeno.utils :as u]))
+   [oncurrent.zeno.utils :as u]
+   [taoensso.timbre :as log]))
 
 (defn zeno-client
   "Returns a Zeno client."
@@ -66,3 +67,14 @@
   [zc state-sub-name]
   (swap! (:*state-sub-name->info zc) dissoc state-sub-name)
   nil)
+
+;; TODO: Unify the sub/unsub model for state & topic subscriptions
+;; State has explicit unsub fn you call; topic sub returns an unsub fn.
+
+(defn subscribe-to-topic!
+  [zc topic-name cb]
+  (impl/subscribe-to-topic! zc topic-name cb))
+
+(defn publish-to-topic!
+  [zc topic-name msg]
+  (impl/publish-to-topic! zc topic-name msg))

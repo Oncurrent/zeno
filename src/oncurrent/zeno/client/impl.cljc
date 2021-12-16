@@ -112,6 +112,7 @@
         {:keys [initial-client-state]} config*
         *next-instance-num (atom 0)
         *next-topic-sub-id (atom 0)
+        *topic-name->sub-id->cb (atom {})
         *shutdown? (atom false)
         *state (atom {:client initial-client-state})
         *state-sub-name->info (atom {})
@@ -123,6 +124,7 @@
                       *state
                       *state-sub-name->info
                       *subject-id
+                      *topic-name->sub-id->cb
                       update-state-ch)]
     (start-update-state-loop! zc)
     zc))
@@ -131,5 +133,37 @@
   (reset! (:*shutdown? zc) true))
 
 (defn update-state! [zc cmds cb]
-  ;; We put the updates on a channel to guarantee serial upate order
+  ;; We put the updates on a channel to guarantee serial update order
   (ca/put! (:update-state-ch zc) (u/sym-map cmds cb)))
+
+(defn subscribe-to-topic! [zc topic-name cb]
+  (let [{:keys [*next-topic-sub-id *topic-name->sub-id->cb]} zc
+        sub-id (swap! *next-topic-sub-id inc)
+        unsub! (fn unsubscribe! []
+                 (swap! *topic-name->sub-id->cb
+                        (fn [old-topic-name->sub-id->cb]
+                          (let [old-sub-id->cb (old-topic-name->sub-id->cb
+                                                topic-name)
+                                new-sub-id->cb (dissoc old-sub-id->cb sub-id)]
+                            (if (seq new-sub-id->cb)
+                              (assoc old-topic-name->sub-id->cb topic-name
+                                     new-sub-id->cb)
+                              (dissoc old-topic-name->sub-id->cb topic-name)))))
+                 true)]
+    (swap! *topic-name->sub-id->cb assoc-in [topic-name sub-id] cb)
+    unsub!))
+
+(defn publish-to-topic! [zc topic-name msg]
+  (when-not (string? topic-name)
+    (throw (ex-info (str "`topic-name` argument to `publish-to-topic!` must "
+                         "be a string. Got `" topic-name "`.")
+                    (u/sym-map topic-name msg))))
+  (let [{:keys [*topic-name->sub-id->cb]} zc]
+    (ca/go
+      (try
+        (doseq [[sub-id cb] (@*topic-name->sub-id->cb topic-name)]
+          (cb msg))
+        (catch #?(:cljs js/Error :clj Throwable) e
+          (log/error (str "Error while distributing messages:\n"
+                          (u/ex-msg-and-stacktrace e)))))))
+  nil)
