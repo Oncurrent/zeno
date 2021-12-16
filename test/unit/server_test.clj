@@ -20,6 +20,7 @@
   (au/go
     (reset! *member-urls urls)))
 
+#_
 (deftest test-cluster-membership
   (au/test-async
    60000
