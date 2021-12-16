@@ -19,14 +19,29 @@
   [zc]
   (impl/shutdown! zc))
 
-(defn update-state! [zc cmds cb]
-  (impl/update-state! zc cmds cb))
+(defn update-state! [zc update-cmds cb]
+  (impl/update-state! zc update-cmds cb))
 
 (defn <update-state! [zc update-commands]
   (let [ch (ca/chan)
         cb #(ca/put! ch %)]
     (impl/update-state! zc update-commands cb)
     ch))
+
+(defn set-state!
+  ([zc path arg]
+   (set-state! zc path arg nil))
+  ([zc path arg cb]
+   (impl/update-state! zc [{:path path
+                            :op :set
+                            :arg arg}] cb)))
+
+(defn <set-state!
+  ([zc path arg]
+   (let [ch (ca/chan)
+         cb #(ca/put! ch %)]
+     (set-state! zc path arg cb)
+     ch)))
 
 (defn subscribe-to-state!
   "Creates a Zeno subscription. When the state or events referred to by any

@@ -90,14 +90,17 @@
         (try
           (let [[update-info ch] (ca/alts! [update-state-ch
                                             (ca/timeout 1000)])
-                {:keys [cmds cb]} update-info
-                cb* (or cb (constantly nil))]
-            (when (= update-state-ch ch)
-              (-> (<do-update-state! zc cmds)
-                  (au/<?)
-                  (cb*))))
+                {:keys [cmds cb]} update-info]
+            (try
+              (when (= update-state-ch ch)
+                (-> (<do-update-state! zc cmds)
+                    (au/<?)
+                    (cb)))
+              (catch #?(:clj Exception :cljs js/Error) e
+                (cb e))))
           (catch #?(:clj Exception :cljs js/Error) e
-            (log/error "Error updating state:\n" (u/ex-msg-and-stacktrace e))))
+            (log/error "Error updating state:\n"
+                       (u/ex-msg-and-stacktrace e))))
         (when-not @(:*shutdown? zc)
           (recur))))))
 
