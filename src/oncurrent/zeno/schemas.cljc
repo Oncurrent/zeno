@@ -20,7 +20,7 @@
 (l/def-record-schema serialized-value-schema
   [:chunk-ids (l/array-schema id-schema)]
   [:fp fingerprint-schema]
-  [:inline-bytes l/bytes-schema])
+  [:bytes l/bytes-schema])
 
 (l/def-record-schema chunk-schema
   [:bytes l/bytes-schema]
@@ -47,8 +47,6 @@
 (l/def-record-schema cluster-member-info-schema
   [:ws-url ws-url-schema])
 
-;;;;;;;;;;;;;;;;; CRDT Schemas ;;;;;;;;;;;;;;;;;;;;;;;
-
 (l/def-enum-schema command-op-schema
   :add-identifier-to-subject
   :add-subjects-to-acl
@@ -56,14 +54,10 @@
   :change-secret-for-subject
   :create-subject
   :delete-subject
-  :divide
   :insert-after
   :insert-before
   :insert-range-after
   :insert-range-before
-  :minus
-  :mod
-  :multiply
   :remove
   :remove-identifier-from-subject
   :remove-subjects-from-acl
@@ -93,21 +87,55 @@
   [:branch-id branch-id-schema]
   [:cmds (l/array-schema serializable-command-schema)]
   [:subject-id subject-id-schema]
-  [:ts timestamp-ms-schema])
+  [:sys-time-ms timestamp-ms-schema])
 
 (l/def-record-schema tx-log-block-schema
   [:prev-log-block-id id-schema]
-  [:tx-i l/int-schema]
+  [:tx-i
+   "Useful for getting the tx-i of the tail without traversing the whole log"
+   l/int-schema]
   [:tx-id id-schema])
 
-(l/def-record-schema crdt-value-info-schema
-  [:deletion-tx-id id-schema]
-  [:value serialized-value-schema])
+;;;;;;;;;;;;;;;;; CRDT Schemas ;;;;;;;;;;;;;;;;;;;;;;;
 
-(l/def-record-schema crdt-value-node-schema
-  [:add-id-to-value-info (l/map-schema crdt-value-info-schema)]
-  [:current-add-ids (l/array-schema id-schema)]
-  [:tx-ids (l/array-schema id-schema)])
+(l/def-record-schema crdt-value-info-schema
+  [:add-id id-schema]
+  [:serialized-value serialized-value-schema]
+  [:subject-id subject-id-schema]
+  [:sys-time-ms timestamp-ms-schema])
+
+(l/def-record-schema crdt-schema
+  [:current-value-infos (l/array-schema crdt-value-info-schema)]
+  [:deleted-add-ids l/string-set-schema])
+
+(l/def-record-schema crdt-pointer-schema
+  [:array-id id-schema]
+  [:map-id id-schema]
+  [:record-id id-schema])
+
+(l/def-enum-schema crdt-op-type-schema
+  :add-map-key
+  :add-map-key-value
+  :add-record-key-value
+  :add-value
+  :del-map-key
+  :del-map-key-value
+  :del-record-key-value
+  :del-value)
+
+(l/def-record-schema crdt-op-schema
+  "Depending on the op-type, different fields will be used."
+  [:add-id id-schema]
+  [:crdt-id id-schema]
+  [:k l/string-schema]
+  [:map-id id-schema]
+  [:op-type crdt-op-type-schema]
+  [:record-id id-schema]
+  [:serialized-value serialized-value-schema]
+  [:subject-id subject-id-schema]
+  [:sys-time-ms timestamp-ms-schema])
+
+;;;;;;;;;;;;;; ACL Schemas ;;;;;;;;;;;;;;;;;
 
 (l/def-enum-schema permissions-schema
   :r :rs :rw :rws)

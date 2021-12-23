@@ -41,11 +41,11 @@
                        :clj (UUID/randomUUID))))
 
 (defn pprint [x]
-  #?(:clj (.write *out* ^String (puget/pprint-str x))
+  #?(:clj (.write *out* ^String (puget/with-color (puget/pprint-str x)))
      :cljs (pprint/pprint x)))
 
 (defn pprint-str [x]
-  #?(:clj (puget/pprint-str x)
+  #?(:clj (puget/with-color (puget/pprint-str x))
      :cljs (with-out-str (pprint/pprint x))))
 
 (defn int-pow [base exp]
@@ -55,6 +55,11 @@
   (when (seq s)
     #?(:clj (Integer/parseInt s)
        :cljs (js/parseInt s))))
+
+(defn str->long [s]
+  (when (seq s)
+    #?(:clj (Long/parseLong s)
+       :cljs (.fromString ^Long Long s))))
 
 (defn ex-msg [e]
   #?(:clj (.toString ^Exception e)
@@ -265,6 +270,7 @@
 (defn check-path [path]
   (check-key-types path)
   (check-terminal-kws path))
+
 (defn sub-map->map-info [sub-map resolution-map]
   (check-sub-map sub-map)
   (let [resolve-resolution-map-syms (fn [path]
@@ -318,3 +324,12 @@
                                      (conj acc [sym (sym->path sym)])))
                                  [] (dep/topo-sort g))]
     (sym-map independent-pairs ordered-dependent-pairs)))
+
+(defn <resolve-conflict-lww [{:keys [current-value-infos]}]
+  (au/go
+    (reduce (fn [acc candidate]
+              (if (> (:sys-time-ms candidate) (:sys-time-ms acc))
+                candidate
+                acc))
+            (first current-value-infos)
+            current-value-infos)))

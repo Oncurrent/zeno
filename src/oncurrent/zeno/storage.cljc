@@ -28,12 +28,16 @@
 ;;;;;;;;;;;;; Storage Key Prefixes ;;;;;;;;;;;;;;;;;;;
 
 (def cluster-membership-list-reference-key "_CLUSTER_MEMBERSHIP_LIST")
+(def crdt-prefix "_CRDT-")
+(def map-key-value-crdt-key-prefix "_MAP-KV-CRDT-")
+(def map-keyset-crdt-key-prefix "_MAP-KEYSET-CRDT-")
 (def member-info-key-prefix "MEMBER-INFO-")
 (def mutex-reference-key-prefix "_MUTEX-")
+(def record-key-value-crdt-key-prefix "_RECORD-KV-CRDT-")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def max-swap-attempts 20)
+(def max-swap-attempts 42)
 
 (defn make-fp->schema-k [fp]
   (str "FP-TO-SCHEMA-" (ba/byte-array->hex-str fp)))
@@ -93,52 +97,54 @@
             (recur new-num-written)
             chunk-ids))))))
 
-(defn <ba->value [storage raw-storage schema ba]
+(defn <ba->value [storage schema ba]
   (au/go
     (let [ser-val (when ba
                     (l/deserialize-same schemas/serialized-value-schema ba))
-          {:keys [chunk-ids fp inline-bytes]} ser-val
+          {:keys [chunk-ids fp bytes]} ser-val
           writer-schema (when fp
                           (au/<? (<fp->schema storage fp)))]
       (cond
         (or (not ser-val)
             (not writer-schema)
-            (and (empty? inline-bytes)
+            (and (empty? bytes)
                  (empty? chunk-ids)))
         nil
 
-        (seq inline-bytes)
-        (l/deserialize schema writer-schema inline-bytes)
+        (seq bytes)
+        (l/deserialize schema writer-schema bytes)
 
         (seq chunk-ids)
-        (->> (<read-chunks raw-storage chunk-ids)
+        (->> (<read-chunks (:raw-storage storage) chunk-ids)
              (au/<?)
              (l/deserialize schema writer-schema))))))
 
-(defn <value->ba [storage raw-storage schema value]
+(defn <value->ba [storage schema value]
   (au/go
-    (let [bytes (l/serialize schema value)
-          inline? (<= (count bytes) (get-max-value-bytes raw-storage))
-          inline-bytes (when inline?
-                         bytes)
+    (let [{:keys [raw-storage]} storage
+          bytes* (l/serialize schema value)
+          inline? (<= (count bytes*) (get-max-value-bytes raw-storage))
+          bytes (when inline?
+                  bytes*)
           fp (au/<? (<schema->fp storage schema))
           chunk-ids (when-not inline?
-                      (au/<? (<store-as-chunks! raw-storage bytes)))
-          ser-val (u/sym-map chunk-ids fp inline-bytes)]
+                      (au/<? (<store-as-chunks! raw-storage bytes*)))
+          ser-val (u/sym-map chunk-ids fp bytes)]
       (l/serialize schemas/serialized-value-schema ser-val))))
 
-(defn <get* [storage raw-storage k schema]
+(defn <get* [storage k schema]
   (au/go
     (when-not (string? k)
       (throw (ex-info (str "`k` argument to `<get` must be a string. Got `"
                            k "`")
                       (u/sym-map k))))
-    (->> (<read-k raw-storage k)
-         (au/<?)
-         (<ba->value storage raw-storage schema)
-         (au/<?))))
+    (let [{:keys [raw-storage]} storage]
+      (some->> (<read-k raw-storage k)
+               (au/<?)
+               (<ba->value storage schema)
+               (au/<?)))))
 
-(defn <add!* [storage raw-storage value-k schema value]
+(defn <add!* [storage value-k schema value]
   (au/go
     (when-not (string? value-k)
       (throw (ex-info (str "`value-k` argument to `<add!` must be a string. "
@@ -148,12 +154,13 @@
       (throw (ex-info (str "`value-k` argument to `<add!` must not begin "
                            "with an underscore (`_`). Got `" value-k "`")
                       (u/sym-map value-k))))
-    (->> (<value->ba storage raw-storage schema value)
-         (au/<?)
-         (<add-k! raw-storage value-k)
-         (au/<?))))
+    (let [{:keys [raw-storage]} storage]
+      (->> (<value->ba storage schema value)
+           (au/<?)
+           (<add-k! raw-storage value-k)
+           (au/<?)))))
 
-(defn <swap!* [storage raw-storage reference-k schema update-fn]
+(defn <swap!* [storage reference-k schema update-fn]
   (au/go
     (when-not (string? reference-k)
       (throw (ex-info (str "`reference-k` argument to `<swap!` must be a "
@@ -163,23 +170,31 @@
       (throw (ex-info (str "`reference-k` argument to `<swap!` must begin "
                            "with an underscore (`_`). Got `" reference-k "`")
                       (u/sym-map reference-k))))
-    (loop [attempts-remaining (dec max-swap-attempts)]
-      (let [cur-ba (au/<? (<read-k raw-storage reference-k))
-            cur-val (au/<? (<ba->value storage raw-storage schema cur-ba))
+    (loop [attempts 1]
+      (let [{:keys [raw-storage]} storage
+            cur-ba (au/<? (<read-k raw-storage reference-k))
+            cur-val (au/<? (<ba->value storage schema cur-ba))
             new-val (update-fn cur-val)
-            new-ba (au/<? (<value->ba storage raw-storage schema new-val))
+            new-ba (au/<? (<value->ba storage schema new-val))
             success? (au/<? (<compare-and-set-k! raw-storage reference-k
                                                  cur-ba new-ba))]
         (cond
-          success? new-val
-          (pos? attempts-remaining) (recur (dec attempts-remaining))
-          :else (throw
-                 (ex-info
-                  (str "`<swap!` for key `" reference-k "` failed after "
-                       max-swap-attempts " attempts.")
-                  (u/sym-map reference-k max-swap-attempts))))))))
+          success?
+          new-val
 
-(defn <delete!* [this raw-storage k]
+          (< attempts max-swap-attempts)
+          (do
+            (ca/<! (ca/timeout (rand-int (* 10 attempts))))
+            (recur (inc attempts)))
+
+          :else
+          (throw
+           (ex-info
+            (str "`<swap!` for key `" reference-k "` failed after "
+                 max-swap-attempts " attempts.")
+            (u/sym-map reference-k max-swap-attempts))))))))
+
+(defn <delete!* [raw-storage k]
   (au/go
     (let [ba (au/<? (<read-k raw-storage k))
           ser-val (when ba
@@ -199,22 +214,22 @@
 (defrecord Storage [raw-storage]
   IStorage
   (<add! [this value-k schema value]
-    (<add!* this raw-storage value-k schema value))
+    (<add!* this value-k schema value))
 
   (<delete! [this k]
-    (<delete!* this raw-storage k))
+    (<delete!* raw-storage k))
 
   (<fp->schema [this fp]
     (<fp->schema* raw-storage fp))
 
   (<get [this k schema]
-    (<get* this raw-storage k schema))
+    (<get* this k schema))
 
   (<schema->fp [this schema]
     (<schema->fp* raw-storage schema))
 
   (<swap! [this reference-k schema update-fn]
-    (<swap!* this raw-storage reference-k schema update-fn)))
+    (<swap!* this reference-k schema update-fn)))
 
 (defrecord MemRawStorage [*data max-value-bytes]
   IRawStorage
