@@ -104,33 +104,32 @@
   [:subject-id subject-id-schema]
   [:sys-time-ms timestamp-ms-schema])
 
-(l/def-record-schema crdt-schema
+(l/def-record-schema set-crdt-schema
   [:current-value-infos (l/array-schema crdt-value-info-schema)]
   [:deleted-add-ids l/string-set-schema])
 
-(l/def-record-schema crdt-pointer-schema
-  [:array-id id-schema]
-  [:map-id id-schema]
-  [:record-id id-schema])
+(l/def-record-schema sequence-edge-schema
+  [:head-add-id id-schema]
+  [:tail-add-id id-schema])
+
+(l/def-record-schema sequence-crdt-schema
+  [:edge-set-crdt set-crdt-schema]
+  [:node-set-crdt set-crdt-schema])
 
 (l/def-enum-schema crdt-op-type-schema
   :add-map-key
   :add-map-key-value
   :add-record-key-value
-  :add-value
   :del-map-key
   :del-map-key-value
-  :del-record-key-value
-  :del-value)
+  :del-record-key-value)
 
 (l/def-record-schema crdt-op-schema
   "Depending on the op-type, different fields will be used."
   [:add-id id-schema]
-  [:crdt-id id-schema]
+  [:item-id id-schema]
   [:k l/string-schema]
-  [:map-id id-schema]
   [:op-type crdt-op-type-schema]
-  [:record-id id-schema]
   [:serialized-value serialized-value-schema]
   [:subject-id subject-id-schema]
   [:sys-time-ms timestamp-ms-schema])

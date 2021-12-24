@@ -52,16 +52,17 @@
    1000
    (ca/go
      (let [storage (storage/make-storage)
-           <ser #(storage/<value->serialized-value storage %1 %2)
-           map-id "my-map"
+           <ser-int #(storage/<value->serialized-value storage l/int-schema %)
+           item-id "my-map"
+           schema (l/map-schema l/int-schema)
            subject-id "sid1234"
            sys-time-ms (u/str->long "1640205282858")
-           base-op (u/sym-map map-id subject-id sys-time-ms)
+           base-op (u/sym-map item-id subject-id sys-time-ms)
            ops [(assoc base-op
                        :add-id "a1"
                        :k "a"
                        :op-type :add-map-key-value
-                       :serialized-value (au/<? (<ser l/int-schema 1)))
+                       :serialized-value (au/<? (<ser-int 1)))
                 (assoc base-op
                        :add-id "a2"
                        :k "a"
@@ -70,7 +71,7 @@
                        :add-id "a3"
                        :k "b"
                        :op-type :add-map-key-value
-                       :serialized-value (au/<? (<ser l/int-schema 2)))
+                       :serialized-value (au/<? (<ser-int 2)))
                 (assoc base-op
                        :add-id "a4"
                        :k "b"
@@ -83,7 +84,7 @@
                        :add-id "a5"
                        :k "a"
                        :op-type :add-map-key-value
-                       :serialized-value (au/<? (<ser l/int-schema 42)))
+                       :serialized-value (au/<? (<ser-int 42)))
                 (assoc base-op
                        :add-id "a3"
                        :op-type :del-map-key-value)
@@ -91,11 +92,7 @@
                        :add-id "a4"
                        :op-type :del-map-key)]
            _ (is (= true (au/<? (crdts/<apply-ops! (u/sym-map ops storage)))))
-           crdt-info {:<resolve-conflict <resolve-conflict-throw
-                      :map-id map-id
-                      :schema (l/map-schema l/int-schema)
-                      :storage storage
-                      :subject-id subject-id}
+           crdt-info (u/sym-map item-id schema storage subject-id)
            v (au/<? (crdts/<get-crdt-val crdt-info))
            expected-v {"a" 42}
            _ (is (= expected-v v))]))))
@@ -111,10 +108,11 @@
    (ca/go
      (let [storage (storage/make-storage)
            <ser #(storage/<value->serialized-value storage %1 %2)
-           record-id "for-the-record"
+           item-id "for-the-record"
+           schema the-rec-schema
            subject-id "sid1234"
            sys-time-ms (u/str->long "1640205282858")
-           base-op (u/sym-map record-id subject-id sys-time-ms)
+           base-op (u/sym-map item-id schema subject-id sys-time-ms)
            ops [(assoc base-op
                        :add-id "a1"
                        :k :foo/a
@@ -144,10 +142,7 @@
                        :k :c
                        :op-type :del-record-key-value)]
            _ (is (= true (au/<? (crdts/<apply-ops! (u/sym-map ops storage)))))
-           crdt-info {:<resolve-conflict <resolve-conflict-throw
-                      :record-id record-id
-                      :storage storage
-                      :schema the-rec-schema}
+           crdt-info (u/sym-map item-id schema storage subject-id)
            v (au/<? (crdts/<get-crdt-val crdt-info))
            expected-v {:foo/a 1
                        :bar/b "Yo"}
@@ -159,25 +154,26 @@
    (ca/go
      (let [storage (storage/make-storage)
            <ser #(storage/<value->serialized-value storage %1 %2)
-           record-id "for-the-record"
+           item-id "for-the-record"
            ops [{:add-id "a1"
                  :k :foo/a
                  :op-type :add-record-key-value
-                 :record-id record-id
+                 :item-id item-id
+                 :schema the-rec-schema
                  :serialized-value (au/<? (<ser l/int-schema 1))
                  :subject-id "sid1234"
                  :sys-time-ms (u/str->long "1640205282858")}
                 {:add-id "a2"
                  :k :foo/a
                  :op-type :add-record-key-value
-                 :record-id record-id
+                 :item-id item-id
+                 :schema the-rec-schema
                  :serialized-value (au/<? (<ser l/int-schema 42))
                  :subject-id "sid999"
                  :sys-time-ms (u/str->long "1640276685205")}]
            _ (is (= true (au/<? (crdts/<apply-ops! (u/sym-map ops storage)))))
-           crdt-info {:<resolve-conflict u/<resolve-conflict-lww
-                      :make-add-id (constantly "a3")
-                      :record-id record-id
+           crdt-info {:make-add-id (constantly "a3")
+                      :item-id item-id
                       :schema the-rec-schema
                       :storage storage
                       :subject-id "sid333"}

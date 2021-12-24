@@ -324,12 +324,3 @@
                                      (conj acc [sym (sym->path sym)])))
                                  [] (dep/topo-sort g))]
     (sym-map independent-pairs ordered-dependent-pairs)))
-
-(defn <resolve-conflict-lww [{:keys [current-value-infos]}]
-  (au/go
-    (reduce (fn [acc candidate]
-              (if (> (:sys-time-ms candidate) (:sys-time-ms acc))
-                candidate
-                acc))
-            (first current-value-infos)
-            current-value-infos)))
