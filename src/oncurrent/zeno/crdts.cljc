@@ -9,6 +9,11 @@
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
+(def container-types #{:map :array :record})
+
+(defn container-schema? [schema]
+  (container-types (l/schema-type schema)))
+
 (defn make-map-keyset-crdt-key [item-id]
   (str storage/map-keyset-crdt-key-prefix item-id))
 
@@ -21,6 +26,19 @@
                     (u/sym-map k item-id))))
   (str storage/record-key-value-crdt-key-prefix item-id "-"
        (namespace k) "-" (name k)))
+
+(defmulti <apply-op! #(-> % :op :op-type))
+
+(defmulti <get-crdt-val
+  (fn [{:keys [item-id k schema] :as arg}]
+    (let [schema-type (l/schema-type schema)]
+      (cond
+        (and k (= :map schema-type)) :map-kv
+        (= :map schema-type) :map
+        (and k (= :record schema-type)) :record-kv
+        (= :record schema-type) :record
+        :else (throw (ex-info "Could not determine target item type."
+                              (u/sym-map item-id schema-type)))))))
 
 (defn <add-to-crdt!
   [{:keys [add-id crdt-key storage] :as arg}]
@@ -47,8 +65,6 @@
                                                      (if (seq dai)
                                                        (conj dai add-id)
                                                        #{add-id}))))))))
-
-(defmulti <apply-op! #(-> % :op :op-type))
 
 (defmethod <apply-op! :add-record-key-value
   [{:keys [storage op]}]
@@ -126,45 +142,43 @@
           candidates))
 
 (defn <get-single-value-crdt-val
-  [{:keys [crdt-key schema storage] :as arg}]
+  [{:keys [crdt-key schema storage container-target-schema] :as arg}]
   (au/go
     (let [crdt (au/<? (storage/<get storage crdt-key schemas/set-crdt-schema))
           {:keys [current-value-infos]} crdt
           num-values (count current-value-infos)]
       (when (pos? num-values)
-        (->> (get-most-recent current-value-infos)
-             (:serialized-value)
-             (storage/<serialized-value->value storage schema)
-             (au/<?))))))
+        (let [v (->> (get-most-recent current-value-infos)
+                     (:serialized-value)
+                     (storage/<serialized-value->value storage schema)
+                     (au/<?))]
+          (if-not container-target-schema
+            v
+            (au/<? (<get-crdt-val (-> arg
+                                      (assoc :schema container-target-schema)
+                                      (assoc :item-id v)
+                                      (dissoc :container-target-schema)
+                                      (dissoc :k))))))))))
 
-(defmulti <get-crdt-val
-  ;; TODO: Check that all necessary arg keys are present, including
-  ;; those for conflict resolution. Might be best to have <get-crdt-val
-  ;; be a regular fn which does the key checking, then calls
-  ;; <get-crdt-val* (the multimethod).
-  (fn [{:keys [item-id k schema] :as arg}]
-    (let [schema-type (l/schema-type schema)]
-      (cond
-        (and k (= :map schema-type)) :map-kv
-        (= :map schema-type) :map
-        (and k (= :record schema-type)) :record-kv
-        (= :record schema-type) :record
-        :else (throw (ex-info "Could not determine target item type."
-                              (u/sym-map item-id schema-type)))))))
+(defn <get-kv [{:keys [k crdt-key schema item-id] :as arg}]
+  (let [values-schema (l/schema-at-path schema [k])
+        container-target? (container-schema? values-schema)]
+    (<get-single-value-crdt-val (if container-target?
+                                  (assoc arg
+                                         :container-target-schema values-schema
+                                         :schema l/string-schema)
+                                  (assoc arg
+                                         :schema values-schema)))))
 
 (defmethod <get-crdt-val :map-kv
   [{:keys [item-id k schema] :as arg}]
   (let [crdt-key (make-map-key-value-crdt-key item-id k)]
-    (<get-single-value-crdt-val (assoc arg
-                                       :crdt-key crdt-key
-                                       :schema (l/schema-at-path schema [k])))))
+    (<get-kv (assoc arg :crdt-key crdt-key))))
 
 (defmethod <get-crdt-val :record-kv
   [{:keys [item-id k schema] :as arg}]
   (let [crdt-key (make-record-key-value-crdt-key item-id k)]
-    (<get-single-value-crdt-val (assoc arg
-                                       :crdt-key crdt-key
-                                       :schema (l/schema-at-path schema [k])))))
+    (<get-kv (assoc arg :crdt-key crdt-key))))
 
 (defmethod <get-crdt-val :map
   [{:keys [item-id schema storage] :as arg}]
@@ -203,8 +217,7 @@
                         (map :name))
           <get-kv (fn [k]
                     (au/go
-                      (let [arg* (assoc arg :k k)
-                            v (-> (assoc arg :k k)
+                      (let [v (-> (assoc arg :k k)
                                   (<get-crdt-val)
                                   (au/<?))]
                         (u/sym-map k v))))

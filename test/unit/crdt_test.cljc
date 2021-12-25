@@ -180,3 +180,89 @@
            v (au/<? (crdts/<get-crdt-val crdt-info))
            expected-v {:foo/a 42}
            _ (is (= expected-v v))]))))
+
+(deftest test-nested-crdts
+  (au/test-async
+   1000
+   (ca/go
+     (let [storage (storage/make-storage)
+           <ser #(storage/<value->serialized-value storage %1 %2)
+           schema (l/map-schema the-rec-schema)
+           map-item-id "my-map"
+           subject-id "sid1234"
+           sys-time-ms (u/str->long "1640205282858")
+           base-op (u/sym-map schema subject-id sys-time-ms)
+           ops [;; rec-a
+                (assoc base-op
+                       :add-id "a1"
+                       :item-id "rec-a"
+                       :k :foo/a
+                       :op-type :add-record-key-value
+                       :serialized-value (au/<? (<ser l/int-schema 1)))
+                (assoc base-op
+                       :add-id "a2"
+                       :item-id "rec-a"
+                       :k :bar/b
+                       :op-type :add-record-key-value
+                       :serialized-value (au/<? (<ser l/string-schema "hi")))
+                (assoc base-op
+                       :add-id "a3"
+                       :item-id "rec-a"
+                       :k :c
+                       :op-type :add-record-key-value
+                       :serialized-value (au/<? (<ser l/boolean-schema true)))
+
+                ;; rec-b
+                (assoc base-op
+                       :add-id "a4"
+                       :item-id "rec-b"
+                       :k :foo/a
+                       :op-type :add-record-key-value
+                       :serialized-value (au/<? (<ser l/int-schema 72)))
+                (assoc base-op
+                       :add-id "a5"
+                       :item-id "rec-b"
+                       :k :bar/b
+                       :op-type :add-record-key-value
+                       :serialized-value (au/<? (<ser l/string-schema "there")))
+                (assoc base-op
+                       :add-id "a6"
+                       :item-id "rec-b"
+                       :k :c
+                       :op-type :add-record-key-value
+                       :serialized-value (au/<? (<ser l/boolean-schema false)))
+
+                ;; map of recs
+                (assoc base-op
+                       :add-id "a7"
+                       :item-id map-item-id
+                       :k "a"
+                       :op-type :add-map-key-value
+                       :serialized-value (au/<? (<ser l/string-schema "rec-a")))
+                (assoc base-op
+                       :add-id "a8"
+                       :item-id map-item-id
+                       :k "a"
+                       :op-type :add-map-key)
+                (assoc base-op
+                       :add-id "a9"
+                       :item-id map-item-id
+                       :k "b"
+                       :op-type :add-map-key-value
+                       :serialized-value (au/<? (<ser l/string-schema "rec-b")))
+                (assoc base-op
+                       :add-id "a10"
+                       :item-id map-item-id
+                       :k "b"
+                       :op-type :add-map-key)]
+           _ (is (= true (au/<? (crdts/<apply-ops! (u/sym-map ops storage)))))
+           crdt-info (u/sym-map schema storage subject-id)
+           v (au/<? (crdts/<get-crdt-val
+                     (assoc crdt-info :item-id map-item-id)))
+           expected-v {"a" {:foo/a 1
+                            :bar/b "hi"
+                            :c true}
+                       "b" {:foo/a 72
+                            :bar/b "there"
+                            :c false}}
+           _ (is (= expected-v v))]))))
