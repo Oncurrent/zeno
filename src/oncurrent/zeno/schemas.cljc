@@ -108,18 +108,28 @@
   [:current-value-infos (l/array-schema crdt-value-info-schema)]
   [:deleted-add-ids l/string-set-schema])
 
-(l/def-record-schema sequence-edge-schema
-  [:head-add-id id-schema]
-  [:tail-add-id id-schema])
+(l/def-record-schema value-history-set-crdt-value-info-schema
+  [:serialized-value serialized-value-schema]
+  [:subject-id subject-id-schema]
+  [:sys-time-ms timestamp-ms-schema])
 
-(l/def-record-schema sequence-crdt-schema
-  [:edge-set-crdt set-crdt-schema]
-  [:node-set-crdt set-crdt-schema])
+(l/def-record-schema value-history-set-crdt-schema
+  [:add-id-to-value-info (l/map-schema value-history-set-crdt-value-info-schema)]
+  [:current-add-ids l/string-set-schema]
+  [:deleted-add-ids l/string-set-schema])
+
+(l/def-record-schema array-edge-schema
+  [:head-node-add-id id-schema]
+  [:tail-node-add-id id-schema])
 
 (l/def-enum-schema crdt-op-type-schema
+  :add-array-edge
+  :add-array-node
   :add-map-key
   :add-map-key-value
   :add-record-key-value
+  :del-array-edge
+  :del-array-node
   :del-map-key
   :del-map-key-value
   :del-record-key-value)
