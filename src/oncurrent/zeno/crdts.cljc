@@ -1,6 +1,7 @@
 (ns oncurrent.zeno.crdts
   (:require
    [clojure.core.async :as ca]
+   [clojure.set :as set]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
    [deercreeklabs.lancaster.utils :as lu]
@@ -301,14 +302,6 @@
             new-out
             (recur new-fields-processed new-out)))))))
 
-(defn make-node-add-id->parents [edges]
-  (reduce (fn [acc {:keys [head-node-add-id tail-node-add-id]}]
-            (update acc tail-node-add-id (fn [parents]
-                                           (conj (or parents #{})
-                                                 head-node-add-id))))
-          {}
-          edges))
-
 (defn make-node->edge-info [edges]
   (reduce
    (fn [acc {:keys [head-node-add-id tail-node-add-id]}]
@@ -349,13 +342,13 @@
                        (au/go
                          (let [num-infos (count infos)
                                ch (ca/merge (map <get-edge infos))]
-                           (loop [out []]
+                           (loop [out #{}]
                              (let [new-out (conj out (au/<? ch))]
                                (if (= num-infos (count new-out))
                                  new-out
                                  (recur new-out)))))))]
-      (cond-> {:edges []
-               :deleted-edges []}
+      (cond-> {:edges #{}
+               :deleted-edges #{}}
         (pos? (count cur-infos))
         (assoc :edges (au/<? (<get-edges cur-infos)))
 
@@ -391,22 +384,23 @@
 (defn <get-linear-array-info
   [{:keys [edges node->v] :as arg}]
   (au/go
-    (let [node->edge-info (make-node->edge-info edges)]
-      (loop [node-id array-start-add-id
-             nodes []]
-        (let [children (get-in node->edge-info [node-id :children])
-              child (first children)]
-          (cond
-            (> (count children) 1)
-            {:linear false}
+    (when (seq edges)
+      (let [node->edge-info (make-node->edge-info edges)]
+        (loop [node-id array-start-add-id
+               nodes []]
+          (let [children (get-in node->edge-info [node-id :children])
+                child (first children)]
+            (cond
+              (> (count children) 1)
+              {:linear? false}
 
-            (= array-end-add-id child)
-            (let [linear? true
-                  v (mapv node->v nodes)]
-              (u/sym-map linear? v))
+              (= array-end-add-id child)
+              (let [linear? true
+                    v (mapv node->v nodes)]
+                (u/sym-map linear? v))
 
-            :else
-            (recur child (conj nodes child))))))))
+              :else
+              (recur child (conj nodes child)))))))))
 
 (defn get-edge-cleanup-info
   [{:keys [deleted-edges edges item-id live-nodes]}]
@@ -421,8 +415,8 @@
                                     (= array-end-add-id tail-node-add-id)))
                          (update acc :connected-edges conj edge)
                          (update acc :disconnected-edges conj edge))))
-                   {:disconnected-edges []
-                    :connected-edges []}
+                   {:disconnected-edges #{}
+                    :connected-edges #{}}
                    edges)
         op-type :del-array-edge
         base-op (u/sym-map item-id op-type)
@@ -430,8 +424,8 @@
     {:edge-cleanup-ops (map #(assoc base-op :add-id (:add-id %))
                             disconnected-edges)
      :edges-after-cleanup connected-edges
-     :deleted-edges-after-cleanup (vec (concat deleted-edges
-                                               disconnected-edges))}))
+     :deleted-edges-after-cleanup (set/union deleted-edges
+                                             disconnected-edges)}))
 
 (defn connected-to-terminal?
   [{:keys [*nodes-connected-to-start
@@ -515,7 +509,7 @@
                  acc
                  live-nodes))
               {:edges edges
-               :new-edges []}
+               :new-edges #{}}
               [:start :end])
       :new-edges))
 
@@ -535,13 +529,14 @@
           op-type :add-array-edge
           base-op (u/sym-map item-id op-type)
           num-edges (count new-edges)
+          new-edges-vec (vec new-edges)
           <ser-edge #(storage/<value->serialized-value
                       storage schemas/array-edge-schema %)
           ops (loop [i 0
                      out []]
                 (if (zero? num-edges)
                   []
-                  (let [edge (nth new-edges i)
+                  (let [edge (nth new-edges-vec i)
                         op (assoc base-op
                                   :add-id (:add-id edge)
                                   :serialized-value (au/<? (<ser-edge edge)))
@@ -550,11 +545,113 @@
                       new-out
                       (recur (inc i) new-out)))))]
       {:node-connect-ops ops
-       :edges-after-node-connect (concat edges new-edges)})))
+       :edges-after-node-connect (set/union edges new-edges)})))
 
-(defn get-conflict-resolution-info
-  [arg]
-  )
+(defn path-to-combining-node-info
+  [{:keys [node->edge-info node]}]
+  (loop [cur-node node
+         out []]
+    (if (> (count (get-in node->edge-info [cur-node :parents])) 1)
+      ;; We found the combining node
+      {:path out
+       :combining-node cur-node}
+      ;; We can't have a splitting node when we're already in a split,
+      ;; so this must be a simple linear node.
+      (let [new-node (first (get-in node->edge-info [cur-node :children]))
+            new-out (conj out cur-node)]
+        (recur new-node new-out)))))
+
+(defn find-edge
+  [{:keys [edges head-node-add-id tail-node-add-id]}]
+  (reduce (fn [acc edge]
+            (when (and (= head-node-add-id (:head-node-add-id edge))
+                       (= tail-node-add-id (:tail-node-add-id edge)))
+              (reduced edge)))
+          nil
+          edges))
+
+(defn <get-conflict-resolution-op-infos
+  [{:keys [combining-node
+           edges
+           item-id
+           make-add-id
+           ops
+           paths
+           schema
+           splitting-node
+           storage]}]
+  (au/go
+    (let [num-paths (count paths)
+          last-i (- num-paths 2) ; Skip the last path
+          base-op (u/sym-map item-id schema)
+          <ser-edge #(storage/<value->serialized-value
+                      storage
+                      schemas/array-edge-schema
+                      %)]
+      (loop [i 0
+             acc (u/sym-map edges ops)]
+        (let [path (nth paths i)
+              next-path (nth paths (inc i))
+              edge-to-del-1 (find-edge {:edges (:edges acc)
+                                        :head-node-add-id (last path)
+                                        :tail-node-add-id combining-node})
+              del-op-1 (assoc base-op
+                              :add-id edge-to-del-1
+                              :op-type :del-array-edge)
+              edge-to-del-2 (find-edge {:edges (:edges acc)
+                                        :head-node-add-id splitting-node
+                                        :tail-node-add-id (first next-path)})
+              del-op-2 (assoc base-op
+                              :add-id edge-to-del-2
+                              :op-type :del-array-edge)
+              edge-to-add {:add-id (make-add-id)
+                           :head-node-add-id (last path)
+                           :tail-node-add-id (first next-path)}
+              add-op (assoc base-op
+                            :add-id (:add-id edge-to-add)
+                            :op-type :add-array-edge
+                            :serialized-value (au/<? (<ser-edge edge-to-add)))
+              new-acc (-> acc
+                          (update :edges #(-> %
+                                              (disj edge-to-del-1)
+                                              (disj edge-to-del-2)
+                                              (conj edge-to-add)))
+                          (update :ops #(-> %
+                                            (conj del-op-1)
+                                            (conj del-op-2)
+                                            (conj add-op))))]
+          (if (= last-i i)
+            new-acc
+            (recur (inc i) new-acc)))))))
+
+(defn <get-conflict-resolution-info
+  [{:keys [edges] :as arg}]
+  (au/go
+    (let [node->edge-info (make-node->edge-info edges)]
+      (loop [node array-start-add-id
+             acc {:edges edges
+                  :ops []}]
+        (if (= array-end-add-id node)
+          acc
+          (let [;; We sort by node add-id to guarantee consistent order
+                children (sort (get-in node->edge-info [node :children]))]
+            (if (= (count children) 1)
+              (recur (first children) acc)
+              ;; This is a splitting node
+              (let [path-infos (map (fn [node]
+                                      (path-to-combining-node-info
+                                       (u/sym-map node
+                                                  node->edge-info)))
+                                    children)
+                    {:keys [combining-node]} (first path-infos)
+                    new-acc (au/<? (<get-conflict-resolution-op-infos
+                                    (assoc arg
+                                           :combining-node combining-node
+                                           :edges (:edges acc)
+                                           :ops (:ops acc)
+                                           :paths (map :path path-infos)
+                                           :splitting-node node)))]
+                (recur combining-node new-acc)))))))))
 
 (defn <get-non-linear-array-info
   [arg]
@@ -569,22 +666,17 @@
           node-connect-info (au/<? (<get-node-connect-info arg*))
           {:keys [node-connect-ops
                   edges-after-node-connect]} node-connect-info
-          conflict-resolution-info (get-conflict-resolution-info
-                                    (assoc arg :edges edges-after-node-connect))
-          {:keys [conflict-resolution-ops
-                  linear-edges]} conflict-resolution-info
-          v :adlfkasj
+          cr-info (au/<? (<get-conflict-resolution-info
+                          (assoc arg :edges edges-after-node-connect)))
           repair-ops (concat edge-cleanup-ops
                              node-connect-ops
-                             conflict-resolution-ops)]
-      (log/info (str "########################:\n"
-                     (u/pprint-str
-                      (u/sym-map edge-cleanup-info
-                                 node-connect-info
-                                 conflict-resolution-info
-                                 v
-                                 repair-ops
-                                 linear-edges))))
+                             (:ops cr-info))
+          linear-edges (:edges cr-info)
+          {:keys [v linear?]} (au/<? (<get-linear-array-info
+                                      (assoc arg :edges linear-edges)))]
+      (when-not linear?
+        (throw (ex-info "Array CRDT DAG is not linear after repair ops."
+                        (u/sym-map linear? v))))
       (u/sym-map v repair-ops linear-edges))))
 
 (defmethod <get-crdt-val :array
@@ -605,42 +697,3 @@
         v
         (let [{:keys [v]} (au/<? (<get-non-linear-array-info arg*))]
           v)))))
-
-
-#_(defn path-to-combining-node [node->children node->parents first-node]
-    (loop [cur-node first-node
-           out []]
-      (if (> (count (node->parents cur-node)) 1) ; This is a combining node
-        {:path out
-         :combining-node cur-node}
-        (let [new-node (first (node->children cur-node))
-              new-out (conj out cur-node)]
-          (recur new-node new-out)))))
-
-#_(defn walk* [node->children node->parents first-node]
-    (loop [cur-node first-node
-           out []]
-      (when (nil? cur-node)
-        (throw (ex-info "!!!!" (u/sym-map cur-node out))))
-      (if (= array-end-add-id cur-node)
-        out
-        (let [new-out (if (= array-start-add-id cur-node)
-                        out
-                        (conj out cur-node))
-              ;; We sort by node add-id to guarantee consistent child order
-              children (sort (node->children cur-node))]
-          (if (> (count children) 1) ; This is a splitting node
-            (let [path-infos (map #(path-to-combining-node
-                                    node->children node->parents %)
-                                  children)
-                  {:keys [combining-node]} (first path-infos)
-                  paths (mapcat :path path-infos)
-                  path-to-end (walk* node->children node->parents combining-node)]
-              (concat new-out paths path-to-end))
-            (recur (first children) new-out))))))
-
-#_
-(defn walk [edges]
-  (let [node->children (make-node-add-id->children edges)
-        node->parents (make-node-add-id->parents edges)]
-    (walk* node->children node->parents array-start-add-id)))

@@ -266,7 +266,7 @@
                             :c false}}
            _ (is (= expected-v v))]))))
 
-(deftest ^:this test-array-crdt
+(deftest test-array-crdt
   (au/test-async
    1000
    (ca/go
@@ -357,5 +357,5 @@
            _ (is (= true (au/<? (crdts/<apply-ops! (u/sym-map ops storage)))))
            crdt-info (u/sym-map item-id schema storage)
            v (au/<? (crdts/<get-crdt-val crdt-info))
-           expected-v ["A" "X" "Y" "C"]
+           expected-v ["A" "Y" "X" "C"]
            _ (is (= expected-v v))]))))
