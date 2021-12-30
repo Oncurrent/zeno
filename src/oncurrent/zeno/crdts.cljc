@@ -697,3 +697,10 @@
         v
         (let [{:keys [v]} (au/<? (<get-non-linear-array-info arg*))]
           v)))))
+
+(defmethod <get-crdt-val :array-kv
+  [{:keys [k] :as arg}]
+  (au/go
+    (-> (<get-crdt-val (dissoc arg :k))
+        (au/<?)
+        (nth k))))

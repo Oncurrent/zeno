@@ -25,23 +25,8 @@
 (def map-of-recs-schema (l/map-schema example-rec-schema))
 (def map-of-ints-schema (l/map-schema l/int-schema))
 
-#_
-(deftest test-cmd->crdt-ops
-  (let [cmd {:arg 1
-             :op :set
-             :path ["a" :b]}
-        storage (storage/make-storage)
-        *unique-id-num (atom 0)
-        get-unique-id #(str (swap! *unique-id-num inc))
-        arg (u/sym-map cmd storage get-unique-id sys-schema)
-        ret (crdts/cmd->crdt-ops arg)
-        expected :foo]
-    (is (= expected ret))))
-
-
 ;; TODO: Tests to add:
 ;; - Nested value arg
-;; - Arrays
 
 (defn <resolve-conflict-throw [{:keys [crdt-key current-value-infos]}]
   (au/go
@@ -264,7 +249,16 @@
                        "b" {:foo/a 72
                             :bar/b "there"
                             :c false}}
-           _ (is (= expected-v v))]))))
+           _ (is (= expected-v v))
+           mkv (au/<? (crdts/<get-crdt-val
+                       (assoc crdt-info :item-id map-item-id :k "b")))
+           _ (is (= (expected-v "b") mkv))
+           rkv (au/<? (crdts/<get-crdt-val
+                       (assoc crdt-info
+                              :item-id "rec-b"
+                              :k :bar/b
+                              :schema the-rec-schema)))
+           _ (is (= "there" rkv))]))))
 
 (deftest test-array-crdt
   (au/test-async
@@ -359,3 +353,58 @@
            v (au/<? (crdts/<get-crdt-val crdt-info))
            expected-v ["A" "Y" "X" "C"]
            _ (is (= expected-v v))]))))
+
+(deftest test-array-indexing
+  (au/test-async
+   1000
+   (ca/go
+     (let [storage (storage/make-storage)
+           item-id "a-fine-array"
+           schema (l/array-schema l/string-schema)
+           <ser-node #(storage/<value->serialized-value
+                       storage l/string-schema %1)
+           <ser-edge (fn [head-node-add-id tail-node-add-id]
+                       (storage/<value->serialized-value
+                        storage
+                        schemas/array-edge-schema
+                        (u/sym-map head-node-add-id tail-node-add-id)))
+           base-op (u/sym-map item-id schema)
+           ops [;; Start state: ABC
+                (assoc base-op
+                       :add-id "a1"
+                       :op-type :add-array-node
+                       :serialized-value (au/<? (<ser-node "A")))
+                (assoc base-op
+                       :add-id "a2"
+                       :op-type :add-array-node
+                       :serialized-value (au/<? (<ser-node "B")))
+                (assoc base-op
+                       :add-id "a3"
+                       :op-type :add-array-node
+                       :serialized-value (au/<? (<ser-node "C")))
+                (assoc base-op
+                       :add-id "a4"
+                       :op-type :add-array-edge
+                       :serialized-value (au/<?
+                                          (<ser-edge crdts/array-start-add-id
+                                                     "a1")))
+                (assoc base-op
+                       :add-id "a5"
+                       :op-type :add-array-edge
+                       :serialized-value (au/<? (<ser-edge "a1" "a2")))
+                (assoc base-op
+                       :add-id "a6"
+                       :op-type :add-array-edge
+                       :serialized-value (au/<? (<ser-edge "a2" "a3")))
+                (assoc base-op
+                       :add-id "a7"
+                       :op-type :add-array-edge
+                       :serialized-value (au/<?
+                                          (<ser-edge "a3"
+                                                     crdts/array-end-add-id)))]
+           _ (is (= true (au/<? (crdts/<apply-ops! (u/sym-map ops storage)))))
+           crdt-info (u/sym-map item-id schema storage)
+           v (au/<? (crdts/<get-crdt-val crdt-info))
+           _ (is (= ["A" "B" "C"] v))
+           kv (au/<? (crdts/<get-crdt-val (assoc crdt-info :k 1)))
+           _ (is (= "B" kv))]))))
