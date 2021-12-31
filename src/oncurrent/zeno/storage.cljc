@@ -30,12 +30,12 @@
 (def array-edges-crdt-key-prefix "_ARRAY-EDGES-CRDT-")
 (def array-nodes-crdt-key-prefix "_ARRAY-NODES-CRDT-")
 (def cluster-membership-list-reference-key "_CLUSTER_MEMBERSHIP_LIST")
-(def crdt-prefix "_CRDT-")
 (def map-key-value-crdt-key-prefix "_MAP-KV-CRDT-")
 (def map-keyset-crdt-key-prefix "_MAP-KEYSET-CRDT-")
 (def member-info-key-prefix "MEMBER-INFO-")
 (def mutex-reference-key-prefix "_MUTEX-")
 (def record-key-value-crdt-key-prefix "_RECORD-KV-CRDT-")
+(def single-value-crdt-key-prefix "_SV-CRDT-")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

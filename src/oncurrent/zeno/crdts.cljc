@@ -36,6 +36,9 @@
 (defn make-array-nodes-crdt-key [item-id]
   (str storage/array-nodes-crdt-key-prefix item-id))
 
+(defn make-single-value-crdt-key [item-id]
+  (str storage/single-value-crdt-key-prefix item-id))
+
 (defmulti <apply-op! #(-> % :op :op-type))
 
 (defmulti <get-crdt-val
@@ -48,8 +51,8 @@
         (= :record schema-type) :record
         (and k (= :array schema-type)) :array-kv
         (= :array schema-type) :array
-        :else (throw (ex-info "Could not determine target item type."
-                              (u/sym-map item-id schema-type)))))))
+        (= :union schema-type) :union
+        :else :single-value))))
 
 (defn <add-to-crdt!
   [{:keys [add-id crdt-key storage] :as arg}]
@@ -99,6 +102,23 @@
                                                    (if (seq ids)
                                                      (conj ids add-id)
                                                      #{add-id})))))))
+
+
+(defmethod <apply-op! :add-single-value
+  [{:keys [storage op]}]
+  (let [{:keys [item-id]} op
+        arg (assoc op
+                   :crdt-key (make-single-value-crdt-key item-id)
+                   :storage storage)]
+    (<add-to-crdt! arg)))
+
+(defmethod <apply-op! :del-single-value
+  [{:keys [storage op]}]
+  (let [{:keys [item-id]} op
+        arg (assoc op
+                   :crdt-key (make-single-value-crdt-key item-id)
+                   :storage storage)]
+    (<del-from-crdt! arg)))
 
 (defmethod <apply-op! :add-record-key-value
   [{:keys [storage op]}]
@@ -230,7 +250,8 @@
 
 (defn <get-kv [{:keys [k crdt-key schema item-id] :as arg}]
   (let [values-schema (l/schema-at-path schema [k])
-        container-target? (container-schema? values-schema)]
+        container-target? (container-schema? values-schema)
+        edn-sch (l/edn values-schema)]
     (<get-single-value-crdt-val (if container-target?
                                   (assoc arg
                                          :container-target-schema values-schema
@@ -676,7 +697,8 @@
                                       (assoc arg :edges linear-edges)))]
       (when-not linear?
         (throw (ex-info "Array CRDT DAG is not linear after repair ops."
-                        (u/sym-map linear? v))))
+                        (u/sym-map arg cr-info edge-cleanup-info
+                                   node-connect-info repair-ops))))
       (u/sym-map v repair-ops linear-edges))))
 
 (defmethod <get-crdt-val :array
@@ -704,3 +726,14 @@
     (-> (<get-crdt-val (dissoc arg :k))
         (au/<?)
         (nth k))))
+
+(defmethod <get-crdt-val :union
+  [{:keys [union-branch schema] :as arg}]
+  (au/go
+    ;; TODO: Implement
+    (throw (ex-info "Implement me!!"))))
+
+(defmethod <get-crdt-val :single-value
+  [{:keys [item-id schema] :as arg}]
+  (let [crdt-key (make-single-value-crdt-key item-id)]
+    (<get-single-value-crdt-val (assoc arg :crdt-key crdt-key))))
