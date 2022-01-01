@@ -13,7 +13,6 @@
      (:import
       (clojure.lang ExceptionInfo))))
 
-
 (deftest test-single-value-crdt-basic-ops
   (au/test-async
    1000
@@ -23,12 +22,10 @@
                       storage l/string-schema %)
            item-id "my-str"
            schema l/string-schema
-           subject-id "sid1234"
            sys-time-ms (u/str->long "1640205282858")
-           base-op (u/sym-map item-id subject-id sys-time-ms)
+           base-op (u/sym-map item-id sys-time-ms)
            ops [(assoc base-op
                        :add-id "a1"
-                       :k "a"
                        :op-type :add-single-value
                        :serialized-value (au/<? (<ser-str "ABC")))
                 (assoc base-op
@@ -36,13 +33,39 @@
                        :op-type :del-single-value)
                 (assoc base-op
                        :add-id "a2"
-                       :k "a"
                        :op-type :add-single-value
                        :serialized-value (au/<? (<ser-str "XYZ")))]
            _ (is (= true (au/<? (crdts/<apply-ops! (u/sym-map ops storage)))))
            crdt-info (u/sym-map item-id schema storage)
            v (au/<? (crdts/<get-crdt-val crdt-info))
            expected-v "XYZ"
+           _ (is (= expected-v v))]))))
+
+(deftest test-union-crdt-basic-ops
+  (au/test-async
+   1000
+   (ca/go
+     (let [storage (storage/make-storage)
+           <ser #(storage/<value->serialized-value storage %1 %2)
+           item-id "my-union"
+           schema (l/union-schema [l/null-schema l/string-schema l/int-schema])
+           sys-time-ms (u/str->long "1640205282858")
+           base-op (u/sym-map item-id sys-time-ms)
+           ops [(assoc base-op
+                       :add-id "a1"
+                       :op-type :add-single-value
+                       :serialized-value (au/<? (<ser l/string-schema "ABC")))
+                (assoc base-op
+                       :add-id "a1"
+                       :op-type :del-single-value)
+                (assoc base-op
+                       :add-id "a2"
+                       :op-type :add-single-value
+                       :serialized-value (au/<? (<ser l/int-schema 42)))]
+           _ (is (= true (au/<? (crdts/<apply-ops! (u/sym-map ops storage)))))
+           crdt-info (u/sym-map item-id schema storage)
+           v (au/<? (crdts/<get-crdt-val crdt-info))
+           expected-v 42
            _ (is (= expected-v v))]))))
 
 (deftest test-map-crdt-basic-ops
@@ -53,9 +76,8 @@
            <ser-int #(storage/<value->serialized-value storage l/int-schema %)
            item-id "my-map"
            schema (l/map-schema l/int-schema)
-           subject-id "sid1234"
            sys-time-ms (u/str->long "1640205282858")
-           base-op (u/sym-map item-id subject-id sys-time-ms)
+           base-op (u/sym-map item-id sys-time-ms)
            ops [(assoc base-op
                        :add-id "a1"
                        :k "a"
@@ -108,21 +130,18 @@
            <ser #(storage/<value->serialized-value storage %1 %2)
            item-id "for-the-record"
            schema the-rec-schema
-           subject-id "sid1234"
            sys-time-ms (u/str->long "1640205282858")
-           base-op (u/sym-map item-id schema subject-id sys-time-ms)
+           base-op (u/sym-map item-id schema sys-time-ms)
            ops [(assoc base-op
                        :add-id "a1"
                        :k :foo/a
                        :op-type :add-record-key-value
-                       :serialized-value (au/<? (<ser l/int-schema 1))
-                       :union-branch 1)
+                       :serialized-value (au/<? (<ser l/int-schema 1)))
                 (assoc base-op
                        :add-id "a2"
                        :k :bar/b
                        :op-type :add-record-key-value
-                       :serialized-value (au/<? (<ser l/string-schema "hi"))
-                       :union-branch 1)
+                       :serialized-value (au/<? (<ser l/string-schema "hi")))
                 (assoc base-op
                        :add-id "a2"
                        :k :bar/b
@@ -131,14 +150,12 @@
                        :add-id "a3"
                        :k :bar/b
                        :op-type :add-record-key-value
-                       :serialized-value (au/<? (<ser l/string-schema "Yo"))
-                       :union-branch 1)
+                       :serialized-value (au/<? (<ser l/string-schema "Yo")))
                 (assoc base-op
                        :add-id "a4"
                        :k :c
                        :op-type :add-record-key-value
-                       :serialized-value (au/<? (<ser l/boolean-schema true))
-                       :union-branch 1)
+                       :serialized-value (au/<? (<ser l/boolean-schema true)))
                 (assoc base-op
                        :add-id "a4"
                        :k :c
@@ -163,18 +180,14 @@
                  :item-id item-id
                  :schema the-rec-schema
                  :serialized-value (au/<? (<ser l/int-schema 1))
-                 :subject-id "sid1234"
-                 :sys-time-ms (u/str->long "1640205282858")
-                 :union-branch 1}
+                 :sys-time-ms (u/str->long "1640205282858")}
                 {:add-id "a2"
                  :k :foo/a
                  :op-type :add-record-key-value
                  :item-id item-id
                  :schema the-rec-schema
                  :serialized-value (au/<? (<ser l/int-schema 42))
-                 :subject-id "sid999"
-                 :sys-time-ms (u/str->long "1640276685205")
-                 :union-branch 1}]
+                 :sys-time-ms (u/str->long "1640276685205")}]
            _ (is (= true (au/<? (crdts/<apply-ops! (u/sym-map ops storage)))))
            crdt-info {:item-id item-id
                       :schema the-rec-schema
@@ -191,31 +204,27 @@
            <ser #(storage/<value->serialized-value storage %1 %2)
            schema (l/map-schema the-rec-schema)
            map-item-id "my-map"
-           subject-id "sid1234"
            sys-time-ms (u/str->long "1640205282858")
-           base-op (u/sym-map schema subject-id sys-time-ms)
+           base-op (u/sym-map schema sys-time-ms)
            ops [;; rec-a
                 (assoc base-op
                        :add-id "a1"
                        :item-id "rec-a"
                        :k :foo/a
                        :op-type :add-record-key-value
-                       :serialized-value (au/<? (<ser l/int-schema 1))
-                       :union-branch 1)
+                       :serialized-value (au/<? (<ser l/int-schema 1)))
                 (assoc base-op
                        :add-id "a2"
                        :item-id "rec-a"
                        :k :bar/b
                        :op-type :add-record-key-value
-                       :serialized-value (au/<? (<ser l/string-schema "hi"))
-                       :union-branch 1)
+                       :serialized-value (au/<? (<ser l/string-schema "hi")))
                 (assoc base-op
                        :add-id "a3"
                        :item-id "rec-a"
                        :k :c
                        :op-type :add-record-key-value
-                       :serialized-value (au/<? (<ser l/boolean-schema true))
-                       :union-branch 1)
+                       :serialized-value (au/<? (<ser l/boolean-schema true)))
 
                 ;; rec-b
                 (assoc base-op
@@ -223,22 +232,19 @@
                        :item-id "rec-b"
                        :k :foo/a
                        :op-type :add-record-key-value
-                       :serialized-value (au/<? (<ser l/int-schema 72))
-                       :union-branch 1)
+                       :serialized-value (au/<? (<ser l/int-schema 72)))
                 (assoc base-op
                        :add-id "a5"
                        :item-id "rec-b"
                        :k :bar/b
                        :op-type :add-record-key-value
-                       :serialized-value (au/<? (<ser l/string-schema "there"))
-                       :union-branch 1)
+                       :serialized-value (au/<? (<ser l/string-schema "there")))
                 (assoc base-op
                        :add-id "a6"
                        :item-id "rec-b"
                        :k :c
                        :op-type :add-record-key-value
-                       :serialized-value (au/<? (<ser l/boolean-schema false))
-                       :union-branch 1)
+                       :serialized-value (au/<? (<ser l/boolean-schema false)))
 
                 ;; map of recs
                 (assoc base-op
@@ -291,27 +297,52 @@
      (let [storage (storage/make-storage)
            item-id "a-fine-array"
            schema (l/array-schema l/string-schema)
-           <ser-node #(storage/<value->serialized-value
-                       storage l/string-schema %1)
+           <ser-str #(storage/<value->serialized-value
+                      storage l/string-schema %1)
            <ser-edge (fn [head-node-add-id tail-node-add-id]
                        (storage/<value->serialized-value
                         storage
                         schemas/array-edge-schema
                         (u/sym-map head-node-add-id tail-node-add-id)))
+           sv-base-op {:op-type :add-single-value
+                       :schema l/string-schema
+                       :sys-time-ms (u/str->long "1640205282858")}
            base-op (u/sym-map item-id schema)
-           ops [;; Start state: ABC
+           ops [;; Create the node value CRDTs
+                (assoc sv-base-op
+                       :add-id "av1"
+                       :item-id "i1"
+                       :serialized-value (au/<? (<ser-str "A")))
+                (assoc sv-base-op
+                       :add-id "av2"
+                       :item-id "i2"
+                       :serialized-value (au/<? (<ser-str "B")))
+                (assoc sv-base-op
+                       :add-id "av3"
+                       :item-id "i3"
+                       :serialized-value (au/<? (<ser-str "C")))
+                (assoc sv-base-op
+                       :add-id "av4"
+                       :item-id "i4"
+                       :serialized-value (au/<? (<ser-str "X")))
+                (assoc sv-base-op
+                       :add-id "av4"
+                       :item-id "i5"
+                       :serialized-value (au/<? (<ser-str "Y")))
+
+                ;; Start state: ABC
                 (assoc base-op
                        :add-id "a1"
                        :op-type :add-array-node
-                       :serialized-value (au/<? (<ser-node "A")))
+                       :serialized-value (au/<? (<ser-str "i1")))
                 (assoc base-op
                        :add-id "a2"
                        :op-type :add-array-node
-                       :serialized-value (au/<? (<ser-node "B")))
+                       :serialized-value (au/<? (<ser-str "i2")))
                 (assoc base-op
                        :add-id "a3"
                        :op-type :add-array-node
-                       :serialized-value (au/<? (<ser-node "C")))
+                       :serialized-value (au/<? (<ser-str "i3")))
                 (assoc base-op
                        :add-id "a4"
                        :op-type :add-array-edge
@@ -337,7 +368,7 @@
                 (assoc base-op
                        :add-id "a8"
                        :op-type :add-array-node
-                       :serialized-value (au/<? (<ser-node "X")))
+                       :serialized-value (au/<? (<ser-str "i4")))
                 (assoc base-op
                        :add-id "a5"
                        :op-type :del-array-edge)
@@ -363,7 +394,7 @@
                 (assoc base-op
                        :add-id "a11"
                        :op-type :add-array-node
-                       :serialized-value (au/<? (<ser-node "Y")))
+                       :serialized-value (au/<? (<ser-str "i5")))
                 (assoc base-op
                        :add-id "a12"
                        :op-type :add-array-edge
@@ -385,27 +416,52 @@
      (let [storage (storage/make-storage)
            item-id "a-fine-array"
            schema (l/array-schema l/string-schema)
-           <ser-node #(storage/<value->serialized-value
-                       storage l/string-schema %1)
+           <ser-str #(storage/<value->serialized-value
+                      storage l/string-schema %1)
            <ser-edge (fn [head-node-add-id tail-node-add-id]
                        (storage/<value->serialized-value
                         storage
                         schemas/array-edge-schema
                         (u/sym-map head-node-add-id tail-node-add-id)))
+           sv-base-op {:op-type :add-single-value
+                       :schema l/string-schema
+                       :sys-time-ms (u/str->long "1640205282858")}
            base-op (u/sym-map item-id schema)
-           ops [;; Start state: ABC
+           ops [;; Create the node value CRDTs
+                (assoc sv-base-op
+                       :add-id "av1"
+                       :item-id "i1"
+                       :serialized-value (au/<? (<ser-str "A")))
+                (assoc sv-base-op
+                       :add-id "av2"
+                       :item-id "i2"
+                       :serialized-value (au/<? (<ser-str "B")))
+                (assoc sv-base-op
+                       :add-id "av3"
+                       :item-id "i3"
+                       :serialized-value (au/<? (<ser-str "C")))
+                (assoc sv-base-op
+                       :add-id "av4"
+                       :item-id "i4"
+                       :serialized-value (au/<? (<ser-str "X")))
+                (assoc sv-base-op
+                       :add-id "av4"
+                       :item-id "i5"
+                       :serialized-value (au/<? (<ser-str "Y")))
+
+                ;; Start state: ABC
                 (assoc base-op
                        :add-id "a1"
                        :op-type :add-array-node
-                       :serialized-value (au/<? (<ser-node "A")))
+                       :serialized-value (au/<? (<ser-str "i1")))
                 (assoc base-op
                        :add-id "a2"
                        :op-type :add-array-node
-                       :serialized-value (au/<? (<ser-node "B")))
+                       :serialized-value (au/<? (<ser-str "i2")))
                 (assoc base-op
                        :add-id "a3"
                        :op-type :add-array-node
-                       :serialized-value (au/<? (<ser-node "C")))
+                       :serialized-value (au/<? (<ser-str "i3")))
                 (assoc base-op
                        :add-id "a4"
                        :op-type :add-array-edge
@@ -433,6 +489,77 @@
            kv (au/<? (crdts/<get-crdt-val (assoc crdt-info :k 1)))
            _ (is (= "B" kv))]))))
 
+(deftest test-change-value-of-array-item
+  (au/test-async
+   1000
+   (ca/go
+     (let [storage (storage/make-storage)
+           item-id "a-fine-array"
+           schema (l/array-schema l/string-schema)
+           <ser-str #(storage/<value->serialized-value
+                      storage l/string-schema %1)
+           <ser-edge (fn [head-node-add-id tail-node-add-id]
+                       (storage/<value->serialized-value
+                        storage
+                        schemas/array-edge-schema
+                        (u/sym-map head-node-add-id tail-node-add-id)))
+           sv-base-op {:op-type :add-single-value
+                       :schema l/string-schema
+                       :sys-time-ms (u/str->long "1640205282858")}
+           base-op (u/sym-map item-id schema)
+           ops [;; Create the node value CRDTs
+                (assoc sv-base-op
+                       :add-id "av1"
+                       :item-id "i1"
+                       :serialized-value (au/<? (<ser-str "A")))
+                (assoc sv-base-op
+                       :add-id "av2"
+                       :item-id "i2"
+                       :serialized-value (au/<? (<ser-str "B")))
+
+                ;; Start state: AB
+                (assoc base-op
+                       :add-id "a1"
+                       :op-type :add-array-node
+                       :serialized-value (au/<? (<ser-str "i1")))
+                (assoc base-op
+                       :add-id "a2"
+                       :op-type :add-array-node
+                       :serialized-value (au/<? (<ser-str "i2")))
+                (assoc base-op
+                       :add-id "a4"
+                       :op-type :add-array-edge
+                       :serialized-value (au/<?
+                                          (<ser-edge crdts/array-start-add-id
+                                                     "a1")))
+                (assoc base-op
+                       :add-id "a5"
+                       :op-type :add-array-edge
+                       :serialized-value (au/<? (<ser-edge "a1" "a2")))
+                (assoc base-op
+                       :add-id "a6"
+                       :op-type :add-array-edge
+                       :serialized-value (au/<?
+                                          (<ser-edge "a2"
+                                                     crdts/array-end-add-id)))]
+           _ (is (= true (au/<? (crdts/<apply-ops! (u/sym-map ops storage)))))
+           crdt-info (u/sym-map item-id schema storage)
+           v (au/<? (crdts/<get-crdt-val crdt-info))
+           _ (is (= ["A" "B"] v))
+           change-ops [{:add-id "av2"
+                        :item-id "i2"
+                        :op-type :del-single-value
+                        :sys-time-ms (u/str->long "1640205282858")}
+                       {:add-id "xxx"
+                        :item-id "i2"
+                        :op-type :add-single-value
+                        :serialized-value (au/<? (<ser-str "X"))
+                        :sys-time-ms (u/str->long "1640205282858")}]
+           _ (is (= true (au/<? (crdts/<apply-ops! {:ops change-ops
+                                                    :storage storage}))))
+           new-v (au/<? (crdts/<get-crdt-val crdt-info))]
+       (is (= ["A" "X"] new-v))))))
+
 (l/def-record-schema pet-schema
   [:name l/string-schema]
   [:species l/string-schema])
@@ -443,117 +570,217 @@
 
 (def id-to-pet-owner-schema (l/map-schema pet-owner-schema))
 
-#_(deftest ^:this test-nesting-with-arrays-maps-and-records
-    (au/test-async
-     1000
-     (ca/go
-       (let [storage (storage/make-storage)
-             map-item-id "the-map"
-             pet1-item-id "pet1"
-             pet2-item-id "pet2"
-             alice-item-id "alice-po"
-             pets-array-item-id "pets"
-             <ser #(storage/<value->serialized-value storage %1 %2)
-             <ser-str #(storage/<value->serialized-value
-                        storage l/string-schema %)
-             <ser-edge (fn [head-node-add-id tail-node-add-id]
-                         (storage/<value->serialized-value
-                          storage
-                          schemas/array-edge-schema
-                          (u/sym-map head-node-add-id tail-node-add-id)))
-             base-pet-op {}
-             ops [;; Make the 2 pet records
-                  {:add-id "a1"
-                   :item-id pet1-item-id
-                   :k :name
-                   :op-type :add-record-key-value
-                   :schema pet-schema
-                   :serialized-value (au/<? (<ser-str "Bo"))}
-                  {:add-id "a2"
-                   :item-id pet1-item-id
-                   :k :species
-                   :op-type :add-record-key-value
-                   :schema pet-schema
-                   :serialized-value (au/<? (<ser-str "Canis familiaris"))}
-                  {:add-id "a3"
-                   :item-id pet2-item-id
-                   :k :name
-                   :op-type :add-record-key-value
-                   :schema pet-schema
-                   :serialized-value (au/<? (<ser-str "Sam"))}
-                  {:add-id "a4"
-                   :item-id pet2-item-id
-                   :k :species
-                   :op-type :add-record-key-value
-                   :schema pet-schema
-                   :serialized-value (au/<? (<ser-str "Felis catus"))}
+(deftest test-array-of-records
+  (au/test-async
+   1000
+   (ca/go
+     (let [storage (storage/make-storage)
+           pet1-item-id "pet1"
+           pet2-item-id "pet2"
+           array-item-id "array"
+           <ser-str #(storage/<value->serialized-value
+                      storage l/string-schema %)
+           <ser-edge (fn [head-node-add-id tail-node-add-id]
+                       (storage/<value->serialized-value
+                        storage
+                        schemas/array-edge-schema
+                        (u/sym-map head-node-add-id tail-node-add-id)))
+           ops [;; Make the 2 pet records
+                {:add-id "a1"
+                 :item-id pet1-item-id
+                 :k :name
+                 :op-type :add-record-key-value
+                 :schema pet-schema
+                 :serialized-value (au/<? (<ser-str "Bo"))}
+                {:add-id "a2"
+                 :item-id pet1-item-id
+                 :k :species
+                 :op-type :add-record-key-value
+                 :schema pet-schema
+                 :serialized-value (au/<? (<ser-str "Canis familiaris"))}
+                {:add-id "a3"
+                 :item-id pet2-item-id
+                 :k :name
+                 :op-type :add-record-key-value
+                 :schema pet-schema
+                 :serialized-value (au/<? (<ser-str "Sam"))}
+                {:add-id "a4"
+                 :item-id pet2-item-id
+                 :k :species
+                 :op-type :add-record-key-value
+                 :schema pet-schema
+                 :serialized-value (au/<? (<ser-str "Felis catus"))}
 
-                  ;; Make the array of pet records
-                  {:add-id "a5"
-                   :item-id pets-array-item-id
-                   :op-type :add-array-node
-                   :schema (l/array-schema pet-schema)
-                   :serialized-value (au/<? (<ser-str pet1-item-id))}
-                  {:add-id "a6"
-                   :item-id pets-array-item-id
-                   :op-type :add-array-node
-                   :schema (l/array-schema pet-schema)
-                   :serialized-value (au/<? (<ser-str pet2-item-id))}
-                  {:add-id "a7"
-                   :item-id pets-array-item-id
-                   :op-type :add-array-edge
-                   :schema (l/array-schema pet-schema)
-                   :serialized-value (au/<? (<ser-edge crdts/array-start-add-id
-                                                       "a5"))}
-                  {:add-id "a8"
-                   :item-id pets-array-item-id
-                   :op-type :add-array-edge
-                   :schema (l/array-schema pet-schema)
-                   :serialized-value (au/<? (<ser-edge "a5" "a6"))}
-                  {:add-id "a8"
-                   :item-id pets-array-item-id
-                   :op-type :add-array-edge
-                   :schema (l/array-schema pet-schema)
-                   :serialized-value (au/<? (<ser-edge "a6"
-                                                       crdts/array-end-add-id))}
-                  ;; Make the pet owner record
-                  {:add-id "a9"
-                   :item-id alice-item-id
-                   :k :name
-                   :op-type :add-record-key-value
-                   :schema pet-owner-schema
-                   :serialized-value (au/<? (<ser-str "Alice"))}
-                  {:add-id "a10"
-                   :item-id alice-item-id
-                   :k :pets
-                   :op-type :add-record-key-value
-                   :schema pet-owner-schema
-                   :serialized-value (au/<? (<ser-str pets-array-item-id))}
+                ;; Make the array of pet records
+                {:add-id "a5"
+                 :item-id array-item-id
+                 :op-type :add-array-node
+                 :schema (l/array-schema pet-schema)
+                 :serialized-value (au/<? (<ser-str pet1-item-id))}
+                {:add-id "a6"
+                 :item-id array-item-id
+                 :op-type :add-array-node
+                 :schema (l/array-schema pet-schema)
+                 :serialized-value (au/<? (<ser-str pet2-item-id))}
+                {:add-id "a7"
+                 :item-id array-item-id
+                 :op-type :add-array-edge
+                 :schema (l/array-schema pet-schema)
+                 :serialized-value (au/<? (<ser-edge crdts/array-start-add-id
+                                                     "a5"))}
+                {:add-id "a8"
+                 :item-id array-item-id
+                 :op-type :add-array-edge
+                 :schema (l/array-schema pet-schema)
+                 :serialized-value (au/<? (<ser-edge "a5" "a6"))}
+                {:add-id "a9"
+                 :item-id array-item-id
+                 :op-type :add-array-edge
+                 :schema (l/array-schema pet-schema)
+                 :serialized-value (au/<? (<ser-edge "a6"
+                                                     crdts/array-end-add-id))}]
+           annotated-ops (map #(assoc %
+                                      :sys-time-ms (u/str->long "1640205282858"))
+                              ops)
+           _ (is (= true (au/<? (crdts/<apply-ops!
+                                 {:ops annotated-ops
+                                  :storage storage}))))
+           crdt-info {:item-id array-item-id
+                      :schema (l/array-schema pet-schema)
+                      :storage storage}
+           v (au/<? (crdts/<get-crdt-val crdt-info))
+           expected [{:name "Bo"
+                      :species "Canis familiaris"}
+                     {:name "Sam"
+                      :species "Felis catus"}]
+           _ (is (= expected v))]))))
 
-                  ;; Make the id->pet-owner map
-                  {:add-id "a11"
-                   :item-id map-item-id
-                   :k "alice-id"
-                   :op-type :add-map-key-value
-                   :schema id-to-pet-owner-schema
-                   :serialized-value (au/<? (<ser-str alice-item-id))}
-                  {:add-id "a12"
-                   :item-id map-item-id
-                   :k "alice-id"
-                   :op-type :add-map-key
-                   :schema id-to-pet-owner-schema}]
-             annotated-ops (map #(assoc %
-                                        :sys-time-ms (u/str->long "1640205282858")
-                                        :subject-id "the-subject")
-                                ops)
-             _ (is (= true (au/<? (crdts/<apply-ops!
-                                   {:ops annotated-ops
-                                    :storage storage}))))
-             crdt-info {:item-id map-item-id
-                        :schema id-to-pet-owner-schema
-                        :storage storage}
-             v (au/<? (crdts/<get-crdt-val crdt-info))
-             _ (is (= :foo v))
-             ;; kv (au/<? (crdts/<get-crdt-val (assoc crdt-info :k "alice-id")))
-             ;; _ (is (= :bar kv))
-             ]))))
+(deftest test-nesting-with-arrays-maps-and-records
+  (au/test-async
+   1000
+   (ca/go
+     (let [storage (storage/make-storage)
+           map-item-id "the-map"
+           pet1-item-id "pet1"
+           pet2-item-id "pet2"
+           alice-item-id "alice-po"
+           pets-array-item-id "pets"
+           <ser-str #(storage/<value->serialized-value
+                      storage l/string-schema %)
+           <ser-edge (fn [head-node-add-id tail-node-add-id]
+                       (storage/<value->serialized-value
+                        storage
+                        schemas/array-edge-schema
+                        (u/sym-map head-node-add-id tail-node-add-id)))
+           ops [;; Make the 2 pet records
+                {:add-id "a1"
+                 :item-id pet1-item-id
+                 :k :name
+                 :op-type :add-record-key-value
+                 :schema pet-schema
+                 :serialized-value (au/<? (<ser-str "Bo"))}
+                {:add-id "a2"
+                 :item-id pet1-item-id
+                 :k :species
+                 :op-type :add-record-key-value
+                 :schema pet-schema
+                 :serialized-value (au/<? (<ser-str "Canis familiaris"))}
+                {:add-id "a3"
+                 :item-id pet2-item-id
+                 :k :name
+                 :op-type :add-record-key-value
+                 :schema pet-schema
+                 :serialized-value (au/<? (<ser-str "Sam"))}
+                {:add-id "a4"
+                 :item-id pet2-item-id
+                 :k :species
+                 :op-type :add-record-key-value
+                 :schema pet-schema
+                 :serialized-value (au/<? (<ser-str "Felis catus"))}
+
+                ;; Make the array of pet records
+                {:add-id "a5"
+                 :item-id pets-array-item-id
+                 :op-type :add-array-node
+                 :schema (l/array-schema pet-schema)
+                 :serialized-value (au/<? (<ser-str pet1-item-id))}
+                {:add-id "a6"
+                 :item-id pets-array-item-id
+                 :op-type :add-array-node
+                 :schema (l/array-schema pet-schema)
+                 :serialized-value (au/<? (<ser-str pet2-item-id))}
+                {:add-id "a7"
+                 :item-id pets-array-item-id
+                 :op-type :add-array-edge
+                 :schema (l/array-schema pet-schema)
+                 :serialized-value (au/<? (<ser-edge crdts/array-start-add-id
+                                                     "a5"))}
+                {:add-id "a8"
+                 :item-id pets-array-item-id
+                 :op-type :add-array-edge
+                 :schema (l/array-schema pet-schema)
+                 :serialized-value (au/<? (<ser-edge "a5" "a6"))}
+                {:add-id "a8.5"
+                 :item-id pets-array-item-id
+                 :op-type :add-array-edge
+                 :schema (l/array-schema pet-schema)
+                 :serialized-value (au/<? (<ser-edge "a6"
+                                                     crdts/array-end-add-id))}
+                ;; Make the pet owner record
+                {:add-id "a9"
+                 :item-id alice-item-id
+                 :k :name
+                 :op-type :add-record-key-value
+                 :schema pet-owner-schema
+                 :serialized-value (au/<? (<ser-str "Alice"))}
+                {:add-id "a10"
+                 :item-id alice-item-id
+                 :k :pets
+                 :op-type :add-record-key-value
+                 :schema pet-owner-schema
+                 :serialized-value (au/<? (<ser-str pets-array-item-id))
+                 :union-branch 1}
+
+                ;; Make the id->pet-owner map
+                {:add-id "a11"
+                 :item-id map-item-id
+                 :k "alice-id"
+                 :op-type :add-map-key-value
+                 :schema id-to-pet-owner-schema
+                 :serialized-value (au/<? (<ser-str alice-item-id))}
+                {:add-id "a12"
+                 :item-id map-item-id
+                 :k "alice-id"
+                 :op-type :add-map-key
+                 :schema id-to-pet-owner-schema}]
+           annotated-ops (map #(assoc %
+                                      :sys-time-ms (u/str->long "1640205282858"))
+                              ops)
+           _ (is (= true (au/<? (crdts/<apply-ops!
+                                 {:ops annotated-ops
+                                  :storage storage}))))
+           crdt-info {:item-id map-item-id
+                      :schema id-to-pet-owner-schema
+                      :storage storage}
+           expected {"alice-id" {:name "Alice",
+                                 :pets [{:name "Bo"
+                                         :species "Canis familiaris"}
+                                        {:name "Sam"
+                                         :species "Felis catus"}]}}
+           v (au/<? (crdts/<get-crdt-val crdt-info))
+           _ (is (= expected v))
+           kv (au/<? (crdts/<get-crdt-val (assoc crdt-info :k "alice-id")))]
+       (is (= (expected "alice-id") kv))))))
+
+(deftest test-empty-stuff
+  (au/test-async
+   1000
+   (ca/go
+     (let [storage (storage/make-storage)
+           item-id "my-str"
+           schema l/string-schema
+           ops []
+           _ (is (= true (au/<? (crdts/<apply-ops! (u/sym-map ops storage)))))
+           crdt-info (u/sym-map item-id schema storage)
+           v (au/<? (crdts/<get-crdt-val crdt-info))
+           _ (is (= nil v))]))))

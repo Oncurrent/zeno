@@ -29,6 +29,7 @@
 
 (def array-edges-crdt-key-prefix "_ARRAY-EDGES-CRDT-")
 (def array-nodes-crdt-key-prefix "_ARRAY-NODES-CRDT-")
+(def array-node-item-crdt-key-prefix "_ARRAY-ITEM-CRDT-")
 (def cluster-membership-list-reference-key "_CLUSTER_MEMBERSHIP_LIST")
 (def map-key-value-crdt-key-prefix "_MAP-KV-CRDT-")
 (def map-keyset-crdt-key-prefix "_MAP-KEYSET-CRDT-")

@@ -3,6 +3,7 @@
    [clojure.core.async :as ca]
    [clojure.set :as set]
    [deercreeklabs.async-utils :as au]
+   [deercreeklabs.baracus :as ba]
    [deercreeklabs.lancaster :as l]
    [deercreeklabs.lancaster.utils :as lu]
    [oncurrent.zeno.schemas :as schemas]
@@ -13,9 +14,6 @@
 (def container-types #{:map :array :record})
 (def array-end-add-id "-END-")
 (def array-start-add-id "-START-")
-
-(defn container-schema? [schema]
-  (container-types (l/schema-type schema)))
 
 (defn make-map-keyset-crdt-key [item-id]
   (str storage/map-keyset-crdt-key-prefix item-id))
@@ -36,6 +34,9 @@
 (defn make-array-nodes-crdt-key [item-id]
   (str storage/array-nodes-crdt-key-prefix item-id))
 
+(defn make-array-node-item-crdt-key [item-id]
+  (str storage/array-node-item-crdt-key-prefix item-id))
+
 (defn make-single-value-crdt-key [item-id]
   (str storage/single-value-crdt-key-prefix item-id))
 
@@ -51,41 +52,66 @@
         (= :record schema-type) :record
         (and k (= :array schema-type)) :array-kv
         (= :array schema-type) :array
-        (= :union schema-type) :union
         :else :single-value))))
+
+(def immutable-crdt-value-keys [:add-id :subject-id :sys-time-ms :union-branch])
+
+(defn same-cv-info? [x y]
+  (and x
+       y
+       (= (select-keys x immutable-crdt-value-keys)
+          (select-keys y immutable-crdt-value-keys))
+       (ba/equivalent-byte-arrays? (:serialized-value x)
+                                   (:serialized-value y))))
 
 (defn <add-to-crdt!
   [{:keys [add-id crdt-key storage] :as arg}]
   (storage/<swap! storage crdt-key schemas/set-crdt-schema
-                  (fn [crdt]
-                    (if (-> (:deleted-add-ids crdt)
-                            (get add-id))
-                      crdt
-                      (update crdt :current-value-infos conj arg)))))
+                  (fn [{:keys [current-add-id-to-value-info
+                               deleted-add-ids]
+                        :as crdt}]
+                    (let [info (get current-add-id-to-value-info add-id)
+                          same? (same-cv-info? info arg)
+                          deleted? (get deleted-add-ids add-id)]
+                      (when (and info (not same?))
+                        (throw (ex-info
+                                (str "Attempt to reuse an existing add-id "
+                                     "(`" add-id "`) to add different info "
+                                     "to CRDT `" crdt-key "`.")
+                                (u/sym-map add-id crdt-key info))))
+                      (if (or deleted? same?)
+                        crdt
+                        (update crdt :current-add-id-to-value-info
+                                assoc add-id arg))))))
 
 (defn <del-from-crdt! [{:keys [add-id crdt-key storage]}]
-  (storage/<swap! storage crdt-key schemas/set-crdt-schema
-                  (fn [crdt]
-                    (let [new-cvis (reduce
-                                    (fn [acc cvi]
-                                      (if (= add-id (:add-id cvi))
-                                        acc
-                                        (conj acc cvi)))
-                                    []
-                                    (:current-value-infos crdt))]
-                      (-> crdt
-                          (assoc :current-value-infos new-cvis)
-                          (update :deleted-add-ids (fn [ids]
-                                                     (if (seq ids)
-                                                       (conj ids add-id)
-                                                       #{add-id}))))))))
+  (storage/<swap!
+   storage crdt-key
+   schemas/set-crdt-schema
+   (fn [crdt]
+     (-> crdt
+         (update :current-add-id-to-value-info dissoc add-id)
+         (update :deleted-add-ids (fn [ids]
+                                    (if (seq ids)
+                                      (conj ids add-id)
+                                      #{add-id})))))))
 
 (defn <add-to-vhs-crdt!
   [{:keys [add-id crdt-key storage] :as arg}]
   (storage/<swap! storage crdt-key schemas/value-history-set-crdt-schema
-                  (fn [crdt]
-                    (let [{:keys [deleted-add-ids]} crdt
-                          deleted? (get deleted-add-ids add-id)]
+                  (fn [{:keys [add-id-to-value-info
+                               current-add-ids
+                               deleted-add-ids] :as crdt}]
+                    (let [deleted? (get deleted-add-ids add-id)
+                          current? (get current-add-ids add-id)
+                          info (get add-id-to-value-info add-id)
+                          same? (same-cv-info? info arg)]
+                      (when (and info (not same?))
+                        (throw (ex-info
+                                (str "Attempt to reuse an existing add-id "
+                                     "(`" add-id "`) to add different info "
+                                     "to CRDT `" crdt-key "`.")
+                                (u/sym-map add-id crdt-key info))))
                       (cond-> (assoc-in crdt [:add-id-to-value-info add-id] arg)
                         (not deleted?)
                         (update :current-add-ids (fn [ids]
@@ -102,7 +128,6 @@
                                                    (if (seq ids)
                                                      (conj ids add-id)
                                                      #{add-id})))))))
-
 
 (defmethod <apply-op! :add-single-value
   [{:keys [storage op]}]
@@ -221,82 +246,96 @@
               true
               (recur new-num-done))))))))
 
-(defn get-most-recent [candidates]
-  (reduce (fn [acc candidate]
-            (if (> (:sys-time-ms candidate) (:sys-time-ms acc))
-              candidate
-              acc))
-          (first candidates)
-          candidates))
+(defn get-most-recent [current-add-id-to-value-info]
+  (->> (vals current-add-id-to-value-info)
+       (sort-by :sys-time-ms)
+       (last)))
 
 (defn <get-single-value-crdt-val
-  [{:keys [crdt-key schema storage container-target-schema] :as arg}]
+  [{:keys [crdt-key item-id schema storage] :as arg}]
   (au/go
     (let [crdt (au/<? (storage/<get storage crdt-key schemas/set-crdt-schema))
-          {:keys [current-value-infos]} crdt
-          num-values (count current-value-infos)]
+          {:keys [current-add-id-to-value-info]} crdt
+          num-values (count current-add-id-to-value-info)]
       (when (pos? num-values)
-        (let [v (->> (get-most-recent current-value-infos)
-                     (:serialized-value)
-                     (storage/<serialized-value->value storage schema)
-                     (au/<?))]
-          (if-not container-target-schema
-            v
-            (au/<? (<get-crdt-val (-> arg
-                                      (assoc :schema container-target-schema)
-                                      (assoc :item-id v)
-                                      (dissoc :container-target-schema)
-                                      (dissoc :k))))))))))
+        (let [schema-type (l/schema-type schema)
+              value-info (get-most-recent current-add-id-to-value-info)
+              {:keys [serialized-value union-branch]} value-info]
+          (cond
+            (and (= :union schema-type) union-branch)
+            (let [member-schema (-> (l/edn schema)
+                                    (nth union-branch)
+                                    (l/edn->schema))
+                  member-schema-type (l/schema-type member-schema)]
+              (if-not (container-types member-schema-type)
+                (au/<? (storage/<serialized-value->value storage schema))
+                (let [item-id* (au/<? (storage/<serialized-value->value
+                                       storage
+                                       l/string-schema
+                                       serialized-value))]
+                  (au/<? (<get-crdt-val (-> arg
+                                            (assoc :schema member-schema)
+                                            (assoc :item-id item-id*)))))))
 
-(defn <get-kv [{:keys [k crdt-key schema item-id] :as arg}]
-  (let [values-schema (l/schema-at-path schema [k])
-        container-target? (container-schema? values-schema)
-        edn-sch (l/edn values-schema)]
-    (<get-single-value-crdt-val (if container-target?
-                                  (assoc arg
-                                         :container-target-schema values-schema
-                                         :schema l/string-schema)
-                                  (assoc arg
-                                         :schema values-schema)))))
+            (container-types schema-type)
+            (let [item-id* (au/<? (storage/<serialized-value->value
+                                   storage l/string-schema serialized-value))]
+              (au/<? (<get-crdt-val (assoc arg :item-id item-id*))))
+
+            :else
+            (au/<? (storage/<serialized-value->value
+                    storage schema serialized-value))))))))
 
 (defmethod <get-crdt-val :map-kv
   [{:keys [item-id k schema] :as arg}]
-  (let [crdt-key (make-map-key-value-crdt-key item-id k)]
-    (<get-kv (assoc arg :crdt-key crdt-key))))
+  (let [crdt-key (make-map-key-value-crdt-key item-id k)
+        values-schema (l/schema-at-path schema [k])]
+    (<get-single-value-crdt-val (-> arg
+                                    (assoc :crdt-key crdt-key)
+                                    (assoc :schema values-schema)
+                                    (dissoc :k)))))
 
 (defmethod <get-crdt-val :record-kv
   [{:keys [item-id k schema] :as arg}]
-  (let [crdt-key (make-record-key-value-crdt-key item-id k)]
-    (<get-kv (assoc arg :crdt-key crdt-key))))
+  (let [crdt-key (make-record-key-value-crdt-key item-id k)
+        field-schema (l/schema-at-path schema [k])]
+    (<get-single-value-crdt-val (-> arg
+                                    (assoc :crdt-key crdt-key)
+                                    (assoc :schema field-schema)
+                                    (dissoc :k)))))
 
 (defmethod <get-crdt-val :map
   [{:keys [item-id schema storage] :as arg}]
   (au/go
     (let [keyset-k (make-map-keyset-crdt-key item-id)
-          infos (some-> (storage/<get storage keyset-k schemas/set-crdt-schema)
+          infos (some-> (storage/<get storage
+                                      keyset-k
+                                      schemas/set-crdt-schema)
                         (au/<?)
-                        (:current-value-infos))
-          num-infos (count infos)
+                        (:current-add-id-to-value-info)
+                        (vals))
           values-schema (l/schema-at-path schema ["x"])
-          <get-kv (fn [{:keys [serialized-value]}]
-                    (au/go
-                      (let [k (au/<? (storage/<serialized-value->value
-                                      storage
-                                      l/string-schema
-                                      serialized-value))
-                            v (-> (assoc arg :k k)
-                                  (<get-crdt-val)
-                                  (au/<?))]
-                        (u/sym-map k v))))
-          ch (ca/merge (map <get-kv infos))]
-      (if (zero? num-infos)
+          <get-kv-info (fn [{:keys [serialized-value]}]
+                         (au/go
+                           (let [k (au/<? (storage/<serialized-value->value
+                                           storage
+                                           l/string-schema
+                                           serialized-value))
+                                 v (-> (assoc arg :k k)
+                                       (<get-crdt-val)
+                                       (au/<?))]
+                             (u/sym-map k v))))
+          ch (ca/merge (map <get-kv-info infos))
+          last-i (dec (count infos))]
+      (if (neg? last-i)
         {}
-        (loop [out {}]
+        (loop [i 0
+               out {}]
           (let [{:keys [k v] :as ret} (au/<? ch)
                 new-out (assoc out k v)]
-            (if (= num-infos (count new-out))
+            (if (= last-i i)
               new-out
-              (recur new-out))))))))
+              (recur (inc i) new-out))))))))
 
 (defmethod <get-crdt-val :record
   [{:keys [item-id schema storage] :as arg}]
@@ -304,13 +343,13 @@
     (let [field-ks (->> (l/edn schema)
                         (:fields)
                         (map :name))
-          <get-kv (fn [k]
-                    (au/go
-                      (let [v (-> (assoc arg :k k)
-                                  (<get-crdt-val)
-                                  (au/<?))]
-                        (u/sym-map k v))))
-          ch (ca/merge (map <get-kv field-ks))
+          <get-kv-info (fn [k]
+                         (au/go
+                           (let [v (-> (assoc arg :k k)
+                                       (<get-crdt-val)
+                                       (au/<?))]
+                             (u/sym-map k v))))
+          ch (ca/merge (map <get-kv-info field-ks))
           num-fields (count field-ks)]
       (loop [fields-processed 0
              out {}]
@@ -327,14 +366,15 @@
   (reduce
    (fn [acc {:keys [head-node-add-id tail-node-add-id]}]
      (-> acc
-         (update-in [head-node-add-id :children] (fn [children]
-                                                   (conj (or children #{})
-                                                         tail-node-add-id)))
-         (update-in [tail-node-add-id :parents] (fn [parents]
-                                                  (conj (or parents #{})
-                                                        head-node-add-id)))))
-   {:children []
-    :parents []}
+         (update-in [head-node-add-id :children]
+                    (fn [children]
+                      (conj (or children #{})
+                            tail-node-add-id)))
+         (update-in [tail-node-add-id :parents]
+                    (fn [parents]
+                      (conj (or parents #{})
+                            head-node-add-id)))))
+   {}
    edges))
 
 (defn <get-array-edge-info
@@ -376,52 +416,65 @@
         (pos? (count del-infos))
         (assoc :deleted-edges (au/<? (<get-edges del-infos)))))))
 
-(defn <get-array-node-add-id->value
-  [{:keys [item-id storage schema]}]
+(defn <get-array-node-add-id->item-id
+  [{:keys [item-id storage schema] :as arg}]
   (au/go
     (let [k (make-array-nodes-crdt-key item-id)
-          infos (some-> (storage/<get storage k schemas/set-crdt-schema)
-                        (au/<?)
-                        (:current-value-infos))
-          num-infos (count infos)
+          add-id->info (some-> (storage/<get storage k schemas/set-crdt-schema)
+                               (au/<?)
+                               (:current-add-id-to-value-info))
           item-schema (l/schema-at-path schema [0])
-          <get-node (fn [{:keys [serialized-value add-id]}]
+          <get-node (fn [[add-id {:keys [serialized-value]}]]
                       (au/go
-                        (let [value (au/<? (storage/<serialized-value->value
-                                            storage
-                                            item-schema
-                                            serialized-value))]
-                          (u/sym-map add-id value))))
-          ch (ca/merge (map <get-node infos))]
-      (if (zero? num-infos)
+                        (let [item-id (au/<? (storage/<serialized-value->value
+                                              storage
+                                              l/string-schema
+                                              serialized-value))]
+                          (u/sym-map add-id item-id))))
+          ch (ca/merge (map <get-node add-id->info))
+          last-i (dec (count add-id->info))]
+      (if (neg? last-i)
         {}
-        (loop [out {}]
-          (let [{:keys [add-id value]} (au/<? ch)
-                new-out (assoc out add-id value)]
-            (if (= num-infos (count new-out))
+        (loop [i 0
+               out {}]
+          (let [{:keys [add-id item-id]} (au/<? ch)
+                new-out (assoc out add-id item-id)]
+            (if (= last-i i)
               new-out
-              (recur new-out))))))))
+              (recur (inc i) new-out))))))))
 
 (defn <get-linear-array-info
-  [{:keys [edges node->v] :as arg}]
+  [{:keys [edges item-id] :as arg}]
   (au/go
     (when (seq edges)
       (let [node->edge-info (make-node->edge-info edges)]
+        (when-not (node->edge-info array-start-add-id)
+          (throw (ex-info (str "Array `" item-id "` does not have a start node "
+                               "defined.")
+                          (u/sym-map edges node->edge-info item-id))))
+        (when-not (node->edge-info array-end-add-id)
+          (throw (ex-info (str "Array `" item-id "` does not have an end node "
+                               "defined.")
+                          (u/sym-map edges node->edge-info item-id))))
         (loop [node-id array-start-add-id
-               nodes []]
+               node-add-ids []]
           (let [children (get-in node->edge-info [node-id :children])
                 child (first children)]
+            (when-not child
+              (throw (ex-info (str "Array `" item-id
+                                   "` has a DAG is not connected.")
+                              (u/sym-map edges node->edge-info item-id
+                                         node-id))))
             (cond
               (> (count children) 1)
               {:linear? false}
 
               (= array-end-add-id child)
-              (let [linear? true
-                    v (mapv node->v nodes)]
-                (u/sym-map linear? v))
+              {:linear? true
+               :node-add-ids node-add-ids}
 
               :else
-              (recur child (conj nodes child)))))))))
+              (recur child (conj node-add-ids child)))))))))
 
 (defn get-edge-cleanup-info
   [{:keys [deleted-edges edges item-id live-nodes]}]
@@ -503,6 +556,7 @@
 
 (defn make-connecting-edges
   [{:keys [edges live-nodes make-add-id]
+    :or {make-add-id u/compact-random-uuid}
     :as arg}]
   (-> (reduce (fn [acc terminal]
                 (reduce
@@ -535,7 +589,8 @@
       :new-edges))
 
 (defn <get-node-connect-info
-  [{:keys [edges deleted-edges item-id live-nodes make-add-id storage]}]
+  [{:keys [edges deleted-edges item-id live-nodes make-add-id storage]
+    :or {make-add-id u/compact-random-uuid}}]
   (au/go
     (let [op-type :add-array-edge
           base-op (u/sym-map item-id op-type)
@@ -600,7 +655,8 @@
            paths
            schema
            splitting-node
-           storage]}]
+           storage]
+    :or {make-add-id u/compact-random-uuid}}]
   (au/go
     (let [num-paths (count paths)
           last-i (- num-paths 2) ; Skip the last path
@@ -659,10 +715,10 @@
             (if (= (count children) 1)
               (recur (first children) acc)
               ;; This is a splitting node
-              (let [path-infos (map (fn [node]
+              (let [path-infos (map (fn [node*]
                                       (path-to-combining-node-info
-                                       (u/sym-map node
-                                                  node->edge-info)))
+                                       {:node node*
+                                        :node->edge-info node->edge-info}))
                                     children)
                     {:keys [combining-node]} (first path-infos)
                     new-acc (au/<? (<get-conflict-resolution-op-infos
@@ -693,45 +749,56 @@
                              node-connect-ops
                              (:ops cr-info))
           linear-edges (:edges cr-info)
-          {:keys [v linear?]} (au/<? (<get-linear-array-info
-                                      (assoc arg :edges linear-edges)))]
+          ret (au/<? (<get-linear-array-info (assoc arg :edges linear-edges)))
+          {:keys [linear? node-add-ids]} ret]
       (when-not linear?
         (throw (ex-info "Array CRDT DAG is not linear after repair ops."
                         (u/sym-map arg cr-info edge-cleanup-info
                                    node-connect-info repair-ops))))
-      (u/sym-map v repair-ops linear-edges))))
+      (u/sym-map node-add-ids repair-ops linear-edges))))
 
-(defmethod <get-crdt-val :array
-  [{:keys [make-add-id]
-    :or {make-add-id u/compact-random-uuid}
-    :as arg}]
+(defn <get-array-item-ids [arg]
   (au/go
     (let [{:keys [deleted-edges edges]} (au/<? (<get-array-edge-info arg))
-          node->v (au/<? (<get-array-node-add-id->value arg))
+          node->item-id (au/<? (<get-array-node-add-id->item-id arg))
           arg* (assoc arg
                       :edges edges
                       :deleted-edges deleted-edges
-                      :make-add-id make-add-id
-                      :live-nodes (set (keys node->v))
-                      :node->v node->v)
-          {:keys [linear? v] :as ret} (au/<? (<get-linear-array-info arg*))]
-      (if linear?
-        v
-        (let [{:keys [v]} (au/<? (<get-non-linear-array-info arg*))]
-          v)))))
+                      :live-nodes (set (keys node->item-id)))
+          ret (au/<? (<get-linear-array-info arg*))
+          {:keys [node-add-ids]} (if (:linear? ret)
+                                   ret
+                                   (au/<? (<get-non-linear-array-info arg*)))]
+      (mapv node->item-id node-add-ids))))
+
+(defmethod <get-crdt-val :array
+  [{:keys [schema] :as arg}]
+  (au/go
+    (let [item-ids (au/<? (<get-array-item-ids arg))
+          last-i (dec (count item-ids))
+          items-schema (l/schema-at-path schema [0])]
+      (if (neg? last-i)
+        []
+        (loop [i 0
+               out []]
+          (let [arg* (assoc arg
+                            :item-id (nth item-ids i)
+                            :schema items-schema)
+                v (au/<? (<get-crdt-val arg*))
+                new-out (conj out v)]
+            (if (= last-i i)
+              new-out
+              (recur (inc i) new-out))))))))
 
 (defmethod <get-crdt-val :array-kv
-  [{:keys [k] :as arg}]
+  [{:keys [k schema] :as arg}]
   (au/go
-    (-> (<get-crdt-val (dissoc arg :k))
-        (au/<?)
-        (nth k))))
-
-(defmethod <get-crdt-val :union
-  [{:keys [union-branch schema] :as arg}]
-  (au/go
-    ;; TODO: Implement
-    (throw (ex-info "Implement me!!"))))
+    (let [item-ids (au/<? (<get-array-item-ids arg))
+          items-schema (l/schema-at-path schema [0])
+          arg* (assoc arg
+                      :item-id (nth item-ids k)
+                      :schema items-schema)]
+      (au/<? (<get-crdt-val arg*)))))
 
 (defmethod <get-crdt-val :single-value
   [{:keys [item-id schema] :as arg}]

@@ -99,25 +99,17 @@
 ;;;;;;;;;;;;;;;;; CRDT Schemas ;;;;;;;;;;;;;;;;;;;;;;;
 
 (l/def-record-schema crdt-value-info-schema
-  [:add-id id-schema]
   [:serialized-value serialized-value-schema]
   [:subject-id subject-id-schema]
   [:sys-time-ms timestamp-ms-schema]
   [:union-branch l/int-schema])
 
 (l/def-record-schema set-crdt-schema
-  [:current-value-infos (l/array-schema crdt-value-info-schema)]
+  [:current-add-id-to-value-info (l/map-schema crdt-value-info-schema)]
   [:deleted-add-ids l/string-set-schema])
 
-(l/def-record-schema value-history-set-crdt-value-info-schema
-  [:serialized-value serialized-value-schema]
-  [:subject-id subject-id-schema]
-  [:sys-time-ms timestamp-ms-schema]
-  [:union-branch l/int-schema])
-
 (l/def-record-schema value-history-set-crdt-schema
-  [:add-id-to-value-info (l/map-schema
-                          value-history-set-crdt-value-info-schema)]
+  [:add-id-to-value-info (l/map-schema crdt-value-info-schema)]
   [:current-add-ids l/string-set-schema]
   [:deleted-add-ids l/string-set-schema])
 
