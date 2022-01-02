@@ -16,12 +16,30 @@
      (let [zc (zc/zeno-client)
            ch (ca/chan 1)
            update-fn #(ca/put! ch %)
-           sub-map '{page [:client :page]}
-           expected '{page :home}]
+           sub-map '{page [:client :page]}]
+       (is (= '{page nil} (zc/subscribe-to-state!
+                           zc "test" sub-map update-fn)))
        (is (= true
               (au/<? (zc/<update-state! zc [{:path [:client :page]
                                              :op :set
                                              :arg :home}]))))
-       (is (= expected (zc/subscribe-to-state! zc "test" sub-map
-                                               update-fn)))
+       (is (= '{page :home} (au/<? ch)))
+       (zc/shutdown! zc)))))
+
+(deftest test-subscribe-sys-update
+  (au/test-async
+   3000
+   (ca/go
+     (let [sys-schema l/string-schema
+           zc (zc/zeno-client (u/sym-map sys-schema))
+           ch (ca/chan 1)
+           update-fn #(ca/put! ch %)
+           sub-map '{the-string [:sys]}]
+       (is (= '{the-string nil} (zc/subscribe-to-state!
+                                 zc "test" sub-map update-fn)))
+       (is (= true
+              (au/<? (zc/<update-state! zc [{:path [:sys]
+                                             :op :set
+                                             :arg "Hi"}]))))
+       #_(is (= '{the-string "Hi"} (au/<? ch)))
        (zc/shutdown! zc)))))

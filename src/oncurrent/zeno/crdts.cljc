@@ -54,7 +54,7 @@
         (= :array schema-type) :array
         :else :single-value))))
 
-(def immutable-crdt-value-keys [:add-id :subject-id :sys-time-ms :union-branch])
+(def immutable-crdt-value-keys [:add-id :sys-time-ms :union-branch])
 
 (defn same-cv-info? [x y]
   (and x

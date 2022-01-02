@@ -4,7 +4,7 @@
    [clojure.set :as set]
    [clojure.string :as str]
    [deercreeklabs.async-utils :as au]
-   [oncurrent.zeno.commands :as commands]
+   [oncurrent.zeno.client.client-commands :as commands]
    [oncurrent.zeno.client.react :as react]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]
@@ -237,7 +237,7 @@
                         (resolve-symbols-in-path acc-state path)
                         path)
         [head & tail] resolved-path
-        state @(:*state zc)
+        state @(:*client-state zc)
         state-src (case head
                     :client (:client state)
                     :sys (:sys state)
@@ -259,26 +259,22 @@
         indep-ret (reduce (partial reducer* false) init independent-pairs)]
     (reduce (partial reducer* true) indep-ret ordered-dependent-pairs)))
 
-(defn make-applied-update-fn*
-  [zc state-sub-name new-state expanded-paths]
-  (when-let [old-sub-info (@(:*state-sub-name->info zc) state-sub-name)]
-    (when (not= (:state old-sub-info) new-state)
-      (fn []
-        (let [{:keys [update-fn]} old-sub-info
-              new-sub-info (-> old-sub-info
-                               (assoc :state new-state)
-                               (assoc :expanded-paths expanded-paths))]
-          (swap! (:*state-sub-name->info zc) assoc state-sub-name new-sub-info)
-          (update-fn new-state))))))
-
 (defn make-applied-update-fn [zc state-sub-name]
   (let [sub-info (@(:*state-sub-name->info zc) state-sub-name)
-        {:keys [independent-pairs ordered-dependent-pairs update-fn]} sub-info]
-    (let [{:keys [state expanded-paths]} (get-state-and-expanded-paths
-                                          zc
-                                          independent-pairs
-                                          ordered-dependent-pairs)]
-      (make-applied-update-fn* zc state-sub-name state expanded-paths))))
+        {:keys [independent-pairs ordered-dependent-pairs update-fn]} sub-info
+        {:keys [state expanded-paths]} (get-state-and-expanded-paths
+                                        zc
+                                        independent-pairs
+                                        ordered-dependent-pairs)]
+    (when-let [old-sub-info (@(:*state-sub-name->info zc) state-sub-name)]
+      (when (not= (:state old-sub-info) state)
+        (fn []
+          (let [{:keys [update-fn]} old-sub-info
+                new-sub-info (-> old-sub-info
+                                 (assoc :state state)
+                                 (assoc :expanded-paths expanded-paths))]
+            (swap! (:*state-sub-name->info zc) assoc state-sub-name new-sub-info)
+            (update-fn state)))))))
 
 (defn get-update-fn-info [zc state-sub-names]
   (reduce

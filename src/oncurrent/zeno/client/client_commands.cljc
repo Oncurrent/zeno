@@ -1,4 +1,4 @@
-(ns oncurrent.zeno.commands
+(ns oncurrent.zeno.client.client-commands
   (:require
    [clojure.core.async :as ca]
    [deercreeklabs.async-utils :as au]

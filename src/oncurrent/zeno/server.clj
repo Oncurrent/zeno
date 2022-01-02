@@ -47,11 +47,11 @@
           (str "`" k "` is required but is missing from the server config map.")
           (u/sym-map k config))))
       (doseq [{:keys [pred msg]} checks]
-        (when (and pred (not (pred v)))
+        (when (and v pred (not (pred v)))
           (throw
            (ex-info
             (str "The value of `" k "` in the server config map is invalid. It "
-                 msg ". Got `" v "`.")
+                 msg ". Got `" (or v "nil") "`.")
             (u/sym-map k v config))))))))
 
 (defn member-id->member-mutex-name [member-id]

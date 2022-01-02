@@ -2,21 +2,28 @@
   (:require
    [clojure.core.async :as ca]
    [deercreeklabs.async-utils :as au]
+   [deercreeklabs.lancaster :as l]
    [oncurrent.zeno.client.state-subscriptions :as state-subscriptions]
-   [oncurrent.zeno.commands :as commands]
+   [oncurrent.zeno.client.client-commands :as commands]
    [oncurrent.zeno.storage :as storage]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
 (def default-config
   {:initial-client-state {}
-   :storage (storage/make-storage)})
+   :data-storage (storage/make-storage (storage/make-mem-raw-storage))
+   :log-storage (storage/make-storage (storage/make-mem-raw-storage))})
 
 (def config-rules
-  {:storage
-   {:required? true
-    :checks [{:pred #(satisfies? storage/IStorage %)
-              :msg "must satisfy the IStorage protocol"}]}})
+  {:data-storage {:required? true
+                  :checks [{:pred #(satisfies? storage/IStorage %)
+                            :msg "must satisfy the IStorage protocol"}]}
+   :log-storage {:required? true
+                 :checks [{:pred #(satisfies? storage/IStorage %)
+                           :msg "must satisfy the IStorage protocol"}]}
+   :sys-schema {:required? false
+                :checks [{:pred l/schema?
+                          :msg "must be a valid Lancaster schema"}]}})
 
 (defn check-config [{:keys [config config-type config-rules]}]
   (doseq [[k info] config-rules]
@@ -28,11 +35,11 @@
           (str "`" k "` is required but is missing from the client config map.")
           (u/sym-map k config))))
       (doseq [{:keys [pred msg]} checks]
-        (when (and pred (not (pred v)))
+        (when (and v pred (not (pred v)))
           (throw
            (ex-info
             (str "The value of `" k "` in the client config map is invalid. It "
-                 msg ". Got `" v "`.")
+                 msg ". Got `" (or v "nil") "`.")
             (u/sym-map k v config))))))))
 
 (defn split-cmds [cmds]
@@ -58,6 +65,9 @@
 
 (defn <do-sys-updates! [zc sys-cmds]
   (au/go
+    #_(log/info (str "##############################:\n"
+                     (u/pprint-str
+                      (u/sym-map sys-cmds))))
     ;; TODO: Return state & update-infos even if sys-cmds is empty / nil
     ))
 
@@ -68,18 +78,18 @@
   ;; all commit or none commit. A transaction may include both `:sys` and
   ;; `:client` updates.
   (au/go
-    (let [{:keys [*state]} zc
+    (let [{:keys [*client-state]} zc
           {:keys [client-cmds sys-cmds]} (split-cmds cmds)
 
           ;; Do sys updates first; only do the client updates if sys succeeds
           sys-ret (au/<? (<do-sys-updates! zc sys-cmds))
-          client-ret (commands/eval-cmds (:client @*state) client-cmds :client)
+          client-ret (commands/eval-cmds (:client @*client-state) client-cmds :client)
           update-infos (concat (:update-infos sys-ret)
                                (:update-infos client-ret))]
-      (swap! *state (fn [state]
-                      (-> state
-                          (assoc :client (:state client-ret))
-                          (assoc :sys (:state sys-ret)))))
+      (swap! *client-state (fn [state]
+                             (-> state
+                                 (assoc :client (:state client-ret))
+                                 (assoc :sys (:state sys-ret)))))
       (state-subscriptions/do-subscription-updates! zc update-infos)
       true)))
 
@@ -109,22 +119,26 @@
         _ (check-config {:config config*
                          :config-type :client
                          :config-rules config-rules})
-        {:keys [initial-client-state]} config*
+        {:keys [data-storage
+                initial-client-state
+                log-storage]} config*
         *next-instance-num (atom 0)
         *next-topic-sub-id (atom 0)
         *topic-name->sub-id->cb (atom {})
         *shutdown? (atom false)
-        *state (atom {:client initial-client-state})
+        *client-state (atom {:client initial-client-state})
         *state-sub-name->info (atom {})
         *subject-id (atom nil)
         update-state-ch (ca/chan (ca/sliding-buffer 1000))
         zc (u/sym-map *next-instance-num
                       *next-topic-sub-id
                       *shutdown?
-                      *state
+                      *client-state
                       *state-sub-name->info
                       *subject-id
                       *topic-name->sub-id->cb
+                      data-storage
+                      log-storage
                       update-state-ch)]
     (start-update-state-loop! zc)
     zc))

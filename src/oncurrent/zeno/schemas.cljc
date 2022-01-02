@@ -83,24 +83,10 @@
   [:op command-op-schema]
   [:path path-schema])
 
-(l/def-record-schema tx-info-schema
-  [:branch-id branch-id-schema]
-  [:cmds (l/array-schema serializable-command-schema)]
-  [:subject-id subject-id-schema]
-  [:sys-time-ms timestamp-ms-schema])
-
-(l/def-record-schema tx-log-block-schema
-  [:prev-log-block-id id-schema]
-  [:tx-i
-   "Useful for getting the tx-i of the tail without traversing the whole log"
-   l/int-schema]
-  [:tx-id id-schema])
-
 ;;;;;;;;;;;;;;;;; CRDT Schemas ;;;;;;;;;;;;;;;;;;;;;;;
 
 (l/def-record-schema crdt-value-info-schema
   [:serialized-value serialized-value-schema]
-  [:subject-id subject-id-schema]
   [:sys-time-ms timestamp-ms-schema]
   [:union-branch l/int-schema])
 
@@ -138,9 +124,23 @@
   [:k l/string-schema]
   [:op-type crdt-op-type-schema]
   [:serialized-value serialized-value-schema]
-  [:subject-id subject-id-schema]
   [:sys-time-ms timestamp-ms-schema]
   [:union-branch l/int-schema])
+
+;;;;;;;;;;;;;;;; Transaction & Log Schemas ;;;;;;;;;;;;;;;;;
+
+(l/def-record-schema tx-info-schema
+  [:crdt-ops (l/array-schema crdt-op-schema)]
+  [:subject-id subject-id-schema]
+  [:sys-time-ms timestamp-ms-schema]
+  [:update-cmds (l/array-schema serializable-command-schema)])
+
+(l/def-record-schema tx-log-block-schema
+  [:prev-log-block-id id-schema]
+  [:tx-i
+   "Useful for getting the tx-i of the tail without walking the whole log"
+   l/int-schema]
+  [:tx-id id-schema])
 
 ;;;;;;;;;;;;;; ACL Schemas ;;;;;;;;;;;;;;;;;
 

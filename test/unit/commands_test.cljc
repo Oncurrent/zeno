@@ -1,7 +1,7 @@
 (ns unit.commands-test
   (:require
    [clojure.test :as t :refer [deftest is]]
-   [oncurrent.zeno.commands :as commands]
+   [oncurrent.zeno.client.client-commands :as commands]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log])
   #?(:clj
