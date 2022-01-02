@@ -13,7 +13,8 @@
   (au/test-async
    3000
    (ca/go
-     (let [zc (zc/zeno-client)
+     (let [zc (zc/zeno-client {:initial-client-state
+                               '{page :home}})
            ch (ca/chan 1)
            update-fn #(ca/put! ch %)
            sub-map '{page [:client :page]}]
@@ -22,8 +23,8 @@
        (is (= true
               (au/<? (zc/<update-state! zc [{:path [:client :page]
                                              :op :set
-                                             :arg :home}]))))
-       (is (= '{page :home} (au/<? ch)))
+                                             :arg :login}]))))
+       (is (= '{page :login} (au/<? ch)))
        (zc/shutdown! zc)))))
 
 (deftest test-subscribe-sys-update

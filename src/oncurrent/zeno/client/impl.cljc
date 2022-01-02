@@ -83,13 +83,11 @@
 
           ;; Do sys updates first; only do the client updates if sys succeeds
           sys-ret (au/<? (<do-sys-updates! zc sys-cmds))
-          client-ret (commands/eval-cmds (:client @*client-state) client-cmds :client)
+          client-ret (commands/eval-cmds @*client-state client-cmds :client)
           update-infos (concat (:update-infos sys-ret)
                                (:update-infos client-ret))]
       (swap! *client-state (fn [state]
-                             (-> state
-                                 (assoc :client (:state client-ret))
-                                 (assoc :sys (:state sys-ret)))))
+                             (:state client-ret)))
       (state-subscriptions/do-subscription-updates! zc update-infos)
       true)))
 
@@ -126,7 +124,7 @@
         *next-topic-sub-id (atom 0)
         *topic-name->sub-id->cb (atom {})
         *shutdown? (atom false)
-        *client-state (atom {:client initial-client-state})
+        *client-state (atom initial-client-state)
         *state-sub-name->info (atom {})
         *subject-id (atom nil)
         update-state-ch (ca/chan (ca/sliding-buffer 1000))

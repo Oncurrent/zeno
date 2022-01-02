@@ -140,7 +140,8 @@
   [:tx-i
    "Useful for getting the tx-i of the tail without walking the whole log"
    l/int-schema]
-  [:tx-id id-schema])
+  [:tx-id id-schema]
+  [:tx-info tx-info-schema])
 
 ;;;;;;;;;;;;;; ACL Schemas ;;;;;;;;;;;;;;;;;
 

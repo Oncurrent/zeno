@@ -239,7 +239,7 @@
         [head & tail] resolved-path
         state @(:*client-state zc)
         state-src (case head
-                    :client (:client state)
+                    :client state
                     :sys (:sys state)
                     {})]
     (u/sym-map state-src resolved-path head)))
