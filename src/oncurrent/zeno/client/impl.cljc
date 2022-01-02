@@ -5,6 +5,7 @@
    [deercreeklabs.lancaster :as l]
    [oncurrent.zeno.client.state-subscriptions :as state-subscriptions]
    [oncurrent.zeno.client.client-commands :as commands]
+   [oncurrent.zeno.client.sys-state :as ss]
    [oncurrent.zeno.storage :as storage]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
@@ -63,14 +64,6 @@
     :sys-cmds []}
    cmds))
 
-(defn <do-sys-updates! [zc sys-cmds]
-  (au/go
-    #_(log/info (str "##############################:\n"
-                     (u/pprint-str
-                      (u/sym-map sys-cmds))))
-    ;; TODO: Return state & update-infos even if sys-cmds is empty / nil
-    ))
-
 (defn <do-update-state! [zc cmds]
   ;; This is called serially from the update-state loop.
   ;; We can rely on there being no concurrent updates.
@@ -82,12 +75,10 @@
           {:keys [client-cmds sys-cmds]} (split-cmds cmds)
 
           ;; Do sys updates first; only do the client updates if sys succeeds
-          sys-ret (au/<? (<do-sys-updates! zc sys-cmds))
+          sys-update-infos (au/<? (ss/<do-sys-updates! zc sys-cmds))
           client-ret (commands/eval-cmds @*client-state client-cmds :client)
-          update-infos (concat (:update-infos sys-ret)
-                               (:update-infos client-ret))]
-      (swap! *client-state (fn [state]
-                             (:state client-ret)))
+          update-infos (concat sys-update-infos (:update-infos client-ret))]
+      (reset! *client-state (:state client-ret))
       (state-subscriptions/do-subscription-updates! zc update-infos)
       true)))
 
@@ -119,7 +110,8 @@
                          :config-rules config-rules})
         {:keys [data-storage
                 initial-client-state
-                log-storage]} config*
+                log-storage
+                sys-schema]} config*
         *next-instance-num (atom 0)
         *next-topic-sub-id (atom 0)
         *topic-name->sub-id->cb (atom {})
@@ -137,6 +129,7 @@
                       *topic-name->sub-id->cb
                       data-storage
                       log-storage
+                      sys-schema
                       update-state-ch)]
     (start-update-state-loop! zc)
     zc))
