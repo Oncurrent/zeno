@@ -57,8 +57,8 @@
                :sys-schema (:sys-schema zc)
                :sys-time-ms sys-time-ms}
           {:keys [crdt-ops update-infos]} (au/<? (<cmds->info arg))
-          tx-info (u/sym-map crdt-ops sys-time-ms update-cmds)]
-      (au/<? (client-log/<log-tx! zc tx-info))
-      (au/<? (crdts/<apply-ops! {:ops crdt-ops
-                                 :storage (:data-storage zc)}))
+          tx-info (u/sym-map crdt-ops sys-time-ms update-cmds)
+          _ (au/<? (client-log/<log-tx! zc tx-info))
+          ds (crdts/apply-ops {:ops crdt-ops
+                               :data-store @(:*sys-data-store zc)})]
       update-infos)))

@@ -26,7 +26,7 @@
                                              :arg :login}]))))
        (is (= '{page :login} (au/<? ch)))
        (zc/shutdown! zc)))))
-
+#_
 (deftest test-subscribe-sys-update
   (au/test-async
    3000

@@ -108,8 +108,7 @@
         _ (check-config {:config config*
                          :config-type :client
                          :config-rules config-rules})
-        {:keys [data-storage
-                initial-client-state
+        {:keys [initial-client-state
                 log-storage
                 sys-schema]} config*
         *next-instance-num (atom 0)
@@ -117,17 +116,18 @@
         *topic-name->sub-id->cb (atom {})
         *shutdown? (atom false)
         *client-state (atom initial-client-state)
+        *sys-data-store (atom {})
         *state-sub-name->info (atom {})
         *subject-id (atom nil)
         update-state-ch (ca/chan (ca/sliding-buffer 1000))
-        zc (u/sym-map *next-instance-num
+        zc (u/sym-map *client-state
+                      *sys-data-store
+                      *next-instance-num
                       *next-topic-sub-id
                       *shutdown?
-                      *client-state
                       *state-sub-name->info
                       *subject-id
                       *topic-name->sub-id->cb
-                      data-storage
                       log-storage
                       sys-schema
                       update-state-ch)]
