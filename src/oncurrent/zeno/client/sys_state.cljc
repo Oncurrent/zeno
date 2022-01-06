@@ -4,7 +4,7 @@
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
    [oncurrent.zeno.client.client-log :as client-log]
-   [oncurrent.zeno.crdts :as crdts]
+   [oncurrent.zeno.crdt :as crdt]
    [oncurrent.zeno.schemas :as schemas]
    [oncurrent.zeno.storage :as storage]
    [oncurrent.zeno.utils :as u]
@@ -59,6 +59,6 @@
           {:keys [crdt-ops update-infos]} (au/<? (<cmds->info arg))
           tx-info (u/sym-map crdt-ops sys-time-ms update-cmds)
           _ (au/<? (client-log/<log-tx! zc tx-info))
-          ds (crdts/apply-ops {:ops crdt-ops
-                               :data-store @(:*sys-data-store zc)})]
+          ds (crdt/apply-ops {:ops crdt-ops
+                              :data-store @(:*sys-data-store zc)})]
       update-infos)))

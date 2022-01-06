@@ -94,6 +94,7 @@
 (l/def-record-schema set-crdt-schema
   [:current-add-id-to-value-info (l/map-schema crdt-value-info-schema)]
   [:deleted-add-ids l/string-set-schema])
+
 #_
 (l/def-record-schema value-history-set-crdt-schema
   [:add-id-to-value-info (l/map-schema crdt-value-info-schema)]
@@ -103,20 +104,21 @@
 (l/def-record-schema array-edge-schema
   [:head-node-add-id id-schema]
   [:tail-node-add-id id-schema])
+#_
+(l/def-record-schema container-crdt-schema
+  [:current-key-add-ids l/string-set-schema]
+  [:deleted-key-add-ids l/string-set-schema]
+  [:value serialized-value-schema])
 
 (l/def-enum-schema crdt-op-type-schema
   :add-array-edge
   :add-array-node
-  :add-map-key
-  :add-map-key-value
-  :add-record-key-value
-  :add-single-value
-  :del-array-edge
-  :del-array-node
-  :del-map-key
-  :del-map-key-value
-  :del-record-key-value
-  :del-single-value)
+  :add-key
+  :add-value
+  :delete-array-edge
+  :delete-array-node
+  :delete-key
+  :delete-value)
 
 (l/def-record-schema crdt-op-schema
   "Depending on the op-type, different fields will be used."

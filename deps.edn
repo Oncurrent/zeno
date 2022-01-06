@@ -49,4 +49,6 @@
               :extra-deps {thheller/shadow-cljs {:mvn/version "2.16.8"}}}
 
   :test-kaocha {:extra-paths ["test"]
-                :extra-deps {lambdaisland/kaocha {:mvn/version "1.60.945"}}}}}
+                :extra-deps {lambdaisland/kaocha {:mvn/version "1.60.945"}}}
+
+  :test-libs {:extra-deps {org.clojure/math.combinatorics {:mvn/version "0.1.6"}}}}}
