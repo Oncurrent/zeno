@@ -22,6 +22,24 @@
 (defmulti get-value (fn [{:keys [schema]}]
                       (schema->dispatch-type schema)))
 
+(defmulti check-key (fn [{:keys [schema]}]
+                      (schema->dispatch-type schema)))
+
+(defmethod check-key :map
+  [{:keys [add-id key op-type path]}]
+  (when-not (string? key)
+    (throw (ex-info (str "Map key is not a string. Got: `"
+                         (or key "nil") "`.")
+                    (u/sym-map add-id key op-type path)))))
+
+(defmethod check-key :record
+  [{:keys [add-id key op-type path]}]
+  (when-not (keyword? key)
+    (throw (ex-info
+            (str "Record key in path is not a keyword. "
+                 "Got: `" (or key "nil") "`.")
+            (u/sym-map key path op-type add-id)))))
+
 (defn same-cv-info? [x y]
   (and x
        y
@@ -79,11 +97,11 @@
                                    #{add-id})))))
 
 (defn associative-add-key
-  [{:keys [add-id check-child-k crdt key op-type path schema] :as arg}]
+  [{:keys [add-id crdt key op-type path schema] :as arg}]
   (if (seq path)
     (let [[child-key & ks] path
           child-schema (l/schema-at-path schema [child-key])]
-      (check-child-k child-key)
+      (check-key (assoc arg :key child-key))
       (update-in crdt [:children child-key]
                  (fn [child-crdt]
                    (apply-op (assoc arg
@@ -98,22 +116,14 @@
                            "(`" add-id "`) to add different key to CRDT.")
                       (u/sym-map add-id crdt key op-type))))
           deleted? (get deleted-add-ids add-id)]
+      (check-key arg)
       (if deleted?
         crdt
         (update crdt :current-add-id-to-key assoc add-id key)))))
 
 (defmethod apply-op [:map :add-key]
   [{:keys [add-id key op-type path] :as arg}]
-  (when-not (string? key)
-    (throw (ex-info (str "Map key is not a string. Got: `"
-                         (or key "nil") "`.")
-                    (u/sym-map add-id key op-type path))))
-  (let [check-child-k (fn [k]
-                        (when-not (string? k)
-                          (throw (ex-info (str "Map key in path is not a string"
-                                               ". Got: ` "(or k "nil") "`.")
-                                          (u/sym-map k path op-type add-id)))))]
-    (associative-add-key (assoc arg :check-child-k check-child-k))))
+  (associative-add-key arg))
 
 (defn associative-delete-key
   [{:keys [add-id crdt]}]
@@ -134,20 +144,10 @@
 
 (defmethod apply-op [:record :add-key]
   [{:keys [add-id key op-type path] :as arg}]
-  (when-not (keyword? key)
-    (throw (ex-info (str "Record key is not a keyword. Got: `"
-                         (or key "nil") "`.")
-                    (u/sym-map add-id key op-type path))))
-  (let [check-child-k (fn [k]
-                        (when-not (keyword? k)
-                          (throw (ex-info
-                                  (str "Map key in path is not a keyword. "
-                                       "Got: ` "(or k "nil") "`.")
-                                  (u/sym-map k path op-type add-id)))))]
-    (associative-add-key (assoc arg :check-child-k check-child-k))))
+  (associative-add-key arg))
 
 (defn associative-add-value
-  [{:keys [add-id check-key crdt path schema throw-not-associative value]
+  [{:keys [add-id crdt path schema throw-not-associative value]
     :as arg}]
   (let [root? (empty? path)]
     (cond
@@ -156,7 +156,7 @@
 
       root?
       (reduce-kv (fn [crdt* k v]
-                   (check-key k)
+                   (check-key (assoc arg :key k))
                    (let [child-schema (l/schema-at-path schema [k])]
                      (update-in crdt* [:children k]
                                 (fn [child-crdt]
@@ -171,7 +171,7 @@
       :else
       (let [[k & ks] path
             child-schema (l/schema-at-path schema [k])]
-        (check-key k)
+        (check-key (assoc arg :key k))
         (update-in crdt [:children k]
                    (fn [child-crdt]
                      (apply-op (assoc arg
@@ -186,38 +186,37 @@
                                  (str
                                   "Path indicates a map, but value is not "
                                   "associative. Got: `" (or value "nil") "`.")
-                                 (u/sym-map add-id path value)))
-        check-key (fn [k]
-                    (when-not (string? k)
-                      (throw (ex-info (str "Map key is not a string. Got: `"
-                                           (or k "nil") "`.")
-                                      (u/sym-map add-id k path value)))))]
+                                 (u/sym-map add-id path value)))]
     (associative-add-value
-     (assoc arg
-            :check-key check-key
-            :throw-not-associative throw-not-associative))))
+     (assoc arg :throw-not-associative throw-not-associative))))
 
-(defmethod apply-op [:map :delete-value]
-  [{:keys [add-id crdt path schema] :as arg}]
+(defn associative-delete-value
+  [{:keys [add-id child-keys crdt path schema] :as arg}]
   (if (empty? path)
     (let [new-crdt (update crdt :deleted-add-ids (fn [ids]
                                                    (if (seq ids)
                                                      (conj ids add-id)
                                                      #{add-id})))]
-      (reduce-kv (fn [crdt* k _]
-                   (apply-op (assoc arg
-                                    :crdt crdt*
-                                    :path [k])))
-                 new-crdt
-                 (:children new-crdt)))
-    (let [[k & ks] path
-          child-crdt (get-in crdt [:children k])
-          child-schema (l/schema-at-path schema [k])]
-      (assoc-in crdt [:children k]
+      (reduce (fn [crdt* k]
+                (check-key (assoc arg :key k))
                 (apply-op (assoc arg
-                                 :crdt child-crdt
-                                 :path ks
-                                 :schema child-schema))))))
+                                 :crdt crdt*
+                                 :path [k])))
+              new-crdt
+              child-keys))
+    (let [[k & ks] path
+          child-schema (l/schema-at-path schema [k])]
+      (update-in crdt [:children k]
+                 (fn [child-crdt]
+                   (apply-op (assoc arg
+                                    :crdt child-crdt
+                                    :path ks
+                                    :schema child-schema)))))))
+
+(defmethod apply-op [:map :delete-value]
+  [{:keys [children] :as arg}]
+  (let [child-keys (keys children)]
+    (associative-delete-value (assoc arg :child-keys child-keys))))
 
 (defmethod apply-op [:record :add-value]
   [{:keys [add-id path schema value] :as arg}]
@@ -227,11 +226,6 @@
                                   "Path indicates a record, but value is not "
                                   "associative. Got: `" (or value "nil") "`.")
                                  (u/sym-map add-id path value)))
-        check-key (fn [k]
-                    (when-not (keyword? k)
-                      (throw (ex-info (str "Record key is not a keyword. Got: `"
-                                           (or k "nil") "`.")
-                                      (u/sym-map add-id k path value)))))
         fields (->> (l/edn schema)
                     (:fields)
                     (map :name))
@@ -245,28 +239,11 @@
             :value value*))))
 
 (defmethod apply-op [:record :delete-value]
-  [{:keys [add-id crdt path schema] :as arg}]
-  (if (empty? path)
-    (let [field-ks (->> (l/edn schema)
+  [{:keys [schema] :as arg}]
+  (let [child-keys (->> (l/edn schema)
                         (:fields)
-                        (map :name))
-          new-crdt (update crdt :deleted-add-ids (fn [ids]
-                                                   (if (seq ids)
-                                                     (conj ids add-id)
-                                                     #{add-id})))]
-      (reduce (fn [crdt* k]
-                (apply-op (assoc arg
-                                 :crdt crdt*
-                                 :path [k])))
-              new-crdt
-              field-ks))
-    (let [[k & ks] path
-          child-crdt (get-in crdt [:children k])
-          child-schema (l/schema-at-path schema [k])]
-      (assoc-in crdt [:children k] (apply-op (assoc arg
-                                                    :crdt child-crdt
-                                                    :path ks
-                                                    :schema child-schema))))))
+                        (map :name))]
+    (associative-delete-value (assoc arg :child-keys child-keys))))
 
 (defn apply-ops [{:keys [crdt ops schema sys-time-ms]}]
   (reduce (fn [crdt* op]

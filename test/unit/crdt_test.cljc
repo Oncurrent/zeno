@@ -59,7 +59,15 @@
 (deftest test-map-crdt-basic-ops
   (let [schema (l/map-schema l/int-schema)
         sys-time-ms (u/str->long "1640205282858")
-        ops [{:add-id "a1"
+        ops [{:add-id "k1"
+              :key "a"
+              :op-type :add-key
+              :path []}
+             {:add-id "k2"
+              :key "b"
+              :op-type :add-key
+              :path []}
+             {:add-id "a1"
               :op-type :add-value
               :path ["a"]
               :value 1}
@@ -79,7 +87,8 @@
               :path ["b"]}]
         path []
         expected-v {"a" 42}]
-    (doseq [ops (combo/permutations ops)]
+    ;; Too many permutations to test them all, so we take a random sample
+    (doseq [ops (repeatedly 500 #(shuffle ops))]
       (let [crdt (crdt/apply-ops (u/sym-map ops
                                             schema
                                             sys-time-ms))
@@ -155,7 +164,7 @@
   [:bar/b l/string-schema]
   [:c l/boolean-schema])
 
-(deftest ^:this test-record-crdt-basic-ops
+(deftest test-record-crdt-basic-ops
   (let [schema the-rec-schema
         sys-time-ms (u/str->long "1640205282858")
         ops [{:add-id "k1"
@@ -204,7 +213,11 @@
 
 (deftest test-record-crdt-conflict
   (let [schema the-rec-schema
-        crdt-1 (crdt/apply-ops {:ops [{:add-id "a1"
+        crdt-1 (crdt/apply-ops {:ops [{:add-id "k1"
+                                       :key :foo/a
+                                       :op-type :add-key
+                                       :path []}
+                                      {:add-id "a1"
                                        :op-type :add-value
                                        :path [:foo/a]
                                        :schema schema
@@ -228,7 +241,41 @@
 (deftest test-nested-crdts
   (let [schema (l/map-schema the-rec-schema)
         sys-time-ms (u/str->long "1640205282858")
-        ops [{:add-id "a1"
+        ops [;; Set up keys
+             {:add-id "k0"
+              :key "a"
+              :op-type :add-key
+              :path []}
+             {:add-id "k9"
+              :key "b"
+              :op-type :add-key
+              :path []}
+             {:add-id "k1"
+              :key :foo/a
+              :op-type :add-key
+              :path ["a"]}
+             {:add-id "k2"
+              :key :bar/b
+              :op-type :add-key
+              :path ["a"]}
+             {:add-id "k3"
+              :key :c
+              :op-type :add-key
+              :path ["a"]}
+             {:add-id "k4"
+              :key :foo/a
+              :op-type :add-key
+              :path ["b"]}
+             {:add-id "k5"
+              :key :bar/b
+              :op-type :add-key
+              :path ["b"]}
+             {:add-id "k6"
+              :key :c
+              :op-type :add-key
+              :path ["b"]}
+
+             {:add-id "a1"
               :op-type :add-value
               :path []
               :value {"a" {:foo/a 1
@@ -249,7 +296,7 @@
                     "b" {:foo/a 72
                          :bar/b "there"
                          :c false}}]
-    (doseq [ops (combo/permutations ops)]
+    (doseq [ops (repeatedly 500 #(shuffle ops))]
       (let [crdt (crdt/apply-ops (u/sym-map ops
                                             schema
                                             sys-time-ms))
