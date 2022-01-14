@@ -2,6 +2,7 @@
   (:require
    [clojure.core.async :as ca]
    [deercreeklabs.async-utils :as au]
+   [deercreeklabs.capsule.client :as cc]
    [deercreeklabs.lancaster :as l]
    [oncurrent.zeno.client.state-subscriptions :as state-subscriptions]
    [oncurrent.zeno.client.client-commands :as commands]
@@ -11,12 +12,16 @@
    [taoensso.timbre :as log]))
 
 (def default-config
-  {:initial-client-state {}
+  {:branch-id "prod"
    :data-storage (storage/make-storage (storage/make-mem-raw-storage))
+   :initial-client-state {}
    :log-storage (storage/make-storage (storage/make-mem-raw-storage))})
 
 (def config-rules
-  {:data-storage {:required? true
+  {:branch-id {:required? true
+               :checks [{:pred str?
+                         :msg "must be a string"}]}
+   :data-storage {:required? true
                   :checks [{:pred #(satisfies? storage/IStorage %)
                             :msg "must satisfy the IStorage protocol"}]}
    :log-storage {:required? true
@@ -103,12 +108,25 @@
         (when-not @(:*shutdown? zc)
           (recur))))))
 
+(defn make-capsule-client [arg]
+  #_(let [;; We don't use capsule auth, so we pass an empty secret
+          get-credentials (constantly {:subject-id "zeno-client"
+                                       :subject-secret ""})
+          opts {:on-connect (partial <on-connect opts-on-connect sys-state-source
+                                     set-subject-id! *conn-initialized? *vc
+                                     *stopped? *token)
+                :on-disconnect (partial on-disconnect opts-on-disconnect
+                                        *conn-initialized? set-subject-id!)}]
+      (cc/client get-server-url get-credentials
+                 u/client-server-protocol :client opts)))
+
 (defn zeno-client [config]
   (let [config* (merge default-config config)
         _ (check-config {:config config*
                          :config-type :client
                          :config-rules config-rules})
-        {:keys [initial-client-state
+        {:keys [branch-id
+                initial-client-state
                 log-storage
                 sys-schema]} config*
         *next-instance-num (atom 0)
@@ -119,6 +137,7 @@
         *sys-data-store (atom {})
         *state-sub-name->info (atom {})
         *subject-id (atom nil)
+        capsule-client (make-capsule-client nil)
         update-state-ch (ca/chan (ca/sliding-buffer 1000))
         zc (u/sym-map *client-state
                       *sys-data-store
@@ -172,3 +191,7 @@
           (log/error (str "Error while distributing messages:\n"
                           (u/ex-msg-and-stacktrace e)))))))
   nil)
+
+(defn logged-in?
+  [zc]
+  (boolean (:*subject-id zc)))

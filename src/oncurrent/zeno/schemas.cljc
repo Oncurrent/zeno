@@ -6,7 +6,7 @@
 
 ;; Keeping schemas in a single cljc namespace simplifies Avro namespace mgmt
 
-(def authenticator-name-schema l/string-schema)
+(def authenticator-name-schema l/keyword-schema)
 (def branch-id-schema l/string-schema)
 (def client-id-schema l/string-schema)
 (def cluster-member-id-schema l/string-schema)
@@ -18,9 +18,10 @@
 (def ws-url-schema l/string-schema)
 
 (l/def-record-schema serialized-value-schema
-  [:chunk-ids (l/array-schema id-schema)]
-  [:fp fingerprint-schema]
-  [:bytes l/bytes-schema])
+  [:bytes l/bytes-schema]
+  ;; TODO: Move this to another schema?
+  [:chunk-ids "Used for chunked storage" (l/array-schema id-schema)]
+  [:fp fingerprint-schema])
 
 (l/def-record-schema chunk-schema
   [:bytes l/bytes-schema]
@@ -145,24 +146,27 @@
 
 (l/def-record-schema session-info-schema
   [:session-token session-token-schema]
+  [:session-token-minutes-remaining l/int-schema]
+  [:subject-id subject-id-schema])
+
+(l/def-record-schema session-token-info-schema
+  [:session-token-expiration-time-ms l/long-schema]
   [:subject-id subject-id-schema])
 
 (l/def-record-schema log-in-arg-schema
   [:authenticator-name authenticator-name-schema]
-  [:authentication-info serialized-value-schema]
-  [:branch-id branch-id-schema])
+  [:branch-id branch-id-schema]
+  [:serialized-login-info serialized-value-schema])
 
 (l/def-record-schema log-in-ret-schema
-  [:session-info session-info-schema]
-  [:extra-info serialized-value-schema])
-
-(l/def-record-schema query-authenticator-state-arg-schema
-  [:authenticator-name authenticator-name-schema]
-  [:arg serialized-value-schema])
+  [:serialized-extra-info serialized-value-schema]
+  [:session-info session-info-schema])
 
 (l/def-record-schema update-authenticator-state-arg-schema
   [:authenticator-name authenticator-name-schema]
-  [:arg serialized-value-schema])
+  [:branch-id branch-id-schema]
+  [:serialized-update-info serialized-value-schema]
+  [:update-type l/keyword-schema])
 
 ;;;;;;;;;;;;;;; RPCs ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -188,23 +192,17 @@
                                      :ret (l/maybe l/string-schema)
                                      :sender :either}
     :log-in {:arg log-in-arg-schema
-             :ret log-in-ret-schema
+             :ret (l/maybe log-in-ret-schema)
              :sender :client}
     :log-out {:arg l/null-schema
               :ret l/boolean-schema
               :sender :client}
-    :query-authenticator-state {:arg query-authenticator-state-arg-schema
-                                :ret serialized-value-schema
-                                :sender :client}
     :resume-session {:arg session-token-schema
-                     :ret l/boolean-schema
+                     :ret (l/maybe session-info-schema)
                      :sender :client}
     :rpc {:arg rpc-arg-schema
           :ret rpc-ret-schema
           :sender :client}
-    :set-client-id {:arg client-id-schema
-                    :ret true
-                    :sender :client}
     :update-authenticator-state {:arg update-authenticator-state-arg-schema
                                  :ret serialized-value-schema
                                  :sender :client}}})

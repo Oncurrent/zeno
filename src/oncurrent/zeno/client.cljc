@@ -78,3 +78,7 @@
 (defn publish-to-topic!
   [zc topic-name msg]
   (impl/publish-to-topic! zc topic-name msg))
+
+(defn logged-in?
+  [zc]
+  (impl/logged-in? zc))

@@ -508,12 +508,13 @@
                               :pets [{:name "Bo"
                                       :species "Canis familiaris"}
                                      {:name "Sam"
-                                      :species "Felis catus"}]}}
-        crdt (crdt/apply-ops (u/sym-map ops
-                                        schema
-                                        sys-time-ms))
-        v (crdt/get-value (u/sym-map crdt path schema))
-        _ (is (= expected v))]))
+                                      :species "Felis catus"}]}}]
+    (doseq [ops (repeatedly 500 #(shuffle ops))]
+      (let [crdt (crdt/apply-ops (u/sym-map ops
+                                            schema
+                                            sys-time-ms))
+            v (crdt/get-value (u/sym-map crdt path schema))]
+        (is (= expected v))))))
 
 (deftest test-empty-stuff
   (let [schema l/string-schema

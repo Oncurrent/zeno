@@ -37,6 +37,7 @@
 (def member-info-key-prefix "MEMBER-INFO-")
 (def mutex-reference-key-prefix "_MUTEX-")
 (def record-key-value-crdt-key-prefix "_RECORD-KV-CRDT-")
+(def session-token-to-token-info-key-prefix "SESSION-TOKEN-TO-TOKEN-INFO-")
 (def single-value-crdt-key-prefix "_SV-CRDT-")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -273,7 +274,8 @@
       (swap! *data (fn [m]
                      (when (get m k)
                        (throw (ex-info (str "Key `" k "` already exists.")
-                                       (u/sym-map k))))
+                                       {:type :key-exists
+                                        :k k})))
                      (assoc m k ba)))
       true)))
 
