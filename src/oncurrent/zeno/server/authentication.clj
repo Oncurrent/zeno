@@ -2,6 +2,9 @@
   (:require
    [clojure.core.async :as ca]
    [deercreeklabs.async-utils :as au]
+   [deercreeklabs.baracus :as ba]
+   [oncurrent.zeno.schemas :as schemas]
+   [oncurrent.zeno.storage :as storage]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log])
   (:import
@@ -69,10 +72,10 @@
                                               (get-login-ret-extra-info-schema
                                                authenticator)
                                               extra-info)))
-              sesion-token (generate-session-token)
-              sesson-info {:session-token session-token
-                           :session-token-minutes-remaining login-lifetime-mins
-                           :subject-id subject-id}
+              session-token (generate-session-token)
+              session-info {:session-token session-token
+                            :session-token-minutes-remaining login-lifetime-mins
+                            :subject-id subject-id}
               token-k (str storage/session-token-to-token-info-key-prefix
                            session-token)
               exp-ms (+ (u/current-time-ms) (* 60 1000 login-lifetime-mins))
@@ -82,6 +85,8 @@
                                 schemas/session-token-info-schema token-info))
           (swap! *connection-info
                  #(-> %
+                      (assoc ::authenticator authenticator)
+                      (assoc ::authenticator-storage authenticator-storage)
                       (assoc ::branch-id (:branch-id msg-arg))
                       (assoc ::session-token session-token)
                       (assoc ::subject-id subject-id)))
@@ -94,9 +99,11 @@
           token-k (str storage/session-token-to-token-info-key-prefix
                        (::session-token conn-info))
           _ (au/<? (storage/<delete! storage token-k))
-          ret (au/<? (<log-out! authenticator
-                                (u/sym-map authenticator-storage)))]
-      (t2s/close-connection! talk2server (:zeno/connection-id conn-info))
+          ret (au/<? (<log-out! (::authenticator conn-info)
+                                {:authenticator-storage
+                                 (::authenticator-storage conn-info)}))]
+      ;; TODO: Implement w/ talk2 API
+      #_(t2s/close-connection! talk2server (:zeno/connection-id conn-info))
       ret)))
 
 (defn <handle-resume-session

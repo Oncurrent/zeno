@@ -2,15 +2,17 @@
   (:require
    [clojure.core.async :as ca]
    [deercreeklabs.async-utils :as au]
-   [oncurrent.zeno.authentication :as za]
-   [oncurrent.zeno.authentication.plugins.identifier-secret.shared :as shared]
+   [deercreeklabs.lancaster :as l]
+   [oncurrent.zeno.client.authentication :as za]
+   [oncurrent.zeno.authenticators.identifier-secret.shared :as shared]
    [oncurrent.zeno.client :as zc]
+   [oncurrent.zeno.schemas :as schemas]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
 (defn <create-subject!
   ([zc identifier secret]
-   (<create-subject zc identifier secret nil))
+   (<create-subject! zc identifier secret nil))
   ([zc identifier secret subject-id]
    "Returns the subject-id of the created subject."
    (let [arg {:authenticator-name shared/authenticator-name
@@ -86,8 +88,7 @@
       (throw (ex-info (str "`secret` must be a string. Got `"
                            (or secret "nil") "`.")
                       (u/sym-map secret identifier))))
-    (let [login-info
-          arg {:authenticator-name shared/authenticator-name
+    (let [arg {:authenticator-name shared/authenticator-name
                :login-info (u/sym-map identifier secret)
                :login-info-schema shared/login-info-schema
                :zc zc}

@@ -2,7 +2,6 @@
   (:require
    [clojure.core.async :as ca]
    [deercreeklabs.async-utils :as au]
-   [deercreeklabs.capsule.client :as cc]
    [deercreeklabs.lancaster :as l]
    [oncurrent.zeno.client.state-subscriptions :as state-subscriptions]
    [oncurrent.zeno.client.client-commands :as commands]
@@ -19,7 +18,7 @@
 
 (def config-rules
   {:branch-id {:required? true
-               :checks [{:pred str?
+               :checks [{:pred string?
                          :msg "must be a string"}]}
    :data-storage {:required? true
                   :checks [{:pred #(satisfies? storage/IStorage %)
@@ -108,17 +107,9 @@
         (when-not @(:*shutdown? zc)
           (recur))))))
 
-(defn make-capsule-client [arg]
-  #_(let [;; We don't use capsule auth, so we pass an empty secret
-          get-credentials (constantly {:subject-id "zeno-client"
-                                       :subject-secret ""})
-          opts {:on-connect (partial <on-connect opts-on-connect sys-state-source
-                                     set-subject-id! *conn-initialized? *vc
-                                     *stopped? *token)
-                :on-disconnect (partial on-disconnect opts-on-disconnect
-                                        *conn-initialized? set-subject-id!)}]
-      (cc/client get-server-url get-credentials
-                 u/client-server-protocol :client opts)))
+(defn make-talk2-client []
+  ;; TODO: Implement
+  )
 
 (defn zeno-client [config]
   (let [config* (merge default-config config)
@@ -137,7 +128,7 @@
         *sys-data-store (atom {})
         *state-sub-name->info (atom {})
         *subject-id (atom nil)
-        capsule-client (make-capsule-client nil)
+        talk2-client (make-talk2-client)
         update-state-ch (ca/chan (ca/sliding-buffer 1000))
         zc (u/sym-map *client-state
                       *sys-data-store

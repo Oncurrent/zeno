@@ -5,8 +5,10 @@
    [crypto.password.bcrypt :as bcrypt]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.baracus :as ba]
-   [oncurrent.zeno.authentication.plugins.identifier-secret.shared :as shared]
+   [deercreeklabs.lancaster :as l]
+   [oncurrent.zeno.authenticators.identifier-secret.shared :as shared]
    [oncurrent.zeno.schemas :as schemas]
+   [oncurrent.zeno.server.authentication :as za]
    [oncurrent.zeno.storage :as storage]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log])
@@ -131,7 +133,7 @@
     shared/login-info-schema)
   (get-login-ret-extra-info-schema [this]
     l/null-schema)
-  (get-update-info-schema [this update-type]
+  (get-update-state-info-schema [this update-type]
     (case update-type
       :add-identifier shared/identifier-schema
       :create-subject shared/create-subject-info-schema

@@ -3,6 +3,7 @@
    [clojure.core.async :as ca]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
+   [oncurrent.zeno.storage :as storage]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
@@ -20,7 +21,8 @@
           arg {:authenticator-name authenticator-name
                :branch-id branch-id
                :serialized-login-info ser-login-info}
-          ret (au/<? (cc/<send-msg capsule-client :log-in arg))
+          ;; TODO: Implement w/ talk2 API
+          ret nil #_(au/<? (cc/<send-msg capsule-client :log-in arg))
           subject-id (some-> ret :session-info :subject-id)
           _ (when subject-id
               (reset! (:*subject-id zc) subject-id))]
@@ -29,6 +31,8 @@
 (defn <client-log-out [zc]
   ;; TODO: Delete stored transaction log data
   (reset! (:*subject-id zc) nil)
+  ;; TODO: Implement w/ talk2 API
+  #_
   (cc/<send-msg capsule-client :log-out nil))
 
 (defn <client-update-authenticator-state
@@ -63,8 +67,9 @@
                :branch-id branch-id
                :serialized-update-info ser-info
                :update-type update-type}
-          ret (au/<? (cc/<send-msg capsule-client
-                                   :update-authenticator-state arg))]
+          ;; TODO: Implement w/ talk2 API
+          ret nil #_(au/<? (cc/<send-msg capsule-client
+                                         :update-authenticator-state arg))]
       (au/<? (storage/<serialized-value->value storage
                                                return-value-schema
                                                ret)))))
@@ -72,4 +77,6 @@
 (defn <client-resume-session
   [zc session-token]
   (let [{:keys [capsule-client]} zc]
+    ;; TODO: Implement w/ talk2 API
+    #_
     (cc/<send-msg capsule-client :resume-session session-token)))
