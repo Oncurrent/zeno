@@ -4,6 +4,7 @@
    [clojure.test :as t :refer [deftest is]]
    [deercreeklabs.lancaster :as l]
    [oncurrent.zeno.crdt :as crdt]
+   [oncurrent.zeno.crdt.common :as crdt-c]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log])
   #?(:clj
@@ -264,7 +265,7 @@
               :value "C"}
              {:add-id "a4"
               :op-type :add-array-edge
-              :value {:head-node-id crdt/array-start-node-id
+              :value {:head-node-id crdt-c/array-start-node-id
                       :tail-node-id "NodeA"}}
              {:add-id "a5"
               :op-type :add-array-edge
@@ -277,7 +278,7 @@
              {:add-id "a7"
               :op-type :add-array-edge
               :value {:head-node-id "NodeC"
-                      :tail-node-id crdt/array-end-node-id}}
+                      :tail-node-id crdt-c/array-end-node-id}}
              ;; While offline, client 1 inserts X in between A and B
              ;; Client 1's state is now AXBC
              {:add-id "a8"
@@ -345,7 +346,7 @@
              {:add-id "a4"
               :op-type :add-array-edge
               :path []
-              :value {:head-node-id crdt/array-start-node-id
+              :value {:head-node-id crdt-c/array-start-node-id
                       :tail-node-id "NodeA"}}
              {:add-id "a5"
               :op-type :add-array-edge
@@ -361,7 +362,7 @@
               :op-type :add-array-edge
               :path []
               :value {:head-node-id "NodeC"
-                      :tail-node-id crdt/array-end-node-id}}]
+                      :tail-node-id crdt-c/array-end-node-id}}]
         path []]
     (doseq [ops (repeatedly 500 #(shuffle ops))]
       (let [crdt (crdt/apply-ops (u/sym-map ops schema sys-time-ms))
@@ -385,7 +386,7 @@
               :value "B"}
              {:add-id "a4"
               :op-type :add-array-edge
-              :value {:head-node-id crdt/array-start-node-id
+              :value {:head-node-id crdt-c/array-start-node-id
                       :tail-node-id "NA"}}
              {:add-id "a5"
               :op-type :add-array-edge
@@ -394,7 +395,7 @@
              {:add-id "a6"
               :op-type :add-array-edge
               :value {:head-node-id "NB"
-                      :tail-node-id crdt/array-end-node-id}}]
+                      :tail-node-id crdt-c/array-end-node-id}}]
         change-ops [{:add-id "a2"
                      :op-type :delete-value
                      :path ["NB"]}
@@ -440,7 +441,7 @@
              {:add-id "a7"
               :op-type :add-array-edge
               :path []
-              :value {:head-node-id crdt/array-start-node-id
+              :value {:head-node-id crdt-c/array-start-node-id
                       :tail-node-id "Pet1"}}
              {:add-id "a8"
               :op-type :add-array-edge
@@ -451,7 +452,7 @@
               :op-type :add-array-edge
               :path []
               :value {:head-node-id "Pet2"
-                      :tail-node-id crdt/array-end-node-id}}]
+                      :tail-node-id crdt-c/array-end-node-id}}]
         path []
         expected [{:name "Bo"
                    :species "Canis familiaris"}
@@ -491,7 +492,7 @@
              {:add-id "a5"
               :op-type :add-array-edge
               :path ["alice-id" :pets 1]
-              :value {:head-node-id crdt/array-start-node-id
+              :value {:head-node-id crdt-c/array-start-node-id
                       :tail-node-id "Pet1"}}
              {:add-id "a6"
               :op-type :add-array-edge
@@ -502,7 +503,7 @@
               :op-type :add-array-edge
               :path ["alice-id" :pets 1]
               :value {:head-node-id "Pet2"
-                      :tail-node-id crdt/array-end-node-id}}]
+                      :tail-node-id crdt-c/array-end-node-id}}]
         path []
         expected {"alice-id" {:name "Alice",
                               :pets [{:name "Bo"
