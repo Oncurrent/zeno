@@ -23,12 +23,12 @@
   [:name l/string-schema]
   [:pets (l/array-schema pet-schema)])
 
+#_
 (deftest ^:this test-single-value-xl
   (let [schema l/string-schema
-        sys-time-ms (u/str->long "1640205282858")
-        *next-add-id-num (atom 0)
-        make-add-id #(let [n (swap! *next-add-id-num inc)]
-                       (str "a" n))
+        *next-id-num (atom 0)
+        make-id #(let [n (swap! *next-id-num inc)]
+                   (str "a" n))
         cmds [{:arg "ABC"
                :op :set
                :path []}
@@ -37,7 +37,8 @@
                :path []}]
         {:keys [ops]} (ac/apply-cmds {:cmds cmds
                                       :crdt nil
-                                      :make-add-id make-add-id})
+                                      :make-id make-id
+                                      :schema schema})
         expected-ops #{{:add-id "a1"
                         :op-type :add-value
                         :path []

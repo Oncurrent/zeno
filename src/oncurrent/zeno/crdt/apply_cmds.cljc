@@ -6,20 +6,22 @@
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
-(defn apply-cmd [{:keys [cmd crdt make-add-id]}]
-  {:crdt crdt
-   :ops #{{:add-id "a1"
-           :op-type :add-value
-           :path []
-           :value "ABC"}}})
+(defmulti apply-cmd (fn [{:keys [schema]}]
+                      (c/schema->dispatch-type schema)))
+
+(defmethod apply-cmd :single-value
+  [{:keys [cmd crdt]}]
+  (let []
+    {:crdt crdt
+     :ops #{{:add-id "a1"
+             :op-type :add-value
+             :path []
+             :value "ABC"}}}))
 
 (defn apply-cmds
-  [{:keys [cmds crdt make-add-id]
-    :or {make-add-id u/compact-random-uuid}}]
+  [{:keys [cmds crdt] :as arg}]
   (reduce (fn [acc cmd]
-            (let [ret (apply-cmd {:cmd cmd
-                                  :crdt (:crdt acc)
-                                  :make-add-id make-add-id})]
+            (let [ret (apply-cmd (assoc arg :cmd cmd :crdt acc))]
               (-> acc
                   (assoc :crdt (:crdt ret))
                   (update :ops set/union (:ops ret)))))

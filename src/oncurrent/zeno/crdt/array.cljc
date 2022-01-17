@@ -1,4 +1,4 @@
-(ns oncurrent.zeno.crdt.get-value
+(ns oncurrent.zeno.crdt.array
   (:require
    [clojure.set :as set]
    [deercreeklabs.lancaster :as l]
@@ -6,20 +6,21 @@
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
-(defmulti get-value (fn [{:keys [schema]}]
-                      (c/schema->dispatch-type schema)))
+(defn delete-dangling-edges [arg]
+  arg)
 
-;; TODO: Replace this with conflict resolution?
-(defn get-most-recent [current-add-id-to-value-info]
-  (->> (vals current-add-id-to-value-info)
-       (sort-by :sys-time-ms)
-       (last)))
+(defn connect-nodes-to-terminals [arg]
+  arg)
 
-(defn get-single-value [{:keys [crdt schema] :as arg}]
-  (let [{:keys [current-add-id-to-value-info]} crdt]
-    (when (pos? (count current-add-id-to-value-info))
-      (-> (get-most-recent current-add-id-to-value-info)
-          (:value)))))
+(defn serialize-parallel-paths [arg]
+  arg)
+
+(defn repair-array [{:keys [crdt]}]
+  (-> {:crdt crdt
+       :ops #{}}
+      (delete-dangling-edges)
+      (connect-nodes-to-terminals)
+      (serialize-parallel-paths)))
 
 (defn get-array-edge-info
   [{:keys [add-id-to-edge
@@ -106,7 +107,7 @@
                 linked-nodes))))
 
 (defn make-connecting-edges
-  [{:keys [edges live-nodes make-add-id] :as arg}]
+  [{:keys [edges live-nodes make-id] :as arg}]
   (-> (reduce (fn [acc terminal]
                 (reduce
                  (fn [acc* node]
@@ -124,7 +125,7 @@
                                              :head-node-id]
                                             [:head-node-id
                                              :tail-node-id])
-                             edge {:add-id (make-add-id)
+                             edge {:add-id (make-id)
                                    self-add-id node
                                    opp-add-id conn-node}]
                          (-> acc*
@@ -138,13 +139,13 @@
       :new-edges))
 
 (defn get-node-connect-info
-  [{:keys [edges deleted-edges live-nodes make-add-id]}]
+  [{:keys [edges deleted-edges live-nodes make-id]}]
   (let [*nodes-connected-to-start (atom #{c/array-start-node-id})
         *nodes-connected-to-end (atom #{c/array-end-node-id})
         new-edges (make-connecting-edges (u/sym-map deleted-edges
                                                     edges
                                                     live-nodes
-                                                    make-add-id
+                                                    make-id
                                                     *nodes-connected-to-start
                                                     *nodes-connected-to-end))
         ops (map (fn [edge]
@@ -207,7 +208,7 @@
 (defn get-conflict-resolution-op-infos
   [{:keys [combining-node
            edges
-           make-add-id
+           make-id
            ops
            paths
            schema
@@ -224,7 +225,7 @@
                                   :tail-node-id (first next-path)})
                   del-op-2 {:add-id edge-to-del-2
                             :op-type :delete-array-edge}
-                  edge-to-add {:add-id (make-add-id)
+                  edge-to-add {:add-id (make-id)
                                :head-node-id (last path)
                                :tail-node-id (first next-path)}
                   add-op {:add-id (:add-id edge-to-add)
@@ -289,7 +290,7 @@
               child (first children)]
           (when-not child
             (throw (ex-info (str "Array at path `" path
-                                 "` has a DAG is not connected.")
+                                 "` has a DAG that is not connected.")
                             (u/sym-map edges node->edge-info path node-id))))
           (cond
             (> (count children) 1)
@@ -327,53 +328,13 @@
                                  node-connect-info repair-ops))))
     (u/sym-map ordered-node-ids repair-ops linear-edges)))
 
-(defmethod get-value :single-value
-  [{:keys [path] :as arg}]
-  (if (seq path)
-    (throw (ex-info "Can't index into a single-value CRDT." arg))
-    (get-single-value arg)))
-
-(defn associative-get-value
-  [{:keys [get-child-schema crdt path] :as arg}]
-  (if (empty? path)
-    (reduce-kv (fn [acc k _]
-                 (let [v (get-value (assoc arg
-                                           :path [k]))]
-                   (if (or (nil? v)
-                           (and (coll? v) (empty? v)))
-                     acc
-                     (assoc acc k v))))
-               {}
-               (:children crdt))
-    (let [[k & ks] path]
-      (c/check-key (assoc arg :key k))
-      (get-value (assoc arg
-                        :crdt (get-in crdt [:children k])
-                        :schema (get-child-schema k)
-                        :path ks)))))
-
-(defmethod get-value :map
-  [{:keys [schema] :as arg}]
-  (let [get-child-schema #(l/schema-at-path schema [%])]
-    (associative-get-value (assoc arg :get-child-schema get-child-schema))))
-
-(defmethod get-value :record
-  [{:keys [schema] :as arg}]
-  (let [get-child-schema #(l/schema-at-path schema [%])]
-    (associative-get-value (assoc arg :get-child-schema get-child-schema))))
-
-(defmethod get-value :union
-  [{:keys [crdt schema] :as arg}]
-  (let [member-schema (l/member-schema-at-branch schema (:union-branch crdt))]
-    (get-value (assoc arg :schema member-schema))))
-
-(defmethod get-value :array
-  [{:keys [crdt make-add-id path schema]
-    :or {make-add-id u/compact-random-uuid}
+(defmethod c/get-value :array
+  [{:keys [crdt make-id path schema]
+    :or {make-id u/compact-random-uuid}
     :as arg}]
   (let [arg* (assoc arg :get-child-schema (fn [k]
                                             (l/schema-at-path schema [0])))
-        v (associative-get-value arg*)]
+        v (c/associative-get-value arg*)]
     (if (seq path)
       v
       (let [child-schema (l/schema-at-path schema [0])
@@ -381,7 +342,7 @@
             {:keys [deleted-edges edges]} (get-array-edge-info crdt)
             live-nodes (reduce-kv
                         (fn [acc node-id crdt*]
-                          (let [v* (get-value
+                          (let [v* (c/get-value
                                     (assoc arg*
                                            :crdt crdt*
                                            :schema child-schema))]
@@ -394,7 +355,7 @@
                                 deleted-edges
                                 edges
                                 live-nodes
-                                make-add-id
+                                make-id
                                 path)
             ret (get-linear-array-info info-arg)
             {:keys [ordered-node-ids]} (if (:linear? ret)
