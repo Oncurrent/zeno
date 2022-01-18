@@ -4,8 +4,6 @@
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
-(def array-end-node-id "-END-")
-(def array-start-node-id "-START-")
 (def container-types #{:array :map :record :union})
 
 (defn schema->dispatch-type [schema]

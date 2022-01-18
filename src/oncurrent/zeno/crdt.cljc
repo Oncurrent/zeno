@@ -1,6 +1,7 @@
 (ns oncurrent.zeno.crdt
   (:require
    [oncurrent.zeno.crdt.apply-ops :as apply-ops]
+   [oncurrent.zeno.crdt.array :as array] ; need to require for multimethods
    [oncurrent.zeno.crdt.common :as c]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
