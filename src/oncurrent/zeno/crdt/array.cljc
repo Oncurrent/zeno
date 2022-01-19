@@ -204,7 +204,7 @@
                              :paths (map :path path-infos)
                              :splitting-node node))))))))))
 
-(defn get-linear-array-info
+(defn get-array-info
   [{:keys [crdt path]}]
   (let [edges (get-edges {:crdt crdt
                           :edge-type :current})]
@@ -306,6 +306,34 @@
       (connect-nodes-to-terminals)
       (serialize-parallel-paths)))
 
+(defn get-linear-array-info [{:keys [path schema] :as arg}]
+  (let [arg* (assoc arg :get-child-schema (fn [k]
+                                            (l/schema-at-path schema [0]))
+                    :path [])
+        id->v (c/associative-get-value arg*)]
+    (loop [crdt (:crdt arg*)
+           repaired? false
+           repair-ops #{}]
+      (let [arg** (assoc arg* :crdt crdt)
+            ret (get-array-info arg**)
+            {:keys [linear? ordered-node-ids]} ret]
+        (cond
+          linear?
+          {:crdt crdt
+           :ordered-node-ids ordered-node-ids
+           :repair-ops repair-ops
+           :v (mapv id->v ordered-node-ids)}
+
+          (not repaired?)
+          (let [rret (repair-array arg**)]
+            (recur (:crdt rret)
+                   true
+                   (:ops rret)))
+
+          :else
+          (throw (ex-info "Array CRDT DAG is not linear after repair ops."
+                          (u/sym-map crdt path))))))))
+
 (defmethod c/get-value :array
   [{:keys [path schema] :as arg}]
   (let [arg* (assoc arg :get-child-schema (fn [k]
@@ -313,17 +341,4 @@
         v (c/associative-get-value arg*)]
     (if (seq path)
       v
-      (loop [crdt (:crdt arg*)
-             repaired? false]
-        (let [ret (get-linear-array-info (assoc arg* :crdt crdt))]
-          (cond
-            (:linear? ret)
-            (mapv v (:ordered-node-ids ret))
-
-            (not repaired?)
-            (recur (:crdt (repair-array arg*))
-                   true)
-
-            :else
-            (throw (ex-info "Array CRDT DAG is not linear after repair ops."
-                            (u/sym-map crdt path)))))))))
+      (:v (get-linear-array-info arg)))))

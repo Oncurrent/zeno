@@ -216,7 +216,9 @@
                                         (conj ids add-id)
                                         #{add-id})))))
 
-(defn apply-ops [{:keys [crdt ops schema sys-time-ms]}]
+(defn apply-ops
+  [{:keys [crdt ops schema sys-time-ms]
+    :or {sys-time-ms (u/current-time-ms)}}]
   (reduce (fn [crdt* op]
             (apply-op (assoc op
                              :crdt crdt*

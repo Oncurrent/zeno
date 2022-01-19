@@ -4,7 +4,7 @@
    [clojure.test :as t :refer [deftest is]]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.baracus :as ba]
-   [oncurrent.zeno.idb-raw-storage :as irs]
+   [oncurrent.zeno.client.idb-raw-storage :as irs]
    [oncurrent.zeno.storage :as storage]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))

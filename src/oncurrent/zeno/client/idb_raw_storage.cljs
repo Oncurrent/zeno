@@ -1,4 +1,4 @@
-(ns oncurrent.zeno.idb-raw-storage
+(ns oncurrent.zeno.client.idb-raw-storage
   (:require
    [clojure.core.async :as ca]
    [deercreeklabs.async-utils :as au]

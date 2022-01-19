@@ -1,6 +1,7 @@
 (ns oncurrent.zeno.crdt.common
   (:require
    [deercreeklabs.lancaster :as l]
+   [deercreeklabs.lancaster.utils :as lu]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
@@ -90,3 +91,24 @@
   [{:keys [crdt schema] :as arg}]
   (let [member-schema (l/member-schema-at-branch schema (:union-branch crdt))]
     (get-value (assoc arg :schema member-schema))))
+
+(defn get-union-branch-and-schema-for-value [{:keys [schema v]}]
+  (let [member-schemas (vec (l/member-schemas schema))
+        last-union-branch (dec (count member-schemas))]
+    (loop [union-branch 0]
+      (let [member-schema (nth member-schemas union-branch)
+            pred (-> (l/schema-type member-schema)
+                     (lu/avro-type->pred))]
+        (cond
+          (pred v)
+          (u/sym-map union-branch member-schema)
+
+          (= last-union-branch union-branch)
+          (throw (ex-info
+                  (str "The value `" v "` does not match any of the "
+                       "member schemas in the union schema.")
+                  {:union-edn-schema (l/edn schema)
+                   :v v}))
+
+          :else
+          (recur (inc union-branch)))))))
