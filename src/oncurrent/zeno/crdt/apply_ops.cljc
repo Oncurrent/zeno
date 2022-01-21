@@ -16,26 +16,30 @@
        (= (select-keys x crdt-value-info-keys)
           (select-keys y crdt-value-info-keys))))
 
+(defn add-single-value
+  [{:keys [add-id crdt op-type] :as arg}]
+  (let [{:keys [current-add-id-to-value-info deleted-add-ids]} crdt
+        cur-value-info (get current-add-id-to-value-info add-id)
+        value-info (select-keys arg crdt-value-info-keys)
+        same? (same-cv-info? cur-value-info value-info)
+        deleted? (get deleted-add-ids add-id)]
+    (when (and value-info cur-value-info (not same?))
+      (throw (ex-info
+              (str "Attempt to reuse an existing add-id "
+                   "(`" add-id "`) to add different value info to CRDT.")
+              (u/sym-map add-id cur-value-info op-type value-info))))
+    (if (or deleted? same?)
+      crdt
+      (assoc-in crdt [:current-add-id-to-value-info add-id] value-info))))
+
 (defmethod apply-op [:single-value :add-value]
-  [{:keys [add-id crdt op-type path] :as arg}]
+  [{:keys [add-id crdt path] :as arg}]
   (if (seq path)
     (throw (ex-info "Can't index into a single-value CRDT."
                     (u/sym-map add-id crdt path)))
-    (let [{:keys [current-add-id-to-value-info deleted-add-ids]} crdt
-          cur-value-info (get current-add-id-to-value-info add-id)
-          value-info (select-keys arg crdt-value-info-keys)
-          same? (same-cv-info? cur-value-info value-info)
-          deleted? (get deleted-add-ids add-id)]
-      (when (and value-info cur-value-info (not same?))
-        (throw (ex-info
-                (str "Attempt to reuse an existing add-id "
-                     "(`" add-id "`) to add different value info to CRDT.")
-                (u/sym-map add-id cur-value-info op-type value-info))))
-      (if (or deleted? same?)
-        crdt
-        (assoc-in crdt [:current-add-id-to-value-info add-id] value-info)))))
+    (add-single-value arg)))
 
-(defmethod apply-op [:single-value :delete-value]
+(defn del-single-value
   [{:keys [add-id crdt]}]
   (-> crdt
       (update :current-add-id-to-value-info dissoc add-id)
@@ -43,6 +47,10 @@
                                  (if (seq ids)
                                    (conj ids add-id)
                                    #{add-id})))))
+
+(defmethod apply-op [:single-value :delete-value]
+  [arg]
+  (del-single-value arg))
 
 (defn associative-apply-op
   [{:keys [add-id get-child-schema crdt path schema value]

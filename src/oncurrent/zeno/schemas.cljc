@@ -49,23 +49,18 @@
   [:ws-url ws-url-schema])
 
 (l/def-enum-schema command-op-schema
-  :add-identifier-to-subject
-  :add-subjects-to-acl
-  :add-subjects-to-group
-  :change-secret-for-subject
-  :create-subject
-  :delete-subject
+  :add-ids-to-group
+  :create-group
+  :delete-group
   :insert-after
   :insert-before
   :insert-range-after
   :insert-range-before
   :remove
-  :remove-identifier-from-subject
-  :remove-subjects-from-acl
-  :remove-subjects-from-group
+  :set-access-control-rule
+  :remove-ids-from-group
   :set
-  :set-acl
-  :set-authenticator-info)
+  :set-access-control-rule)
 
 (l/def-record-schema modify-group-arg-schema
   [:group-subject-id id-schema]
@@ -121,7 +116,7 @@
 ;;;;;;;;;;;;;; ACL Schemas ;;;;;;;;;;;;;;;;;
 
 (l/def-enum-schema permissions-schema
-  :r :rs :rw :rws)
+  :r :w :rw :no-access)
 
 (l/def-record-schema acl-entry-schema
   [:subject-id id-schema]
