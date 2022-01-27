@@ -1,7 +1,5 @@
 (ns oncurrent.zeno.client.client-commands
   (:require
-   [clojure.core.async :as ca]
-   [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
    [oncurrent.zeno.schemas :as schemas]
    [oncurrent.zeno.utils :as u]
@@ -139,6 +137,7 @@
         norm-i (if (nat-int? i)
                  i
                  (+ (count val) i))
+        ;; TODO: Check for out of range norm-i
         split-i (if (= :insert-before op)
                   norm-i
                   (inc norm-i))

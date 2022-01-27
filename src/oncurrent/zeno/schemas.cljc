@@ -90,12 +90,10 @@
 (l/def-record-schema crdt-op-schema
   "Depending on the op-type, different fields will be used."
   [:add-id id-schema]
-  [:item-id id-schema]
-  [:k l/string-schema]
   [:op-type crdt-op-type-schema]
+  [:path path-schema]
   [:serialized-value serialized-value-schema]
-  [:sys-time-ms timestamp-ms-schema]
-  [:union-branch l/int-schema])
+  [:sys-time-ms timestamp-ms-schema])
 
 ;;;;;;;;;;;;;;;; Transaction & Log Schemas ;;;;;;;;;;;;;;;;;
 

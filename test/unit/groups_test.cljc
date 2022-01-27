@@ -60,7 +60,7 @@
         groups (groups/get-value (u/sym-map group-store path))]
     (is (= expected groups))))
 
-(deftest ^:this test-nesting
+(deftest test-nesting
   (let [ops [{:add-id "I1"
               :op-type :add-value
               :path [:groups "G1" "A1" :role 1]

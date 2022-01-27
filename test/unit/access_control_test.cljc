@@ -11,7 +11,7 @@
      (:import
       (clojure.lang ExceptionInfo))))
 
-(deftest ^:this test-access-control
+(deftest test-access-control
   (let [group-ops [{:add-id "I1"
                     :op-type :add-value
                     :path [:groups "G1" "A1" :role 1]
@@ -78,7 +78,6 @@
                                 :group-store group-store
                                 :path [:deals "A"]
                                 :subject-id "random"})))
-
     (is (= false (ac/can-write? {:ac-store ac-store
                                  :group-store group-store
                                  :path [:deals "A"]

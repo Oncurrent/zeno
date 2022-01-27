@@ -96,7 +96,7 @@
     :or {make-id u/compact-random-uuid}
     :as arg}]
   (if (empty? edges)
-    arg
+    #{}
     (-> (reduce (fn [acc terminal]
                   (reduce
                    (fn [acc* node]
@@ -145,7 +145,7 @@
 (defn find-edge-add-id
   [{:keys [edges head-node-id tail-node-id] :as arg}]
   (when (empty? edges)
-    (throw (ex-info "No edges provided to `find-edge`." arg)))
+    (throw (ex-info "No edges provided to `find-edge-add-id`." arg)))
   (reduce (fn [acc edge]
             (when (and (= head-node-id (:head-node-id edge))
                        (= tail-node-id (:tail-node-id edge)))
@@ -154,7 +154,7 @@
           edges))
 
 (defn get-serializing-ops-for-path
-  [{:keys [combining-node edges make-id paths splitting-node]
+  [{:keys [combining-node edges make-id paths splitting-node sys-time-ms]
     :or {make-id u/compact-random-uuid}}]
   (reduce (fn [acc [path next-path]]
             (let [del-op-1 {:add-id (find-edge-add-id
@@ -170,6 +170,7 @@
                   add-id (make-id)
                   add-op {:add-id add-id
                           :op-type :add-array-edge
+                          :sys-time-ms (or sys-time-ms (u/current-time-ms))
                           :value {:add-id add-id
                                   :head-node-id (last path)
                                   :tail-node-id (first next-path)}}]
@@ -208,7 +209,9 @@
   [{:keys [crdt path]}]
   (let [edges (get-edges {:crdt crdt
                           :edge-type :current})]
-    (when (seq edges)
+    (if (empty? edges)
+      {:linear? true
+       :ordered-node-ids []}
       (let [node->edge-info (make-node->edge-info edges)]
         (when-not (node->edge-info array-start-node-id)
           (throw (ex-info (str "Array at path `" path "` does not have a start "
@@ -237,8 +240,15 @@
               :else
               (recur child (conj ordered-node-ids child)))))))))
 
-(defn get-live-nodes [{:keys [crdt get-child-schema] :as arg}]
-  (let [child-schema (get-child-schema 0)]
+(defn get-ordered-node-ids [{:keys [crdt path] :as arg}]
+  (let [{:keys [linear? ordered-node-ids]} (get-array-info arg)]
+    (when-not linear?
+      (throw (ex-info "Array CRDT DAG is not linear and needs repair"
+                      (u/sym-map crdt path))))
+    ordered-node-ids))
+
+(defn get-live-nodes [{:keys [crdt schema] :as arg}]
+  (let [child-schema (l/schema-at-path schema [0])]
     (reduce-kv
      (fn [acc node-id child-crdt]
        (if (nil? (c/get-value (assoc arg
@@ -268,7 +278,8 @@
            :crdt (apply-ops/apply-ops (assoc arg :ops ops))
            :ops (set/union (:ops arg) ops))))
 
-(defn connect-nodes-to-terminals [{:keys [live-nodes make-id] :as arg}]
+(defn connect-nodes-to-terminals
+  [{:keys [live-nodes make-id sys-time-ms] :as arg}]
   (let [*nodes-connected-to-start (atom #{array-start-node-id})
         *nodes-connected-to-end (atom #{array-end-node-id})
         deleted-edges (get-edges (assoc arg :edge-type :deleted))
@@ -280,8 +291,9 @@
                                                     *nodes-connected-to-start
                                                     *nodes-connected-to-end))
         ops (map (fn [edge]
-                   {:op-type :add-array-edge
-                    :add-id (:add-id edge)
+                   {:add-id (:add-id edge)
+                    :op-type :add-array-edge
+                    :sys-time-ms (or sys-time-ms (u/current-time-ms))
                     :value (select-keys edge [:head-node-id :tail-node-id])})
                  new-edges)]
     (assoc arg
@@ -298,7 +310,7 @@
                :crdt (apply-ops/apply-ops (assoc arg :ops ops))
                :ops (set/union (:ops arg) ops))))))
 
-(defn repair-array [arg]
+(defn repair-array [{:keys [schema] :as arg}]
   (-> (assoc arg
              :live-nodes (get-live-nodes arg)
              :sys-time-ms (u/current-time-ms))
@@ -306,39 +318,150 @@
       (connect-nodes-to-terminals)
       (serialize-parallel-paths)))
 
-(defn get-linear-array-info [{:keys [path schema] :as arg}]
-  (let [arg* (assoc arg :get-child-schema (fn [k]
-                                            (l/schema-at-path schema [0]))
-                    :path [])
-        id->v (c/associative-get-value arg*)]
-    (loop [crdt (:crdt arg*)
-           repaired? false
-           repair-ops #{}]
-      (let [arg** (assoc arg* :crdt crdt)
-            ret (get-array-info arg**)
-            {:keys [linear? ordered-node-ids]} ret]
-        (cond
-          linear?
-          {:crdt crdt
-           :ordered-node-ids ordered-node-ids
-           :repair-ops repair-ops
-           :v (mapv id->v ordered-node-ids)}
-
-          (not repaired?)
-          (let [rret (repair-array arg**)]
-            (recur (:crdt rret)
-                   true
-                   (:ops rret)))
-
-          :else
-          (throw (ex-info "Array CRDT DAG is not linear after repair ops."
-                          (u/sym-map crdt path))))))))
-
 (defmethod c/get-value :array
   [{:keys [path schema] :as arg}]
   (let [arg* (assoc arg :get-child-schema (fn [k]
                                             (l/schema-at-path schema [0])))
-        v (c/associative-get-value arg*)]
+        id->v (c/associative-get-value arg*)]
     (if (seq path)
-      v
-      (:v (get-linear-array-info arg)))))
+      id->v
+      (let [ordered-node-ids (get-ordered-node-ids arg)]
+        (mapv id->v ordered-node-ids)))))
+
+(defmulti get-edge-ops-for-insert :cmd-type)
+
+(defmethod get-edge-ops-for-insert :insert-before
+  [{:keys [crdt i make-id new-node-id ordered-node-ids sys-time-ms]}]
+  (let [edges (get-edges {:crdt crdt
+                          :edge-type :current})
+        node-id (or (get ordered-node-ids i)
+                    array-end-node-id)
+        prev-node-id (if (pos? i)
+                       (get ordered-node-ids (dec i))
+                       array-start-node-id)
+        edge-to-rm (reduce (fn [acc edge]
+                             (when (and (= prev-node-id (:head-node-id edge))
+                                        (= node-id (:tail-node-id edge)))
+                               (reduced (:add-id edge))))
+                           nil
+                           edges)]
+    (cond-> #{{:add-id (make-id)
+               :op-type :add-array-edge
+               :sys-time-ms (or sys-time-ms (u/current-time-ms))
+               :value {:head-node-id prev-node-id
+                       :tail-node-id new-node-id}}
+              {:add-id (make-id)
+               :op-type :add-array-edge
+               :sys-time-ms (or sys-time-ms (u/current-time-ms))
+               :value {:head-node-id new-node-id
+                       :tail-node-id node-id}}}
+      edge-to-rm (conj {:add-id edge-to-rm
+                        :op-type :delete-array-edge}))))
+
+(defmethod get-edge-ops-for-insert :insert-after
+  [{:keys [crdt i make-id new-node-id ordered-node-ids sys-time-ms]}]
+  (let [edges (get-edges {:crdt crdt
+                          :edge-type :current})
+        node-id (or (get ordered-node-ids i)
+                    array-start-node-id)
+        next-node-id (if (< (inc i) (count ordered-node-ids))
+                       (get ordered-node-ids (inc i))
+                       array-end-node-id)
+        edge-to-rm (reduce (fn [acc edge]
+                             (when (and (= node-id (:head-node-id edge))
+                                        (= next-node-id (:tail-node-id edge)))
+                               (reduced (:add-id edge))))
+                           nil
+                           edges)
+        add-id-1 (make-id)
+        add-id-2 (make-id)]
+    (cond-> #{{:add-id add-id-1
+               :op-type :add-array-edge
+               :sys-time-ms (or sys-time-ms (u/current-time-ms))
+               :value {:head-node-id node-id
+                       :tail-node-id new-node-id}}
+              {:add-id add-id-2
+               :op-type :add-array-edge
+               :sys-time-ms (or sys-time-ms (u/current-time-ms))
+               :value {:head-node-id new-node-id
+                       :tail-node-id next-node-id}}}
+      edge-to-rm (conj {:add-id edge-to-rm
+                        :op-type :delete-array-edge}))))
+
+(defmethod get-edge-ops-for-insert :insert-range-after
+  [{:keys [crdt i make-id new-node-ids ordered-node-ids sys-time-ms]}]
+  (let [edges (get-edges {:crdt crdt
+                          :edge-type :current})
+        node-id (or (get ordered-node-ids i)
+                    array-start-node-id)
+        next-node-id (if (< (inc i) (count ordered-node-ids))
+                       (get ordered-node-ids (inc i))
+                       array-end-node-id)
+        edge-to-rm (reduce (fn [acc edge]
+                             (when (and (= node-id (:head-node-id edge))
+                                        (= next-node-id (:tail-node-id edge)))
+                               (reduced (:add-id edge))))
+                           nil
+                           edges)
+        initial-ops #{{:add-id (make-id)
+                       :op-type :add-array-edge
+                       :sys-time-ms (or sys-time-ms (u/current-time-ms))
+                       :value {:head-node-id node-id
+                               :tail-node-id (first new-node-ids)}}
+                      {:add-id (make-id)
+                       :op-type :add-array-edge
+                       :sys-time-ms (or sys-time-ms (u/current-time-ms))
+                       :value {:head-node-id (last new-node-ids)
+                               :tail-node-id next-node-id}}}
+        add-ops (reduce (fn [acc [head-node-id tail-node-id]]
+                          (conj acc
+                                {:add-id (make-id)
+                                 :op-type :add-array-edge
+                                 :sys-time-ms (or sys-time-ms
+                                                  (u/current-time-ms))
+                                 :value (u/sym-map head-node-id
+                                                   tail-node-id)}))
+                        initial-ops
+                        (partition 2 1 new-node-ids))]
+    (cond-> add-ops
+      edge-to-rm (conj {:add-id edge-to-rm
+                        :op-type :delete-array-edge}))))
+
+(defmethod get-edge-ops-for-insert :insert-range-before
+  [{:keys [crdt i make-id new-node-ids ordered-node-ids sys-time-ms]}]
+  (let [edges (get-edges {:crdt crdt
+                          :edge-type :current})
+        node-id (or (get ordered-node-ids i)
+                    array-end-node-id)
+        prev-node-id (if (pos? i)
+                       (get ordered-node-ids (dec i))
+                       array-start-node-id)
+        edge-to-rm (reduce (fn [acc edge]
+                             (when (and (= prev-node-id (:head-node-id edge))
+                                        (= node-id (:tail-node-id edge)))
+                               (reduced (:add-id edge))))
+                           nil
+                           edges)
+        initial-ops #{{:add-id (make-id)
+                       :op-type :add-array-edge
+                       :sys-time-ms (or sys-time-ms (u/current-time-ms))
+                       :value {:head-node-id prev-node-id
+                               :tail-node-id (first new-node-ids)}}
+                      {:add-id (make-id)
+                       :op-type :add-array-edge
+                       :sys-time-ms (or sys-time-ms (u/current-time-ms))
+                       :value {:head-node-id (last new-node-ids)
+                               :tail-node-id node-id}}}
+        add-ops (reduce (fn [acc [head-node-id tail-node-id]]
+                          (conj acc
+                                {:add-id (make-id)
+                                 :op-type :add-array-edge
+                                 :sys-time-ms (or sys-time-ms
+                                                  (u/current-time-ms))
+                                 :value (u/sym-map head-node-id
+                                                   tail-node-id)}))
+                        initial-ops
+                        (partition 2 1 new-node-ids))]
+    (cond-> add-ops
+      edge-to-rm (conj {:add-id edge-to-rm
+                        :op-type :delete-array-edge}))))

@@ -40,9 +40,7 @@
               :op-type :add-value
               :path path
               :value "XYZ"}]
-        crdt (crdt/apply-ops (u/sym-map ops
-                                        schema
-                                        sys-time-ms))
+        crdt (crdt/apply-ops (u/sym-map ops schema sys-time-ms))
         expected-v "XYZ"]
     (doseq [ops (combo/permutations ops)]
       (let [crdt (crdt/apply-ops (u/sym-map ops

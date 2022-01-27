@@ -4,7 +4,7 @@
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
    [oncurrent.zeno.client.state-subscriptions :as state-subscriptions]
-   [oncurrent.zeno.client.client-commands :as commands]
+   [oncurrent.zeno.commands :as commands]
    [oncurrent.zeno.client.sys-state :as ss]
    [oncurrent.zeno.storage :as storage]
    [oncurrent.zeno.utils :as u]
@@ -47,6 +47,8 @@
                  msg ". Got `" (or v "nil") "`.")
             (u/sym-map k v config))))))))
 
+;; TODO: Remove
+#_
 (defn split-cmds [cmds]
   (reduce
    (fn [acc cmd]
@@ -68,12 +70,24 @@
     :sys-cmds []}
    cmds))
 
+
 (defn <do-update-state! [zc cmds]
   ;; This is called serially from the update-state loop.
   ;; We can rely on there being no concurrent updates.
   ;; We need to execute all the commands transactionally. Either they
-  ;; all commit or none commit. A transaction may include both `:sys` and
-  ;; `:client` updates.
+  ;; all commit or none commit. A transaction may include  many kinds of
+  ;; updates (:crdt, :client, :groups, :access-control, etc.)
+  (au/go
+    (let [{:keys [*state-stores]} zc
+          {:keys [access-control-store
+                  client-store
+                  crdt-store
+                  group-store]} @*state-stores
+          ops #{}
+          ret :lakjdslkas]
+      true))
+
+  #_
   (au/go
     (let [{:keys [*client-state]} zc
           {:keys [client-cmds sys-cmds]} (split-cmds cmds)

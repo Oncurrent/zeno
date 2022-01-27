@@ -23,6 +23,9 @@
         value-info (select-keys arg crdt-value-info-keys)
         same? (same-cv-info? cur-value-info value-info)
         deleted? (get deleted-add-ids add-id)]
+    (when-not (:sys-time-ms arg)
+      (throw (ex-info "`:add-value` op is missing `:sys-time-ms`."
+                      (u/sym-map op-type add-id value-info))))
     (when (and value-info cur-value-info (not same?))
       (throw (ex-info
               (str "Attempt to reuse an existing add-id "
@@ -225,12 +228,11 @@
                                         #{add-id})))))
 
 (defn apply-ops
-  [{:keys [crdt ops schema sys-time-ms]
-    :or {sys-time-ms (u/current-time-ms)}}]
-  (reduce (fn [crdt* op]
+  [{:keys [crdt ops schema] :as arg}]
+  (reduce (fn [crdt* {:keys [sys-time-ms] :as op}]
             (apply-op (assoc op
                              :crdt crdt*
                              :schema schema
-                             :sys-time-ms sys-time-ms)))
+                             :sys-time-ms (or sys-time-ms (:sys-time-ms arg)))))
           crdt
           ops))
