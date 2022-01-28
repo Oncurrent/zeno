@@ -369,7 +369,7 @@
             arg (u/sym-map crdt path schema)
             v (crdt/get-value arg)
             _ (is (= ["A" "B" "C"] v))
-            kv (crdt/get-value (assoc arg :path ["NodeB"]))
+            kv (crdt/get-value (assoc arg :path 1))
             _ (is (= "B" kv))]))))
 
 (deftest test-change-value-of-array-item

@@ -19,11 +19,16 @@
                       (schema->dispatch-type schema)))
 
 (defmethod check-key :array
-  [{:keys [add-id key op-type path]}]
-  (when-not (string? key)
-    (throw (ex-info (str "Array node-id key is not a string. Got: `"
-                         (or key "nil") "`.")
-                    (u/sym-map add-id key op-type path)))))
+  [{:keys [add-id key op-type string-array-keys? path]}]
+  (if string-array-keys?
+    (when-not (string? key)
+      (throw (ex-info (str "Array key must be a string. Got: `"
+                           (or key "nil") "`.")
+                      (u/sym-map add-id key op-type path))))
+    (when-not (int? key)
+      (throw (ex-info (str "Array index must be an integer. Got: `"
+                           (or key "nil") "`.")
+                      (u/sym-map add-id key op-type path))))))
 
 (defmethod check-key :map
   [{:keys [add-id key op-type path]}]
@@ -109,6 +114,37 @@
                        "member schemas in the union schema.")
                   {:union-edn-schema (l/edn schema)
                    :v v}))
+
+          :else
+          (recur (inc union-branch)))))))
+
+(defn avro-type->key-pred [type]
+  (case type
+    :array integer?
+    :map string?
+    :record keyword?
+    (throw (ex-info (str "The given avro type `" type "` is not a container.")
+                    (u/sym-map type)))))
+
+(defn get-union-branch-and-schema-for-key [{:keys [schema k]}]
+  (let [member-schemas (vec (l/member-schemas schema))
+        last-union-branch (dec (count member-schemas))]
+    (loop [union-branch 0]
+      (let [member-schema (nth member-schemas union-branch)
+            avro-type (l/schema-type member-schema)
+            container? (lu/avro-container-types avro-type)
+            pred (when container?
+                   (avro-type->key-pred avro-type))]
+        (cond
+          (and container? (pred k))
+          (u/sym-map union-branch member-schema)
+
+          (= last-union-branch union-branch)
+          (throw (ex-info
+                  (str "The path key `" k "` does not match any of the "
+                       "member schemas in the union schema.")
+                  {:union-edn-schema (l/edn schema)
+                   :k k}))
 
           :else
           (recur (inc union-branch)))))))

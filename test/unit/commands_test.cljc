@@ -216,6 +216,7 @@
     (is (= expected-value (crdt/get-value {:crdt crdt-store
                                            :path []
                                            :schema (:crdt-store-schema arg)})))))
+
 (deftest  test-crdt-array-set
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294999")
@@ -229,16 +230,19 @@
         {:keys [crdt-store ops]} (commands/process-cmds arg)
         expected-ops #{{:add-id "I5"
                         :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "I3"
                                 :tail-node-id "-END-"}}
                        {:add-id "I6"
                         :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "-START-"
                                 :tail-node-id "I1"}}
                        {:add-id "I7"
                         :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "I1"
                                 :tail-node-id "I3"}}
@@ -272,29 +276,35 @@
              :sys-time-ms sys-time-ms}
         {:keys [crdt-store ops]} (commands/process-cmds arg)
         expected-ops #{{:add-id "I6"
-                        :op-type :delete-array-edge}
+                        :op-type :delete-array-edge
+                        :path []}
                        {:add-id "I7"
-                        :op-type :delete-array-edge}
+                        :op-type :delete-array-edge
+                        :path []}
                        {:add-id "I2"
                         :op-type :delete-value
                         :path ["I1"]}
                        {:add-id "I5"
                         :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "I3"
                                 :tail-node-id "-END-"}}
                        {:add-id "I6"
                         :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "-START-"
                                 :tail-node-id "I1"}}
                        {:add-id "I7"
                         :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "I1"
                                 :tail-node-id "I3"}}
                        {:add-id "I8"
                         :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "-START-"
                                 :tail-node-id "I3"}}
@@ -333,16 +343,19 @@
                         :path ["I1"]}
                        {:add-id "I5"
                         :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "I3"
                                 :tail-node-id "-END-"}}
                        {:add-id "I6"
                         :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "-START-"
                                 :tail-node-id "I1"}}
                        {:add-id "I7"
                         :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "I1"
                                 :tail-node-id "I3"}}
@@ -385,41 +398,50 @@
              :sys-time-ms sys-time-ms}
         {:keys [crdt-store ops]} (commands/process-cmds arg)
         expected-ops #{{:add-id "I5"
-                        :op-type :delete-array-edge}
+                        :op-type :delete-array-edge
+                        :path []}
                        {:add-id "I6"
-                        :op-type :delete-array-edge}
+                        :op-type :delete-array-edge
+                        :path []}
                        {:add-id "I11"
                         :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "-START-"
                                 :tail-node-id "I8"}}
                        {:add-id "I10"
-                        :op-type :add-array-edge,
+                        :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms,
                         :value {:head-node-id "I8"
                                 :tail-node-id "I1"}}
                        {:add-id "I14"
                         :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "I3"
                                 :tail-node-id "I12"}}
                        {:add-id "I15"
                         :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "I12"
                                 :tail-node-id "-END-"}}
                        {:add-id "I5"
                         :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "I3"
                                 :tail-node-id "-END-"}}
                        {:add-id "I6"
                         :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "-START-"
                                 :tail-node-id "I1"}}
                        {:add-id "I7"
                         :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "I1"
                                 :tail-node-id "I3"}}
@@ -462,11 +484,13 @@
         {:keys [crdt-store ops]} (commands/process-cmds arg)
         expected-ops #{{:add-id "I4"
                         :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "-START-"
                                 :tail-node-id "I1"}}
                        {:add-id "I3"
                         :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "I1"
                                 :tail-node-id "-END-"}}
@@ -494,11 +518,13 @@
         {:keys [crdt-store ops]} (commands/process-cmds arg)
         expected-ops #{{:add-id "I3"
                         :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "-START-"
                                 :tail-node-id "I1"}}
                        {:add-id "I4"
                         :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "I1"
                                 :tail-node-id "-END-"}}
@@ -526,21 +552,25 @@
         {:keys [crdt-store ops]} (commands/process-cmds arg)
         expected-ops #{{:add-id "I10"
                         :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "I3"
                                 :tail-node-id "I5"}}
                        {:add-id "I7"
                         :op-type :add-array-edge
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "-START-"
-                                :tail-node-id "I1"}}
-                       {:add-id "I8"
-                        :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "I5"
                                 :tail-node-id "-END-"}}
+                       {:add-id "I8"
+                        :op-type :add-array-edge
+                        :path []
+                        :sys-time-ms sys-time-ms
+                        :value {:head-node-id "-START-"
+                                :tail-node-id "I1"}}
                        {:add-id "I9"
                         :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "I1"
                                 :tail-node-id "I3"}}
@@ -578,21 +608,25 @@
         {:keys [crdt-store ops]} (commands/process-cmds arg)
         expected-ops #{{:add-id "I10"
                         :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "I3"
                                 :tail-node-id "I5"}}
                        {:add-id "I7"
                         :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "I5"
                                 :tail-node-id "-END-"}}
                        {:add-id "I8"
                         :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "-START-"
                                 :tail-node-id "I1"}}
                        {:add-id "I9"
                         :op-type :add-array-edge
+                        :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "I1"
                                 :tail-node-id "I3"}}
@@ -689,6 +723,62 @@
              :sys-time-ms sys-time-ms}
         {:keys [crdt-store ops]} (commands/process-cmds arg)
         expected-value ["1" "2" "A" "B" "3"]]
+    (is (= expected-value (crdt/get-value {:crdt crdt-store
+                                           :path []
+                                           :schema (:crdt-store-schema arg)})))))
+
+(deftest test-nested-set
+  (let [*next-id-num (atom 0)
+        sys-time-ms (u/str->long "1643061294999")
+        arg {:cmds [{:arg {:name "Bill"
+                           :pets [{:name "Pinky"
+                                   :species "Felis catus"}
+                                  {:name "Fishy"
+                                   :species "Carassius auratus"}]}
+                     :op :set
+                     :path [:crdt]}
+                    {:arg "Goldy"
+                     :op :set
+                     :path [:crdt :pets -1 :name]}]
+             :crdt-store-schema pet-owner-schema
+             :make-id #(let [n (swap! *next-id-num inc)]
+                         (str "I" n))
+             :sys-time-ms sys-time-ms}
+        {:keys [crdt-store ops]} (commands/process-cmds arg)
+        expected-value {:name "Bill"
+                        :pets [{:name "Pinky"
+                                :species "Felis catus"}
+                               {:name "Goldy"
+                                :species "Carassius auratus"}]}]
+    (is (= expected-value (crdt/get-value {:crdt crdt-store
+                                           :path []
+                                           :schema (:crdt-store-schema arg)})))
+    (is (= {:name "Pinky"
+            :species "Felis catus"}
+           (crdt/get-value {:crdt crdt-store
+                            :path [:pets -2]
+                            :schema (:crdt-store-schema arg)})))))
+
+(deftest test-nested-set-and-remove
+  (let [*next-id-num (atom 0)
+        sys-time-ms (u/str->long "1643061294999")
+        arg {:cmds [{:arg {:name "Bill"
+                           :pets [{:name "Pinky"
+                                   :species "Felis catus"}
+                                  {:name "Fishy"
+                                   :species "Carassius auratus"}]}
+                     :op :set
+                     :path [:crdt]}
+                    {:op :remove
+                     :path [:crdt :pets 0]}]
+             :crdt-store-schema pet-owner-schema
+             :make-id #(let [n (swap! *next-id-num inc)]
+                         (str "I" n))
+             :sys-time-ms sys-time-ms}
+        {:keys [crdt-store ops]} (commands/process-cmds arg)
+        expected-value {:name "Bill"
+                        :pets [{:name "Fishy"
+                                :species "Carassius auratus"}]}]
     (is (= expected-value (crdt/get-value {:crdt crdt-store
                                            :path []
                                            :schema (:crdt-store-schema arg)})))))

@@ -59,7 +59,7 @@
   [{:keys [add-id get-child-schema crdt path schema value]
     :as arg}]
   (let [[k & ks] path]
-    (c/check-key (assoc arg :key k))
+    (c/check-key (assoc arg :key k :string-array-keys? true))
     (update-in crdt [:children k]
                (fn [child-crdt]
                  (apply-op (assoc arg
