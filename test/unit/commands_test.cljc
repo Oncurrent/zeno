@@ -862,6 +862,156 @@
                                            :path [:pets]
                                            :schema pet-owner-schema})))))
 
+(deftest test-merge-3-way-array-conflict
+  (let [*next-id-num (atom 0)
+        make-id #(let [n (swap! *next-id-num inc)]
+                   (str "I" n))
+        schema (l/array-schema l/string-schema)
+        arg0 {:cmds [{:arg ["A" "B"]
+                      :op :set
+                      :path [:crdt]}]
+              :crdt-store-schema schema
+              :make-id make-id}
+        ret0 (commands/process-cmds arg0)
+        arg1 {:cmds [{:arg "1"
+                      :op :insert-before
+                      :path [:crdt 0]}]
+              :crdt-store (:crdt-store ret0)
+              :crdt-store-schema schema
+              :make-id make-id}
+        arg2 {:cmds [{:arg "2"
+                      :op :insert-before
+                      :path [:crdt 0]}]
+              :crdt-store (:crdt-store ret0)
+              :crdt-store-schema schema
+              :make-id make-id}
+        arg3 {:cmds [{:arg "3"
+                      :op :insert-before
+                      :path [:crdt 0]}]
+              :crdt-store (:crdt-store ret0)
+              :crdt-store-schema schema
+              :make-id make-id}
+        ret1 (commands/process-cmds arg1)
+        ret2 (commands/process-cmds arg2)
+        ret3 (commands/process-cmds arg3)
+        new-ops (set/union (:ops ret1) (:ops ret2) (:ops ret3))
+        merged-crdt (crdt/apply-ops {:crdt (:crdt-store ret0)
+                                     :ops new-ops
+                                     :schema schema})
+        ;; Order of the first three items is determined by their add-ids.
+        ;; Any ordering would be fine, as long as it is deterministic.
+        ;; The important part is that all three appear before the original
+        ;; sequence (["A" "B"]).
+        expected-value ["2" "3" "1" "A" "B"]]
+    (is (= expected-value (crdt/get-value {:crdt merged-crdt
+                                           :path []
+                                           :schema schema})))))
+
+(deftest test-merge-3-way-array-conflict-multiple-peer-cmds
+  (let [*next-id-num (atom 0)
+        make-id #(let [n (swap! *next-id-num inc)]
+                   (str "I" n))
+        schema (l/array-schema l/string-schema)
+        arg0 {:cmds [{:arg ["A" "B"]
+                      :op :set
+                      :path [:crdt]}]
+              :crdt-store-schema schema
+              :make-id make-id}
+        ret0 (commands/process-cmds arg0)
+        arg1 {:cmds [{:arg "X1"
+                      :op :insert-before
+                      :path [:crdt 0]}
+                     {:arg "X2"
+                      :op :insert-after
+                      :path [:crdt 0]}]
+              :crdt-store (:crdt-store ret0)
+              :crdt-store-schema schema
+              :make-id make-id}
+        arg2 {:cmds [{:arg "Y1"
+                      :op :insert-before
+                      :path [:crdt 0]}
+                     {:arg "Y2"
+                      :op :insert-after
+                      :path [:crdt 0]}]
+              :crdt-store (:crdt-store ret0)
+              :crdt-store-schema schema
+              :make-id make-id}
+        arg3 {:cmds [{:arg "Z1"
+                      :op :insert-before
+                      :path [:crdt 0]}
+                     {:arg "Z2"
+                      :op :insert-after
+                      :path [:crdt 0]}]
+              :crdt-store (:crdt-store ret0)
+              :crdt-store-schema schema
+              :make-id make-id}
+        ret1 (commands/process-cmds arg1)
+        ret2 (commands/process-cmds arg2)
+        ret3 (commands/process-cmds arg3)
+        new-ops (set/union (:ops ret1) (:ops ret2) (:ops ret3))
+        merged-crdt (crdt/apply-ops {:crdt (:crdt-store ret0)
+                                     :ops new-ops
+                                     :schema schema})
+        ;; Order of the first three pairs of items is determined by their
+        ;; add-ids. Any ordering would be fine, as long as it is deterministic.
+        ;; The important part is that all three appear before the original
+        ;; sequence (["A" "B"]) and that the Xs, Ys, and Zs are not interleaved.
+        expected-value ["Y1" "Y2" "Z1" "Z2" "X1" "X2" "A" "B"]]
+    (is (= expected-value (crdt/get-value {:crdt merged-crdt
+                                           :path []
+                                           :schema schema})))))
+
+(deftest test-merge-multiple-conflicts
+  (let [*next-id-num (atom 0)
+        make-id #(let [n (swap! *next-id-num inc)]
+                   (str "I" n))
+        schema (l/array-schema l/string-schema)
+        arg0 {:cmds [{:arg ["A" "B" "C"]
+                      :op :set
+                      :path [:crdt]}]
+              :crdt-store-schema schema
+              :make-id make-id}
+        ret0 (commands/process-cmds arg0)
+        arg1 {:cmds [{:arg "XF"
+                      :op :insert-before
+                      :path [:crdt 0]}
+                     {:arg "XL"
+                      :op :insert-after
+                      :path [:crdt -1]}]
+              :crdt-store (:crdt-store ret0)
+              :crdt-store-schema schema
+              :make-id make-id}
+        arg2 {:cmds [{:arg "YF"
+                      :op :insert-before
+                      :path [:crdt 0]}
+                     {:arg "YL"
+                      :op :insert-after
+                      :path [:crdt -1]}]
+              :crdt-store (:crdt-store ret0)
+              :crdt-store-schema schema
+              :make-id make-id}
+        arg3 {:cmds [{:arg "ZF"
+                      :op :insert-before
+                      :path [:crdt 0]}
+                     {:arg "ZL"
+                      :op :insert-after
+                      :path [:crdt -1]}]
+              :crdt-store (:crdt-store ret0)
+              :crdt-store-schema schema
+              :make-id make-id}
+        ret1 (commands/process-cmds arg1)
+        ret2 (commands/process-cmds arg2)
+        ret3 (commands/process-cmds arg3)
+        new-ops (set/union (:ops ret1) (:ops ret2) (:ops ret3))
+        merged-crdt (crdt/apply-ops {:crdt (:crdt-store ret0)
+                                     :ops new-ops
+                                     :schema schema})
+        expected-value ["XF" "YF" "ZF" "A" "B" "C" "XL" "YL" "ZL"]]
+    (is (= expected-value (crdt/get-value {:crdt merged-crdt
+                                           :make-id make-id
+                                           :path []
+                                           :schema schema})))))
+
 (deftest test-nested-merge-conflict
   (let [arg0 {:cmds [{:arg {:name "Bill"
                             :pets [{:name "Pinky"

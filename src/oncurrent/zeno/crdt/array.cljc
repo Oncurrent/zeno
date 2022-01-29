@@ -1,6 +1,7 @@
 (ns oncurrent.zeno.crdt.array
   (:require
    [clojure.set :as set]
+   [clojure.string :as str]
    [deercreeklabs.lancaster :as l]
    [oncurrent.zeno.crdt.apply-ops :as apply-ops]
    [oncurrent.zeno.crdt.common :as c]
@@ -204,11 +205,12 @@
                                   children)
                   {:keys [combining-node]} (first path-infos)]
               (recur combining-node
-                     (get-serializing-ops-for-path
-                      (assoc arg
-                             :combining-node combining-node
-                             :paths (map :path path-infos)
-                             :splitting-node node))))))))))
+                     (set/union ops
+                                (get-serializing-ops-for-path
+                                 (assoc arg
+                                        :combining-node combining-node
+                                        :paths (map :path path-infos)
+                                        :splitting-node node)))))))))))
 
 (defn get-clamped-array-index [{:keys [array-len i]}]
   (let [max-i (if (pos? array-len)
