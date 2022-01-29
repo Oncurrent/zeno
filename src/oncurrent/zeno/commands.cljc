@@ -43,8 +43,12 @@
                        "` in update command.")
                   cmd)))
 
-(defn process-cmds [{:keys [cmds] :as arg}]
+(defn process-cmds [{:keys [cmds make-id]
+                     :or {make-id u/compact-random-uuid}
+                     :as arg}]
   (reduce (fn [acc cmd]
-            (process-cmd (assoc acc :cmd cmd)))
+            (process-cmd (assoc acc
+                                :cmd cmd
+                                :make-id make-id)))
           arg
           cmds))

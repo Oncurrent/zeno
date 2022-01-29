@@ -10,6 +10,8 @@
 (def array-end-node-id "-END-")
 (def array-start-node-id "-START-")
 
+(declare repair-array)
+
 (defn get-edges [{:keys [crdt edge-type]}]
   (let [{:keys [add-id-to-edge]} crdt
         add-ids (case edge-type
@@ -255,12 +257,24 @@
               :else
               (recur child (conj ordered-node-ids child)))))))))
 
-(defn get-ordered-node-ids [{:keys [crdt path] :as arg}]
+(defn get-ordered-node-ids [{:keys [crdt path repair?] :as arg}]
   (let [{:keys [linear? ordered-node-ids]} (get-array-info arg)]
-    (when-not linear?
-      (throw (ex-info "Array CRDT DAG is not linear and needs repair"
-                      (u/sym-map crdt path))))
-    ordered-node-ids))
+    (cond
+      (and (not linear?) (not repair?))
+      (throw (ex-info "Array CRDT DAG is not linear and needs repair."
+                      (u/sym-map crdt path)))
+
+      (not linear?)
+      (let [new-crdt (:crdt (repair-array arg))
+            ret (get-array-info (assoc arg :crdt new-crdt))]
+        (if (:linear? ret)
+          (:ordered-node-ids ret)
+          (throw
+           (ex-info "Array CRDT DAG is not linear and could not be repaired."
+                    (u/sym-map new-crdt crdt path)))))
+
+      :else
+      ordered-node-ids)))
 
 (defn get-live-nodes [{:keys [crdt schema] :as arg}]
   (let [child-schema (l/schema-at-path schema [0])]
@@ -268,6 +282,7 @@
      (fn [acc node-id child-crdt]
        (if (nil? (c/get-value (assoc arg
                                      :crdt child-crdt
+                                     :path []
                                      :schema child-schema)))
          acc
          (conj acc node-id)))
@@ -337,7 +352,7 @@
 
 (defmethod c/get-value :array
   [{:keys [path schema] :as arg}]
-  (let [ordered-node-ids (get-ordered-node-ids arg)
+  (let [ordered-node-ids (get-ordered-node-ids (assoc arg :repair? true))
         arg* (assoc arg :get-child-schema (fn [k]
                                             (l/schema-at-path schema [0])))]
     (if (seq path)

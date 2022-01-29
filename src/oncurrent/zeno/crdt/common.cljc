@@ -92,11 +92,6 @@
   (let [get-child-schema #(l/schema-at-path schema [%])]
     (associative-get-value (assoc arg :get-child-schema get-child-schema))))
 
-(defmethod get-value :union
-  [{:keys [crdt schema] :as arg}]
-  (let [member-schema (l/member-schema-at-branch schema (:union-branch crdt))]
-    (get-value (assoc arg :schema member-schema))))
-
 (defn get-union-branch-and-schema-for-value [{:keys [schema v]}]
   (let [member-schemas (vec (l/member-schemas schema))
         last-union-branch (dec (count member-schemas))]
@@ -148,3 +143,14 @@
 
           :else
           (recur (inc union-branch)))))))
+
+(defn get-member-schema [{:keys [crdt path schema]}]
+  (if-let [branch (:union-branch crdt)]
+    (l/member-schema-at-branch schema branch)
+    (:member-schema (get-union-branch-and-schema-for-key {:k (first path)
+                                                          :schema schema}))))
+
+(defmethod get-value :union
+  [{:keys [crdt path schema] :as arg}]
+  (let [member-schema (get-member-schema arg)]
+    (get-value (assoc arg :schema member-schema))))

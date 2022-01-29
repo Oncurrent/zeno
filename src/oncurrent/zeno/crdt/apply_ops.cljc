@@ -56,7 +56,7 @@
   (del-single-value arg))
 
 (defn associative-apply-op
-  [{:keys [add-id get-child-schema crdt path schema value]
+  [{:keys [get-child-schema crdt path]
     :as arg}]
   (let [[k & ks] path]
     (c/check-key (assoc arg :key k :string-array-keys? true))
@@ -213,10 +213,10 @@
                                         #{add-id}))))))
 
 (defmethod apply-op [:array :delete-array-edge]
-  [{:keys [add-id crdt path schema value] :as arg}]
+  [{:keys [add-id cmd crdt path schema value] :as arg}]
   (when (seq path)
     (throw (ex-info "Can't index into array when deleting an edge."
-                    (u/sym-map path crdt add-id value))))
+                    (u/sym-map cmd path add-id value))))
   ;; We use a slightly different CRDT implementation here because we
   ;; need to be able to resurrect deleted edges. The `:single-value`
   ;; CRDT does not keep info for deleted items.

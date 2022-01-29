@@ -8,8 +8,19 @@
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
+(def insert-ops #{:insert-after
+                  :insert-before
+                  :insert-range-after
+                  :insert-range-before})
+
 (defmulti process-cmd* (fn [{:keys [cmd]}]
-                         (:op cmd)))
+                         (let [{:keys [op]} cmd]
+                           (if (insert-ops op)
+                             :insert
+                             op))))
+
+(defmulti do-insert (fn [{:keys [schema]}]
+                      (c/schema->dispatch-type schema)))
 
 (defmulti do-repair (fn [{:keys [schema]}]
                       (l/schema-type schema)))
@@ -247,7 +258,7 @@
                             :schema items-schema)))
       (let [_ (when-not (sequential? cmd-arg)
                 (throw (ex-info
-                        (str "Command path indicates an array, but `:arg` is "
+                        (str "Command path indicates an array, but arg is "
                              "not sequential. Got `" (or cmd-arg "nil") "`.")
                         {:arg cmd-arg
                          :path cmd-path})))
@@ -317,7 +328,8 @@
               (u/sym-map path i cmd-type cmd-arg cmd-path))))))
 
 (defn do-single-insert
-  [{:keys [cmd-arg cmd-type make-id op-path path schema] :as arg}]
+  [{:keys [crdt-store-schema make-id op-path path schema]
+    :as arg}]
   (check-insert-arg arg)
   (let [{repair-ops :ops
          repaired-crdt :crdt} (do-repair arg)
@@ -342,15 +354,17 @@
         final-crdt (apply-ops/apply-ops
                     (assoc arg
                            :crdt repaired-crdt
+                           :schema crdt-store-schema
                            :ops (set/union node-ops edge-ops)))]
     {:crdt final-crdt
      :ops (set/union repair-ops node-ops edge-ops)}))
 
 (defn do-range-insert
-  [{:keys [cmd cmd-arg cmd-type crdt make-id op-path path schema] :as arg}]
+  [{:keys [cmd cmd-arg crdt crdt-store-schema make-id op-path path schema]
+    :as arg}]
   (check-insert-arg arg)
   (when-not (sequential? cmd-arg)
-    (throw (ex-info (str "The `:arg` value in a `" cmd-type "` command must "
+    (throw (ex-info (str "The `:arg` value in a `" (:op cmd) "` command must "
                          "be a sequence. Got `" cmd-arg "`.")
                     cmd)))
   (let [{repair-ops :ops
@@ -365,7 +379,7 @@
                                        :cmd-arg v
                                        :crdt (get-in crdt
                                                      [:children node-id])
-                                       :op-path [node-id]
+                                       :op-path (conj op-path node-id)
                                        :path []
                                        :schema items-schema))]
                   (-> acc
@@ -387,9 +401,64 @@
         final-crdt (apply-ops/apply-ops
                     (assoc arg
                            :crdt repaired-crdt
+                           :schema crdt-store-schema
                            :ops (set/union node-ops edge-ops)))]
     {:crdt final-crdt
      :ops (set/union repair-ops node-ops edge-ops)}))
+
+(defmethod do-insert :array
+  [{:keys [cmd-type] :as arg}]
+  (case cmd-type
+    :insert-after (do-single-insert arg)
+    :insert-before (do-single-insert arg)
+    :insert-range-after (do-range-insert arg)
+    :insert-range-before (do-range-insert arg)))
+
+(defn associative-do-insert
+  [{:keys [get-child-schema cmd-type cmd-arg crdt op-path path schema]
+    :as arg}]
+  (when (empty? path)
+    (let [schema-type (l/schema-type schema)]
+      (throw (ex-info (str "Can only process `" cmd-type "` cmd on "
+                           "an array. Path points to schema type `"
+                           schema-type "`.")
+                      (u/sym-map schema-type cmd-type cmd-arg path)))))
+  (let [[k & ks] path
+        _ (c/check-key (assoc arg :key k))
+        child-schema (l/schema-at-path schema [k])
+        child-crdt (get-in crdt [:children k])
+        ret (do-insert (assoc arg
+                              :crdt child-crdt
+                              :op-path (conj op-path k)
+                              :path ks
+                              :schema child-schema))]
+    {:crdt (assoc-in crdt [:children k] (:crdt ret))
+     :ops (:ops ret)}))
+
+(defmethod do-insert :map
+  [{:keys [schema] :as arg}]
+  (associative-do-insert arg))
+
+(defmethod do-insert :record
+  [{:keys [schema] :as arg}]
+  (associative-do-insert arg))
+
+(defmethod do-insert :union
+  [{:keys [crdt op-path path schema] :as arg}]
+  (let [ret (c/get-union-branch-and-schema-for-key {:k (first path)
+                                                    :schema schema})
+        {:keys [member-schema union-branch]} ret]
+    (do-insert (assoc arg
+                      :op-path (conj op-path union-branch)
+                      :schema member-schema))))
+
+(defmethod do-insert :single-value
+  [{:keys [cmd-arg cmd-type schema path] :as arg}]
+  (let [schema-type (l/schema-type schema)]
+    (throw (ex-info (str "Can only process `" cmd-type "` cmd on "
+                         "an array. Path points to schema type `"
+                         schema-type "`.")
+                    (u/sym-map schema-type cmd-type cmd-arg path)))))
 
 (defmethod do-repair :array
   [arg]
@@ -424,21 +493,9 @@
     {:crdt (apply-ops/apply-ops (assoc arg0 :ops del-ops))
      :ops (set/union (:ops arg) repair-ops del-ops)}))
 
-(defmethod process-cmd* :insert-before
+(defmethod process-cmd* :insert
   [arg]
-  (do-single-insert arg))
-
-(defmethod process-cmd* :insert-after
-  [arg]
-  (do-single-insert arg))
-
-(defmethod process-cmd* :insert-range-before
-  [arg]
-  (do-range-insert arg))
-
-(defmethod process-cmd* :insert-range-after
-  [arg]
-  (do-range-insert arg))
+  (do-insert arg))
 
 (defn process-cmd [{:keys [cmd] :as arg}]
   (process-cmd* (assoc arg
