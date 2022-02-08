@@ -28,6 +28,18 @@
     (throw (ex-info (str "Member id must be a string. Got `" member-id "`.")
                     (u/sym-map member-id)))))
 
+(defn check-members-map [members]
+  (when-not (associative? members)
+    (throw (ex-info (str "Value of the `:zeno/members` key must be "
+                         "associative (usually a map). Got `"  members "`.")
+                    (u/sym-map members)))))
+
+(defn check-member-info-map [member-info]
+  (when-not (associative? member-info)
+    (throw (ex-info (str "Value in a member permissions map must be "
+                         "associative (usually a map). Got `"  member-info "`.")
+                    (u/sym-map member-info)))))
+
 (defn check-sg-id [sharing-group-id]
   (when-not (string? sharing-group-id)
     (throw (ex-info (str "Sharing Group id must be a string. Got `"
@@ -82,7 +94,7 @@
               :zeno/paths (do (check-sg-path (last path))
                               :set-sg-path)
               :zeno/members (do (check-member-id (last path))
-                                :set-sg-member)
+                                :set-sg-member-info)
               (throw-unknown-sg-field path))
           4 (case sg-k
               :zeno/paths (throw-set-path-value path)
@@ -100,17 +112,25 @@
        (l/serialize schemas/sharing-group-member-permissions-schema)
        (ba/byte-array->b64)))
 
+(defn xf-permission [permission]
+  (when-not (all-permissions permission)
+    (throw (ex-info (str "Unknown Sharing Group member "
+                         "permission `" permission "`.")
+                    (u/sym-map permission))))
+  (permission->str permission))
+
 (defn xf-permissions [permissions]
+  (when-not (set? permissions)
+    (throw (ex-info (str "Sharing group member permissions must be a set. Got `"
+                         permissions "`.")
+                    (u/sym-map permissions))))
   (reduce (fn [acc permission]
-            (when-not (all-permissions permission)
-              (throw (ex-info (str "Unknown Sharing Group member "
-                                   "permission `" permission "`.")
-                              (u/sym-map permission permissions))))
-            (assoc acc (permission->str permission) true))
+            (assoc acc (xf-permission permission) true))
           {}
           permissions))
 
 (defn xf-member [member-info]
+  (check-member-info-map member-info)
   (let [{:zeno/keys [membership-status]} member-info]
     (when (and membership-status (not= :invited membership-status))
       (throw (ex-info (str "Can't set `:zeno/membership-status` directly. "
@@ -119,11 +139,13 @@
     (update member-info :zeno/permissions xf-permissions)))
 
 (defn xf-members [members]
-  (reduce-kv (fn [acc member-id m]
-               (check-member-id member-id)
-               (assoc acc member-id (xf-member m)))
-             {}
-             members))
+  (when members
+    (check-members-map members)
+    (reduce-kv (fn [acc member-id m]
+                 (check-member-id member-id)
+                 (assoc acc member-id (xf-member m)))
+               {}
+               members)))
 
 (defn path->str [path]
   (->> path
@@ -131,27 +153,59 @@
        (ba/byte-array->b64)))
 
 (defn xf-paths [paths]
-  (when-not (set? paths)
-    (throw (ex-info (str "Paths must be a set. Got `" paths "`.")
-                    {:paths paths})))
-  (reduce (fn [acc path]
-            (assoc acc (path->str path) true))
-          {}
-          paths))
+  (when paths
+    (when-not (set? paths)
+      (throw (ex-info (str "Paths must be a set. Got `" paths "`.")
+                      {:paths paths})))
+    (reduce (fn [acc path]
+              (assoc acc (path->str path) true))
+            {}
+            paths)))
+
+(defn xf-sg-arg [arg]
+  (-> arg
+      (update :zeno/members xf-members)
+      (update :zeno/paths xf-paths)))
 
 (defn xf-root-arg [arg]
   (reduce-kv
    (fn [acc sg-id m]
      (check-sg-id sg-id)
-     (assoc acc sg-id (-> m
-                           (update :zeno/members xf-members)
-                           (update :zeno/paths xf-paths))))
+     (assoc acc sg-id (xf-sg-arg m)))
    {}
    arg))
 
 (defmethod xf-set-cmd :set-root
   [cmd]
   (update cmd :arg xf-root-arg))
+
+(defmethod xf-set-cmd :set-sg
+  [cmd]
+  (update cmd :arg xf-sg-arg))
+
+(defmethod xf-set-cmd :set-sg-paths
+  [cmd]
+  (update cmd :arg xf-paths))
+
+(defmethod xf-set-cmd :set-sg-members
+  [cmd]
+  (update cmd :arg xf-members))
+
+(defmethod xf-set-cmd :set-sg-member-info
+  [cmd]
+  (update cmd :arg xf-member))
+
+(defmethod xf-set-cmd :set-sg-member-permissions
+  [cmd]
+  (update cmd :arg xf-permissions))
+
+(defmethod xf-set-cmd :set-sg-member-permission
+  [cmd]
+  (-> cmd
+      (update :arg boolean)
+      (update :path (fn [old-path]
+                      (concat (butlast old-path)
+                              [(permission->str (last old-path))])))))
 
 (defmethod xf-cmd :set
   [arg]

@@ -75,7 +75,7 @@
   ;; We can rely on there being no concurrent updates.
   ;; We need to execute all the commands transactionally. Either they
   ;; all commit or none commit. A transaction may include  many kinds of
-  ;; updates
+  ;; updates.
   (au/go
     (let [{:keys [*state-stores]} zc
           {:keys []} @*state-stores
