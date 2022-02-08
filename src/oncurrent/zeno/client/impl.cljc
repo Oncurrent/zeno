@@ -70,19 +70,15 @@
     :sys-cmds []}
    cmds))
 
-
 (defn <do-update-state! [zc cmds]
   ;; This is called serially from the update-state loop.
   ;; We can rely on there being no concurrent updates.
   ;; We need to execute all the commands transactionally. Either they
   ;; all commit or none commit. A transaction may include  many kinds of
-  ;; updates (:crdt, :client, :groups, :access-control, etc.)
+  ;; updates
   (au/go
     (let [{:keys [*state-stores]} zc
-          {:keys [access-control-store
-                  client-store
-                  crdt-store
-                  group-store]} @*state-stores
+          {:keys []} @*state-stores
           ops #{}
           ret :lakjdslkas]
       true))

@@ -178,19 +178,20 @@
                             :op-path (conj op-path k)
                             :path ks
                             :schema values-schema)))
-      (do
-        (when-not (associative? cmd-arg)
-          (throw (ex-info
-                  (str "Command path indicates a map, but `:arg` is "
-                       "not associative. Got `" (or cmd-arg "nil") "`.")
-                  {:arg cmd-arg
-                   :path cmd-path})))
+      (let [edn-schema (l/edn schema)
+            pred (c/edn-schema->pred edn-schema)
+            _ (when-not (pred cmd-arg)
+                (throw (ex-info
+                        (str ":arg (` " (or cmd-arg "nil") "`) is not the "
+                             "correct type for this command.")
+                        {:arg cmd-arg
+                         :path cmd-path})))]
         (reduce-kv (fn [acc k v]
                      (set/union acc (get-add-ops
                                      (assoc arg
                                             :cmd-arg v
                                             :crdt (get-in crdt [:children k])
-                                            :op-path [k]
+                                            :op-path (conj op-path k)
                                             :path []
                                             :schema values-schema))))
                    #{}

@@ -4,21 +4,22 @@
    [deercreeklabs.lancaster :as l]
    [oncurrent.zeno.crdt.commands :as crdt-commands]
    [oncurrent.zeno.schemas :as schemas]
+   [oncurrent.zeno.sharing :as sharing]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
 (defmulti process-cmd (fn [{:keys [cmd]}]
                         (first (:path cmd))))
 
-(defmethod process-cmd :access-control
+(defmethod process-cmd :zeno/client
   [arg]
   :foo)
 
-(defmethod process-cmd :client
+(defmethod process-cmd :zeno/sharing
   [arg]
-  :foo)
+  (sharing/process-cmd arg))
 
-(defmethod process-cmd :crdt
+(defmethod process-cmd :zeno/crdt
   [arg]
   (let [arg* (-> arg
                  (update-in [:cmd :path] rest)
@@ -28,10 +29,6 @@
     (-> arg
         (assoc :crdt-store (:crdt ret))
         (update :ops set/union (:ops ret)))) )
-
-(defmethod process-cmd :groups
-  [arg]
-  :foo)
 
 (defmethod process-cmd :default
   [{:keys [cmd]}]

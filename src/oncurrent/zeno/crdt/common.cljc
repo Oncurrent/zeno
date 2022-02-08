@@ -92,13 +92,17 @@
   (let [get-child-schema #(l/schema-at-path schema [%])]
     (associative-get-value (assoc arg :get-child-schema get-child-schema))))
 
+(defn edn-schema->pred [edn-schema]
+  (-> (lu/get-avro-type edn-schema)
+      (lu/avro-type->pred)))
+
 (defn get-union-branch-and-schema-for-value [{:keys [schema v]}]
   (let [member-schemas (vec (l/member-schemas schema))
         last-union-branch (dec (count member-schemas))]
     (loop [union-branch 0]
       (let [member-schema (nth member-schemas union-branch)
-            pred (-> (l/schema-type member-schema)
-                     (lu/avro-type->pred))]
+            edn-member-schema (l/edn member-schema)
+            pred (edn-schema->pred edn-member-schema)]
         (cond
           (pred v)
           (u/sym-map union-branch member-schema)
