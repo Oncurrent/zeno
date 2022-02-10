@@ -97,7 +97,16 @@ Aka "Online or Offline Data With Strong Eventual Consistency"
 See [Consistency Models](#consistency-models) below for discussion on eventual
 consistency vs strong eventual consistency vs strong consistency.
 
-TODO
+CRDT state is available for reading and writing whether the client is online
+or offline. While online, all the data available to the client (controlled via
+[sharing](#sharing)), is synced down to the client. Thus while offline one can
+only access data that existed the last time they were connected. Any of said
+data can be edited while offline and when the client reconnects it is synced
+up to the server and any conflicts are merged via CRDT semantics (TODO: more
+detail around what "CRDT semantics means for various cases e.g. scalars vs
+sequences).
+
+This is the state we intend application developers to use the most often.
 
 This state is used via the `[:zeno/crdt ...]` path.
 
@@ -168,8 +177,9 @@ map above, the `user-id` symbol is used in both the `user-name`
 and `avatar-url` paths.
 
 Order is not important in the map; symbols can be defined in any order.
-TODO ^ cyclical symbols?
+
 ```clojure
+;; TODO: Document what happens with cyclical symbols. I assume this will throw.
 {a [:zeno/client b]
  b [:zeno/client a]}
 ```
@@ -179,6 +189,7 @@ TODO
 
 ## Sharing
 Aka "Access Control"
+
 TODO
 
 ## Async API
