@@ -92,7 +92,7 @@ their browser when they log out for maximum security. This state is used via
 the `[:zeno/client ...]` path.
 
 #### CRDT
-Aka "On/Offline Data With Strong Eventual Consistency"
+Aka "Online or Offline Data With Strong Eventual Consistency"
 
 See [Consistency Models](#consistency-models) below for discussion on eventual
 consistency vs strong eventual consistency vs strong consistency.
