@@ -23,7 +23,7 @@ Zeno stores all state in a tree. There is one schema for the tree, usually
 quite nested. The schema is created and passed to the Zeno server at creation
 time using [Lancaster Schemas](https://github.com/deercreeklabs/lancaster).
 While there is logically one tree its physical manifestation can be
-distributed. For example some parts of the tree are stored only on the local
+distributed. For example, some parts of the tree are stored only on the local
 client, while others are stored only on the server side, and yet others
 continuously synced between the two and even multiple clients (through the
 server, not peer to peer). Any path or node in the data tree is private to the
@@ -33,24 +33,27 @@ accepted.
 ### Paths
 State paths are a sequence of keys that index into the state data structure.
 These keys can be keywords, strings, or integers, depending on the specific
-state data structure. Keyword keys may or may not have namespaces. A path
-must start with one of the following:
+state data structure. Keyword keys may or may not have namespaces. A path must
+start with one of the build in roots, each of which supplies a different set of
+storage and conflict resolution attributes and online/offline behavior:
 * `:zeno/client`
   * see [Client](#client)
 * `:zeno/crdt`
-  * see [On/Offline Eventually Consistent (CRDT)](#on-offline-with-eventual-consistency-crdt)
+  * see [CRDT](#crdt)
 * `:zeno/online`
   * name TDB
   * not implemented
-  * see [Online Only With Strong Consistency](#online-only-with-strong-consistency))
+  * see [Online](#online)
 * `:zeno/sharing`
   * for sharing data between users/groups aka access control
-  * see [Sharing (Access Control)]#(sharing-access-control))
+  * see [Sharing](#sharing)
 * `:zeno/server`
   * for storing data only the server can access
   * useful for e.g. certain types of bookkeeping data
   * assumes server is always online, data is strongly consistent
-* others could be created for other on/offline behaviors as [described below](#other-on-offline-behaviors)
+* other roots could be created for different storage and conflict resolution
+  attributes or online/offline attributes/behaviors as
+  [described below](#other-types)
 
 Some examples:
 * `[:zeno/client :user-id]`
@@ -84,17 +87,23 @@ Client state is local to the client. This means that this data is not shared
 with the server nor any other clients. This data is ephemeral, meaning when
 the client session is closed the data is forgotten. If a user logs out and back
 in they are now a new client and do not retain any previous client data. The
-data is not purged from memory however and so we still recommend users close
+data is not purged from memory, however, and so we still recommend users close
 their browser when they log out for maximum security. This state is used via
 the `[:zeno/client ...]` path.
 
-#### On/Offline With Strong Eventual Consistency (CRDT)
+#### CRDT
+Aka "On/Offline Data With Strong Eventual Consistency"
+
 See [Consistency Models](#consistency-models) below for discussion on eventual
 consistency vs strong eventual consistency vs strong consistency.
 
 TODO
 
-#### Online Only With Strong Consistency
+This state is used via the `[:zeno/crdt ...]` path.
+
+#### Online
+Aka "Online Only Data With Strong Consistency"
+
 See [Consistency Models](#consistency-models) below for discussion on eventual
 consistency vs strong eventual consistency vs strong consistency.
 
@@ -122,10 +131,10 @@ second example). Consider two examples:
 This type of state has not been implemented and its name is TBD though we
 typically refer to it as `[:zeno/online ...]` in conversation.
 
-#### Other on/offline behaviors
-There are several other combinations of on/offline behavior one might want.
-These use cases would be addressed by other root data paths not yet named or
-implemented.
+#### Other Types
+There are several other combinations data storage and conflict resolution
+attributes or online/offline behavior one might want. These use cases would be
+addressed by other root data paths not yet named or implemented.
 
 Consider, for example, a poll where users are voting on something. Let's say
 it's an open poll meaning users can see what votes have already been cast. When
@@ -168,7 +177,8 @@ TODO ^ cyclical symbols?
 ### Update Commands
 TODO
 
-## Sharing (Access Control)
+## Sharing
+Aka "Access Control"
 TODO
 
 ## Async API
