@@ -249,9 +249,9 @@ and scalability is poor. But the guarantees are sometimes very useful.
   convergence [[1]](#1).
 
 Note the lack of automatic conflict resolution or merging of conflicting
-updates, one simply has to be picked as the winner and the other discarded.
-This is not too useful in collaboritive editing when both users want their
-changes to remain.
+updates, one of the concurrent updates simply has to be picked as the winner
+and the others discarded. This is not too useful in collaboritive editing when
+both users want their changes to remain.
 
 ### Strong Eventual Consistency
 > Strong eventual consistency...is a model that strikes a compromise between
@@ -261,9 +261,9 @@ changes to remain.
   and any conflicting updates are merged automatically [[1]](#1).
 
 CRDT's implement strong eventual consistency. Since conflicting changes are
-merged automatically suddenly the order in which they occured is a concern.
-Strong eventual consistency, and thus CRDT's, require that the order in which
-the updates are applied does not matter. In other words the updates must be
+merged automatically the order in which they occured becomes a concern. Strong
+eventual consistency, and thus CRDT's, require that the order in which the
+updates are applied does not matter. In other words the updates must be
 commutative. And since we are not picking one as the winner we have to consider
 duplicate updates (due to e.g. the network) and so updates must be idempotent.
 While from the users perspective commutativity and idempotency don't have to
