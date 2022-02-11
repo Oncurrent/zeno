@@ -293,7 +293,35 @@ join across all books. To accomplish our subset join we can use `[:zeno/crdt
 ISBN's.
 
 ### Update Commands
-TODO
+An update command is a map with three keys:
+* `:path`: The [path](#paths) on which the update command will operate; e.g.
+  `[:zeno/crdt :books isbn :author]`
+* `:op`: One of the [supported update
+  operations](#supported-update-operations); e.g. `:set`
+* `:arg`: The command's argument; e.g. `"Ernest Hemingway"`
+For example:
+```clojure
+;; Here zc is a preconfigured/created Zeno Client.
+(zeno/update-state! zc {:path [:zeno/crdt :books isbn :author]
+                        :op :set
+                        :arg "Ernest Hemingway})
+```
+See [zeno-client](#zeno-client) for more details about `zc`.
+
+#### Supported Update Operations
+* `:set`
+  * TODO
+* `:remove`
+  * TODO
+* `:insert-before`
+  * TODO
+* `insert-after`
+  * TODO
+* `insert-range-before`
+  * TODO
+* `insert-range-after`
+  * TODO
+* TODO
 
 ## Sharing
 Aka "Access Control"
