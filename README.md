@@ -221,7 +221,7 @@ TODO
 TODO
 
 # License
-Copyright Oncurrent, LLC
+Copyright Oncurrent, Inc.
 
 *Apache and the Apache logos are trademarks of The Apache Software Foundation.*
 
