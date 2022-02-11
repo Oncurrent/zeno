@@ -28,12 +28,12 @@ Zeno stores all state in a tree. There is one schema for the tree, usually
 quite nested. The schema is created and passed to the Zeno server at creation
 time using [Lancaster Schemas](https://github.com/deercreeklabs/lancaster).
 While there is logically one tree its physical manifestation can be
-distributed. For example, some parts of the tree are stored only on the local
-client, while others are stored only on the server side, and yet others
-continuously synced between the two and even multiple clients (through the
-server, not peer to peer). Any path or node in the data tree is private to the
-user who created it unless they share it with another user and the share is
-accepted.
+distributed. For example, some [paths](#paths) of the tree are stored only on
+the local [client](#client), while others are stored only on the
+[server](#server) side, and [yet others continuously synced](#crdt) between the
+two and even multiple clients (through the server, not peer to peer). Any path
+or node in the data tree is private to the user who created it unless they
+[share it](#sharing) with another user and the share is accepted.
 
 ### Paths
 State paths are a sequence of keys that index into the state data structure.
