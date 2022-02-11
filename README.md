@@ -79,7 +79,7 @@ or end-relative indexing, e.g.:
 * `[:zeno/crdt :msgs -1]` - Refers to the last msg in the list
 * `[:zeno/crdt :msgs -2]` - Refers to the penultimate msg in the list
 
-#### Other Special Paths/Keywords
+#### Zeno Special Keywords
 Zeno provides a number of special paths and keywords to provide convenience and
 to accomplish some aggregations. Rereading this section after reading about
 [subscription maps](#subscription-maps) may be helpful.
@@ -99,8 +99,11 @@ the value is information about the book (book-info) such as title, author, etc.
     avoid the second step of calling `keys`.
   * `:zeno/keys` can only appear at the end of the path.
   * The behavior matches Clojure's `keys`. Thus if you try `[:zeno/crdt :books isbn :author :zeno/keys]`
-    you'll get the same error as if you tried `(keys "Ernest Hemingway")`.
+    you'll get an error as if you tried `(keys "Ernest Hemingway")` though Zeno
+    does its own check so you get a more useful error.
 * `[:zeno/*]`
+  * Used for joins across _all_ nodes at a given level in the state tree. See
+    [Joins](#joins) to join across a subset of nodes at a given level.
   * This allows you to get a list of all authors via `[:zeno/crdt :books
     :zeno/* :author]`.
   * It's also useful in specifying sharing paths (see [Sharing](#sharing)).
@@ -114,7 +117,8 @@ the value is information about the book (book-info) such as title, author, etc.
     thus dropping the ISBN info (unless you have redundantly stored ISBN in
     each book-info).
   * `:zeno/*` can appear anywhere in the path.
-  * If the value at a path is a scalar and you put `:zeno/*` after it...TODO.
+  * If the value at a path is a scalar and you put `:zeno/*` after it you'll
+    get a useful error from Zeno.
 * `:zeno/count`
   * Used for count aggregations.
   * To get the count of any collection that may exist at some path simply add
@@ -123,7 +127,8 @@ the value is information about the book (book-info) such as title, author, etc.
   * `:zeno/count` can only appear at the end of the path.
   * It doesn't matter if the collection is associative or not, the behavior
     matches Clojure's `count`. This also means that `[:zeno/crdt :books isbn
-    :page-count :zeno/count]` results in the same error as `(count 42)`.
+    :page-count :zeno/count]` results in an error as if you tried `(count 42)`
+    though Zeno does its own check so you get a more useful error.
 * `:zeno/actor-id`
   * Upon authentication Zeno provides an `actor-id` that uniquely identifies
     the entity just authenticated. In your application that may or may not
@@ -149,7 +154,8 @@ the value is information about the book (book-info) such as title, author, etc.
   * The behavior matches Clojure's `concat`. It's up to you to ensure you don't
     use `:zeno/concat` on an invalid type e.g. and integer. Referring to our
     books example again, `[:zeno/crdt :books isbn :author :zeno/concat]` will
-    throw an error just like `(concat "Ernest Hemingway")` does.
+    throw an error just like `(concat "Ernest Hemingway")` does though Zeno
+    does its own check so you get a more useful error.
 
 ##### Quick reference:
 ```clojure
@@ -243,20 +249,22 @@ read and write but an offline behavior of write only.
 Subscription maps are used to specify a subscription to Zeno state. Here is an
 example subscription map:
 ```clojure
-{user-id [:zeno/client :user/id] ; TODO [:zeno/actor-id]?
- user-name [:zeno/crdt :users user-id :user/name]
- avatar-url [:zeno/crdt :users user-id :user/avatar-url]}
+{isbn [:zeno/client :current-book]
+ author [:zeno/crdt :books isbn :author]
+ avatar-url [:zeno/crdt :avatars author :avatar-url]}
 ```
 A subscription map's keys are Clojure symbols and the values are
 [paths](#paths). The paths are used to index into Zeno state. Zeno then binds
 the value of the state at the specified path to the appropriate symbol. For
-example, in the subscription map above, the `user-id` symbol will be bound to
-the value found in the Zeno state at `[:zeno/client :user/id]`.
+example, in the subscription map above, the `isbn` symbol will be bound to
+the value found in the Zeno state at `[:zeno/client :current-book]`.
 
-Note that symbols may be used in a path. If a symbol is used in a path,
-it must be defined by another map entry. For example, in the subscription
-map above, the `user-id` symbol is used in both the `user-name`
-and `avatar-url` paths.
+Note that symbols may be used in a path. If a symbol is used in a path, it must
+be defined by another map entry or otherwise be available in the current scope.
+For example, in the subscription map above, the `author` symbol is used in the
+`avatar-url` path. The `author` symbol might have also come in as a parameter
+to the `def-component` that contains the subscription map or otherwise be a
+global variable.
 
 Order is not important in the map; symbols can be defined in any order. Cycles
 will be detected and an error thrown.
@@ -272,6 +280,17 @@ will be detected and an error thrown.
 {a [:zeno/client b]
  b [:zeno/client a]}
 ```
+
+#### Joins
+As noted in [Paths](#paths) the keys in a path can be keywords, strings, or
+integers, depending on the specific state data structure. You can also use a
+symbol bound to a list in a path to accomplish a join. Consider the same
+`:books` case as found in the [Zeno Special Keywords](#zeno-special-keywords)
+section. Suppose you wanted to get the authors of a subset of books rather than
+all of them. As discussed in the aforementioned section, `zeno/*` allows you to
+join across all books. To accomplish our subset join we can use `[:zeno/crdt
+:books isbns :author]` where `isbns` is a symbol previously bound to a list of
+ISBN's.
 
 ### Update Commands
 TODO
