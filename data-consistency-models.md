@@ -26,9 +26,11 @@ con update it nor client view it until all notes that service requests agree on
 and/or are made aware of the new value. Thus network connectivity is required
 and scalability is poor. But the guarantees are sometimes very useful.
 
-Zeno uses strong consistency for all data stored at `[:zeno/server ...]`
-(which data can only be accessed by the server) and might in the future make
-strong consistency available to clients via `[:zeno/online ...]` (name TBD).
+Zeno uses strong consistency for all data stored at `[:zeno/server ...]` (which
+data can only be accessed by the server) as well as `[:zeno/client ...]` (which
+is private to the client and never leaves their machine) and might in the
+future make strong consistency available to clients via `[:zeno/online ...]`
+(name TBD).
 
 ## Eventual Consistency
 > [Eventual consistency guarantees] that if no new updates are made to the
@@ -71,7 +73,8 @@ exist, the underlying data structures and update semantics must obey them.
 
 Zeno uses strong eventual consistency for all data stored at `[:zeno/crdt
 ...]`. We expect this to be the most common place application developers turn
-to store data.
+to store data. `[:zeno/sharing ...]` is also backed by the same CRDT data
+structures and so can be used offline etc.
 
 # References
 <a id="1">[1]</a>

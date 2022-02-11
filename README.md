@@ -79,11 +79,88 @@ or end-relative indexing, e.g.:
 * `[:zeno/crdt :msgs -1]` - Refers to the last msg in the list
 * `[:zeno/crdt :msgs -2]` - Refers to the penultimate msg in the list
 
-#### Other Special Paths
-TODO
-* `[:zeno/keys]` ...
-* `[:zeno/actor-id]` ...
-* ...
+#### Other Special Paths/Keywords
+Zeno provides a number of special paths and keywords to provide convenience and
+to accomplish some aggregations. Rereading this section after reading about
+[subscription maps](#subscription-maps) may be helpful.
+
+For the below, suppose you store information about books by using a map where
+the keys is the
+[ISBN](https://en.wikipedia.org/wiki/International_Standard_Book_Number) and
+the value is information about the book (book-info) such as title, author, etc.
+
+
+* `:zeno/keys`
+  * If you want a list of ISBN's you could bind the map of books at path
+    `[:zeno/crdt :books]` to the variable `books` in your subscription map and
+    then on another line call `(keys books)`. `:zeno/keys` is a convenience you
+    can put on the end of the data path to avoid the second step. Thus you can
+    bind `isbns` straight to the list via `[:zeno/crdt :books :zeno/keys]` and
+    avoid the second step of calling `keys`.
+  * `:zeno/keys` can only appear at the end of the path.
+  * The behavior matches Clojure's `keys`. Thus if you try `[:zeno/crdt :books isbn :author :zeno/keys]`
+    you'll get the same error as if you tried `(keys "Ernest Hemingway")`.
+* `[:zeno/*]`
+  * This allows you to get a list of all authors via `[:zeno/crdt :books
+    :zeno/* :author]`.
+  * It's also useful in specifying sharing paths (see [Sharing](#sharing)).
+    If you want to allow a sharing group to see some `:private-field` of every
+    book, rather than enumerating the paths to every `:private-field` of every
+    book you can just add the path `[:zeno/crdt :books :zeno/* :private-field]`
+    to the sharing group.
+  * Note the difference between `[:zeno/crdt :books]` which will return you a
+    map of ISBN's to book-info's (title, author, etc.) and
+    `[:zeno/crdt :books :zeno/*]` which will return you a list of book-info's
+    thus dropping the ISBN info (unless you have redundantly stored ISBN in
+    each book-info).
+  * `:zeno/*` can appear anywhere in the path.
+  * If the value at a path is a scalar and you put `:zeno/*` after it...TODO.
+* `:zeno/count`
+  * Used for count aggregations.
+  * To get the count of any collection that may exist at some path simply add
+    `:zeno/count` to the end. For example, to count how many books you have
+    you could use `[:zeno/crdt :books :zeno/count]`.
+  * `:zeno/count` can only appear at the end of the path.
+  * It doesn't matter if the collection is associative or not, the behavior
+    matches Clojure's `count`. This also means that `[:zeno/crdt :books isbn
+    :page-count :zeno/count]` results in the same error as `(count 42)`.
+* `:zeno/actor-id`
+  * Upon authentication Zeno provides an `actor-id` that uniquely identifies
+    the entity just authenticated. In your application that may or may not
+    align with the traditional notion of a user id.
+  * You can access the currently authenticated entities actor id via the path
+    `[:zeno/actor-id]` at any time.
+  * Additionally you can use `:zeno/actor-id` anywhere in a path and it will be
+    replaced with the value for you under the hood.
+* `:zeno/concat`
+  * To understand `:zeno/concat` consider the following:
+    * Suppose that you also store scientific papers in your application. While
+      books frequently have one author scientific papers frequently have multiple
+      authors and so you decide to store a list of authors rather than a single
+      author.
+    * You could access the list of authors of a single paper whose ID you have
+      already stored in the variable `paper-id` via `[:zeno/crdt :papers paper-id
+      :authors]`.
+    * If you want a list of all the authors for all papers you can use
+      `[:zeno/crdt :papers :zeno/* :authors]` but this returns a nested list. You
+      can conveniently concat them all into a flat list via `[:zeno/crdt :papers
+      :zeno/* :authors :zeno/concat]`
+  * `:zeno/concat` can appear anywhere in the path.
+  * The behavior matches Clojure's `concat`. It's up to you to ensure you don't
+    use `:zeno/concat` on an invalid type e.g. and integer. Referring to our
+    books example again, `[:zeno/crdt :books isbn :author :zeno/concat]` will
+    throw an error just like `(concat "Ernest Hemingway")` does.
+
+##### Quick reference:
+```clojure
+[:zeno/crdt :books :zeno/keys] ; => list of ISBN's
+[:zeno/crdt :books :zeno/count] ; => 42
+[:zeno/crdt :books] ; => map of all books
+[:zeno/crdt :books :zeno/*] ; => list of all book-info's
+[:zeno/crdt :books :zeno/* :author] ; => list of authors (including duplicates)
+[:zeno/crdt :books :zeno/* :private-field] ; => path to allow access to all :private-field's
+[:zeno/crdt :papers :zeno/* :authors :zeno/concat] ; => flat list of all authors of all papers
+```
 
 ### Types of State
 
@@ -181,10 +258,17 @@ it must be defined by another map entry. For example, in the subscription
 map above, the `user-id` symbol is used in both the `user-name`
 and `avatar-url` paths.
 
-Order is not important in the map; symbols can be defined in any order.
-
+Order is not important in the map; symbols can be defined in any order. Cycles
+will be detected and an error thrown.
 ```clojure
-;; TODO: Document what happens with cyclical symbols. I assume this will throw.
+;; Order doesn't matter, this
+{a [:zeno/client :a]
+ b [:zeno/client a :b]}
+;; works just as well this
+{b [:zeno/client a :b]
+ a [:zeno/client :a]}
+
+;; Cyclical binding not allowed
 {a [:zeno/client b]
  b [:zeno/client a]}
 ```
