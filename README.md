@@ -28,12 +28,12 @@ Zeno stores all state in a tree. There is one schema for the tree, usually
 quite nested. The schema is created and passed to the Zeno server at creation
 time using [Lancaster Schemas](https://github.com/deercreeklabs/lancaster).
 While there is logically one tree its physical manifestation can be
-distributed. For example, some parts of the tree are stored only on the local
-client, while others are stored only on the server side, and yet others
-continuously synced between the two and even multiple clients (through the
-server, not peer to peer). Any path or node in the data tree is private to the
-user who created it unless they share it with another user and the share is
-accepted.
+distributed. For example, some [paths](#paths) of the tree are stored only on
+the local [client](#client), while others are stored only on the
+[server](#server) side, and [yet others continuously synced](#crdt) between the
+two and even multiple clients (through the server, not peer to peer). Any path
+or node in the data tree is private to the user who created it unless they
+[share it](#sharing) with another user and the share is accepted.
 
 ### Paths
 State paths are a sequence of keys that index into the state data structure.
@@ -79,11 +79,94 @@ or end-relative indexing, e.g.:
 * `[:zeno/crdt :msgs -1]` - Refers to the last msg in the list
 * `[:zeno/crdt :msgs -2]` - Refers to the penultimate msg in the list
 
-#### Other Special Paths
-TODO
-* `[:zeno/keys]` ...
-* `[:zeno/actor-id]` ...
-* ...
+#### Zeno Special Keywords
+Zeno provides a number of special paths and keywords to provide convenience and
+to accomplish some aggregations. Rereading this section after reading about
+[subscription maps](#subscription-maps) may be helpful.
+
+For the below, suppose you store information about books by using a map where
+the keys is the
+[ISBN](https://en.wikipedia.org/wiki/International_Standard_Book_Number) and
+the value is information about the book (book-info) such as title, author, etc.
+
+
+* `:zeno/keys`
+  * If you want a list of ISBN's you could bind the map of books at path
+    `[:zeno/crdt :books]` to the symbol `books` in your subscription map and
+    then on another line call `(keys books)`. `:zeno/keys` is a convenience you
+    can put on the end of the data path to avoid the second step. Thus you can
+    bind `isbns` straight to the list via `[:zeno/crdt :books :zeno/keys]` and
+    avoid the second step of calling `keys`.
+  * `:zeno/keys` can only appear at the end of the path.
+  * The behavior matches Clojure's `keys`. Thus if you try `[:zeno/crdt :books isbn :author :zeno/keys]`
+    you'll get an error as if you tried `(keys "Ernest Hemingway")` though Zeno
+    does its own check so you get a more useful error.
+* `[:zeno/*]`
+  * Used for joins across _all_ nodes at a given level in the state tree. See
+    [Joins](#joins) to join across a subset of nodes at a given level.
+  * This allows you to get a list of all authors via `[:zeno/crdt :books
+    :zeno/* :author]`.
+  * It's also useful in specifying sharing paths (see [Sharing](#sharing)).
+    If you want to allow a sharing group to see some `:private-field` of every
+    book, rather than enumerating the paths to every `:private-field` of every
+    book you can just add the path `[:zeno/crdt :books :zeno/* :private-field]`
+    to the sharing group.
+  * Note the difference between `[:zeno/crdt :books]` which will return you a
+    map of ISBN's to book-info's (title, author, etc.) and
+    `[:zeno/crdt :books :zeno/*]` which will return you a list of book-info's
+    thus dropping the ISBN info (unless you have redundantly stored ISBN in
+    each book-info).
+  * `:zeno/*` can appear anywhere in the path.
+  * If the value at a path is a scalar and you put `:zeno/*` after it you'll
+    get a useful error from Zeno.
+* `:zeno/count`
+  * Used for count aggregations.
+  * To get the count of any collection that may exist at some path simply add
+    `:zeno/count` to the end. For example, to count how many books you have
+    you could use `[:zeno/crdt :books :zeno/count]`.
+  * `:zeno/count` can only appear at the end of the path.
+  * It doesn't matter if the collection is associative or not, the behavior
+    matches Clojure's `count`. This also means that `[:zeno/crdt :books isbn
+    :page-count :zeno/count]` results in an error as if you tried `(count 42)`
+    though Zeno does its own check so you get a more useful error.
+* `:zeno/actor-id`
+  * Upon authentication Zeno provides an `actor-id` that uniquely identifies
+    the entity that is authenticated. In your application that may or may not
+    align with the traditional notion of a user id.
+  * You can access the currently authenticated entity's actor id via the path
+    `[:zeno/actor-id]` at any time.
+  * Additionally you can use `:zeno/actor-id` anywhere in a path and it will be
+    replaced with the value for you when the path is evaluated.
+* `:zeno/concat`
+  * To understand `:zeno/concat` consider the following:
+    * Suppose that you also store scientific papers in your application. While
+      books frequently have one author scientific papers frequently have multiple
+      authors and so you decide to store a list of authors rather than a single
+      author.
+    * You could access the list of authors of a single paper whose ID you have
+      already stored in the symbol `paper-id` via `[:zeno/crdt :papers paper-id
+      :authors]`.
+    * If you want a list of all the authors for all papers you can use
+      `[:zeno/crdt :papers :zeno/* :authors]` but this returns a nested list. You
+      can conveniently concat them all into a flat list via `[:zeno/crdt :papers
+      :zeno/* :authors :zeno/concat]`
+  * `:zeno/concat` can appear anywhere in the path.
+  * The behavior matches Clojure's `concat`. It's up to you to ensure you don't
+    use `:zeno/concat` on an invalid type e.g. and integer. Referring to our
+    books example again, `[:zeno/crdt :books isbn :author :zeno/concat]` will
+    throw an error just like `(concat "Ernest Hemingway")` does though Zeno
+    does its own check so you get a more useful error.
+
+##### Quick reference:
+```clojure
+[:zeno/crdt :books :zeno/keys] ; => list of ISBN's
+[:zeno/crdt :books :zeno/count] ; => 42
+[:zeno/crdt :books] ; => map of all books
+[:zeno/crdt :books :zeno/*] ; => list of all book-info's
+[:zeno/crdt :books :zeno/* :author] ; => list of authors (including duplicates)
+[:zeno/crdt :books :zeno/* :private-field] ; => path to allow access to all :private-field's
+[:zeno/crdt :papers :zeno/* :authors :zeno/concat] ; => flat list of all authors of all papers
+```
 
 ### Types of State
 
@@ -166,31 +249,79 @@ read and write but an offline behavior of write only.
 Subscription maps are used to specify a subscription to Zeno state. Here is an
 example subscription map:
 ```clojure
-{user-id [:zeno/client :user/id] ; TODO [:zeno/actor-id]?
- user-name [:zeno/crdt :users user-id :user/name]
- avatar-url [:zeno/crdt :users user-id :user/avatar-url]}
+{isbn [:zeno/client :current-book]
+ author [:zeno/crdt :books isbn :author]
+ avatar-url [:zeno/crdt :avatars author :avatar-url]}
 ```
 A subscription map's keys are Clojure symbols and the values are
 [paths](#paths). The paths are used to index into Zeno state. Zeno then binds
 the value of the state at the specified path to the appropriate symbol. For
-example, in the subscription map above, the `user-id` symbol will be bound to
-the value found in the Zeno state at `[:zeno/client :user/id]`.
+example, in the subscription map above, the `isbn` symbol will be bound to
+the value found in the Zeno state at `[:zeno/client :current-book]`.
 
-Note that symbols may be used in a path. If a symbol is used in a path,
-it must be defined by another map entry. For example, in the subscription
-map above, the `user-id` symbol is used in both the `user-name`
-and `avatar-url` paths.
+Note that symbols may be used in a path. If a symbol is used in a path, it must
+be defined by another map entry or otherwise be available in the current scope.
+For example, in the subscription map above, the `author` symbol is used in the
+`avatar-url` path. The `author` symbol might have also come in as a parameter
+to the `def-component` that contains the subscription map or otherwise be a
+global variable.
 
-Order is not important in the map; symbols can be defined in any order.
-
+Order is not important in the map; symbols can be defined in any order. Cycles
+will be detected and an error thrown.
 ```clojure
-;; TODO: Document what happens with cyclical symbols. I assume this will throw.
+;; Order doesn't matter, this
+{a [:zeno/client :a]
+ b [:zeno/client a :b]}
+;; works just as well this
+{b [:zeno/client a :b]
+ a [:zeno/client :a]}
+
+;; Cyclical binding not allowed
 {a [:zeno/client b]
  b [:zeno/client a]}
 ```
 
+#### Joins
+As noted in [Paths](#paths) the keys in a path can be keywords, strings, or
+integers, depending on the specific state data structure. You can also use a
+symbol bound to a list in a path to accomplish a join. Consider the same
+`:books` case as found in the [Zeno Special Keywords](#zeno-special-keywords)
+section. Suppose you wanted to get the authors of a subset of books rather than
+all of them. As discussed in the aforementioned section, `zeno/*` allows you to
+join across all books. To accomplish our subset join we can use `[:zeno/crdt
+:books isbns :author]` where `isbns` is a symbol previously bound to a list of
+ISBN's.
+
 ### Update Commands
-TODO
+An update command is a map with three keys:
+* `:path`: The [path](#paths) on which the update command will operate; e.g.
+  `[:zeno/crdt :books isbn :author]`
+* `:op`: One of the [supported update
+  operations](#supported-update-operations); e.g. `:set`
+* `:arg`: The command's argument; e.g. `"Ernest Hemingway"`
+For example:
+```clojure
+;; Here zc is a preconfigured/created Zeno Client.
+(zeno/update-state! zc {:path [:zeno/crdt :books isbn :author]
+                        :op :set
+                        :arg "Ernest Hemingway})
+```
+See [zeno-client](#zeno-client) for more details about `zc`.
+
+#### Supported Update Operations
+* `:set`
+  * TODO
+* `:remove`
+  * TODO
+* `:insert-before`
+  * TODO
+* `insert-after`
+  * TODO
+* `insert-range-before`
+  * TODO
+* `insert-range-after`
+  * TODO
+* TODO
 
 ## Sharing
 Aka "Access Control"
