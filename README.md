@@ -92,7 +92,7 @@ the value is information about the book (book-info) such as title, author, etc.
 
 * `:zeno/keys`
   * If you want a list of ISBN's you could bind the map of books at path
-    `[:zeno/crdt :books]` to the variable `books` in your subscription map and
+    `[:zeno/crdt :books]` to the symbol `books` in your subscription map and
     then on another line call `(keys books)`. `:zeno/keys` is a convenience you
     can put on the end of the data path to avoid the second step. Thus you can
     bind `isbns` straight to the list via `[:zeno/crdt :books :zeno/keys]` and
@@ -131,12 +131,12 @@ the value is information about the book (book-info) such as title, author, etc.
     though Zeno does its own check so you get a more useful error.
 * `:zeno/actor-id`
   * Upon authentication Zeno provides an `actor-id` that uniquely identifies
-    the entity just authenticated. In your application that may or may not
+    the entity that is authenticated. In your application that may or may not
     align with the traditional notion of a user id.
-  * You can access the currently authenticated entities actor id via the path
+  * You can access the currently authenticated entity's actor id via the path
     `[:zeno/actor-id]` at any time.
   * Additionally you can use `:zeno/actor-id` anywhere in a path and it will be
-    replaced with the value for you under the hood.
+    replaced with the value for you when the path is evaluated.
 * `:zeno/concat`
   * To understand `:zeno/concat` consider the following:
     * Suppose that you also store scientific papers in your application. While
@@ -144,7 +144,7 @@ the value is information about the book (book-info) such as title, author, etc.
       authors and so you decide to store a list of authors rather than a single
       author.
     * You could access the list of authors of a single paper whose ID you have
-      already stored in the variable `paper-id` via `[:zeno/crdt :papers paper-id
+      already stored in the symbol `paper-id` via `[:zeno/crdt :papers paper-id
       :authors]`.
     * If you want a list of all the authors for all papers you can use
       `[:zeno/crdt :papers :zeno/* :authors]` but this returns a nested list. You
