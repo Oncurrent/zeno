@@ -1,4 +1,4 @@
-(ns  oncurrent.zeno.utils
+(ns oncurrent.zeno.utils
   (:require
    [clojure.core.async :as ca]
    #?(:cljs [clojure.pprint :as pprint])
@@ -118,7 +118,7 @@
   [sub-map]
   (when-not (map? sub-map)
     (throw (ex-info
-            (str"The `sub-map` argument must be a map. Got `" sub-map "`.")
+            (str "The `sub-map` argument must be a map. Got `" sub-map "`.")
             (sym-map sub-map))))
   (when-not (pos? (count sub-map))
     (throw (ex-info "The `sub-map` argument must contain at least one entry."
