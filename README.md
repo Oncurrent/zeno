@@ -1,5 +1,12 @@
 # Zeno
 
+DOCS TODO
+[ ] Technical Design Doc
+[ ] More about CRDT Merging semantics
+[ ] An example app:
+    [ ] First just write about it in english
+    [ ] Make it (probably won't ever get around to this).
+
 # About
 Zeno is a framework for building applications that are:
 * connected, meaning reactive within and between clients (aka no pressing
@@ -26,14 +33,16 @@ In deps.edn:
 ## Data
 Zeno stores all state in a tree. There is one schema for the tree, usually
 quite nested. The schema is created and passed to the Zeno server at creation
-time using [Lancaster Schemas](https://github.com/deercreeklabs/lancaster).
-While there is logically one tree its physical manifestation can be
-distributed. For example, some [paths](#paths) of the tree are stored only on
+time using [Lancaster Schemas](https://github.com/deercreeklabs/lancaster). The
+schema completely specifies what the shape of the tree is and what the valid
+[paths](#paths) in it are. The physical manifestation of the tree, the values
+at the nodes, can be distributed and not necessarily the same for everyone
+participating. For example, some [paths](#paths) of the tree are stored only on
 the local [client](#client), while others are stored only on the
 [server](#server) side, and [yet others continuously synced](#crdt) between the
-two and even multiple clients (through the server, not peer to peer). Any path
-or node in the data tree is private to the user who created it unless they
-[share it](#sharing) with another user and the share is accepted.
+two and even multiple clients (through the server, not peer to peer). Paths in
+the tree can be shared based on the behavior of the path and the [sharing
+groups](#sharing) set up.
 
 ### Paths
 State paths are a sequence of keys that index into the state data structure.
@@ -176,33 +185,38 @@ with the server nor any other clients. This data is ephemeral, meaning when
 the client session is closed the data is forgotten. If a user logs out and back
 in they are now a new client and do not retain any previous client data. The
 data is not purged from memory, however, and so we still recommend users close
-their browser when they log out for maximum security. This state is used via
-the `[:zeno/client ...]` path.
+their browser when they log out for maximum security.
+
+Zeno does not enforce any schema on this state.
+
+This state is used via the `[:zeno/client ...]` path.
 
 #### CRDT
 Aka "Online or Offline Data With Strong Eventual Consistency"
 
-See [Data Consistency Models](./data-consistency-models.md) for discussion on strong
-consistency vs eventual consistency vs strong eventual consistency.
+See [Data Consistency Models](./data-consistency-models.md) for discussion on
+strong consistency vs eventual consistency vs strong eventual consistency.
 
-CRDT state is available for reading and writing whether the client is online
-or offline. While online, all the data available to the client (controlled via
+CRDT state is available for reading and writing whether the client is online or
+offline. While online, all the data available to the client (controlled via
 [sharing](#sharing)), is synced down to the client. Thus while offline one can
 only access data that existed the last time they were connected. Any of said
-data can be edited while offline and when the client reconnects it is synced
-up to the server and any conflicts are merged via CRDT semantics (TODO: more
-detail around what "CRDT semantics means for various cases e.g. scalars vs
-sequences).
+data can be edited while offline and when the client reconnects it is synced up
+to the server and any conflicts are merged via CRDT semantics. [The
+example](TODO) will be useful in clarifying what conflicts may exist and a bit
+about what CRDT semantics are.
 
 This is the state we intend application developers to use the most often.
+
+Zeno requires and enforces a user provided schema on this state.
 
 This state is used via the `[:zeno/crdt ...]` path.
 
 #### Online
 Aka "Online Only Data With Strong Consistency"
 
-See [Data Consistency Models](./data-consistency-models.md) for discussion on strong
-consistency vs eventual consistency vs strong eventual consistency.
+See [Data Consistency Models](./data-consistency-models.md) for discussion on
+strong consistency vs eventual consistency vs strong eventual consistency.
 
 Some state makes no sense in any eventually consistent paradigm or is
 unreasonable to use in such a way (based on Zeno's implementation, see the
@@ -224,6 +238,8 @@ second example). Consider two examples:
    you want to access large data sets on demand it is reasonable to expect the
    user to be online when they do so to avoid eagerly syncing that data down
    and using up all the clients RAM (or more).
+
+Zeno will require a user provided schema on this state.
 
 This type of state has not been implemented and its name is TBD though we
 typically refer to it as `[:zeno/online ...]` in conversation.
@@ -326,7 +342,65 @@ See [zeno-client](#zeno-client) for more details about `zc`.
 ## Sharing
 Aka "Access Control"
 
-TODO
+The mechanism by which access to data is controlled in Zeno is called sharing.
+One can create [sharing groups](#sharing-groups) which contain members and
+[paths](#paths). Each member of the group has a set of permissions and the
+paths are a list of paths in the data tree for which those permissions apply.
+Some permissions are oriented toward the group, like whether or not one can
+invite people to the group; and others are oriented toward the data, like
+whether or not one can read or write the data at the paths.
+
+The rules for accessing data vary depending on the root of the path but the
+interface is the same. They can be summed up shortly as follows:
+* `:zeno/client` doesn't support sharing since the data is local to the client
+  (aka never leaves the client) and thus is private to the client. Two clients
+  can store different things at the same path with no conflict. They may be the
+  same logical path but they are different physical paths.
+* `:zeno/crdt` supports sharing and sharing is actually the mechanism by which
+  CRDT behavior is triggered. Once a path is shared among multiple actors any
+  changes made to the data at that path will be merged among them via CRDT
+  merging semantics. Reading the [example app](TODO) may help your
+  understanding.
+* `:zeno/online` will support sharing. In this case sharing will behave as
+  a more typical access control. Concurrent edits cannot be merged but the most
+  recent one simply is the final. If two people uploaded something to S3
+  with the same name at the same time you wouldn't get a combination of the two
+  as an object in S3 you'd just have one of them, same behavior here.
+* `:zeno/sharing` doesn't support sharing, permissions on a group are handled
+  by giving members of a group certain permissions outlined below rather than
+  by adding `:zeno/sharing` paths to the group's shared paths.
+* `:zeno/server` doesn't support sharing since the data at this path comes with
+  the hard coded behavior of being accessible by the server only.
+
+Zeno will throw an exception rather than allow you to use one of the above
+roots that doesn't support sharing in a path assigned to a sharing group.
+
+### Sharing Groups
+A sharing group is simply a grouping of members (individual actors and soon
+other groups) along with a set of paths. Each member of the group has a set of
+permissions that allow them to view/operate on the group and/or the data.
+
+A group is created using an [update command](#update-commands). Here is an
+example that creates a group with id `group-id` that has one member specified
+by `member-id`. This member has been granted read access to all of Ernest
+Hemingway's books. `group-id` should come from calling [`make-id`](#make-id)
+and `member-id` most likely already exists in your application (though it too
+should have originated from calling `make-id`.
+```clojure
+{:path [:zeno/sharing]
+ :op :set
+ :arg {group-id
+        {:zeno/members {member-id {:zeno/permissions :zeno/read-data}}}
+         :zeno/paths #{[:zeno/crdt :books :zeno/* :author "Ernest Hemingway"]}}}
+```
+
+#### Permissions
+
+#### Shared Paths
+
+#### Member Status
+
+### Share Hook
 
 ## Async API
 In order to work well in browsers, the Zeno API is asynchronous. Most Zeno
@@ -342,6 +416,14 @@ channel, which will yield the function's return value.
 
 # API
 TODO
+
+## `make-id`
+```clojure
+(make-id)
+```
+Returns a UUID. This is simply a convenience so you don't have to think about
+ensuring that your generated ID's are good ones. Use this anytime you need
+to uniquely identify something such as a user, a group, or something else.
 
 # Development
 
