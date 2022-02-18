@@ -98,7 +98,6 @@ the keys is the
 [ISBN](https://en.wikipedia.org/wiki/International_Standard_Book_Number) and
 the value is information about the book (book-info) such as title, author, etc.
 
-
 * `:zeno/keys`
   * If you want a list of ISBN's you could bind the map of books at path
     `[:zeno/crdt :books]` to the symbol `books` in your subscription map and
@@ -385,16 +384,41 @@ example that creates a group with id `group-id` that has one member specified
 by `member-id`. This member has been granted read access to all of Ernest
 Hemingway's books. `group-id` should come from calling [`make-id`](#make-id)
 and `member-id` most likely already exists in your application (though it too
-should have originated from calling `make-id`.
+should have originated from calling `make-id`).
 ```clojure
 {:path [:zeno/sharing]
  :op :set
  :arg {group-id
-        {:zeno/members {member-id {:zeno/permissions :zeno/read-data}}}
+        {:zeno/members {member-id {:zeno/permissions #{:zeno/read-data}}}}
          :zeno/paths #{[:zeno/crdt :books :zeno/* :author "Ernest Hemingway"]}}}
 ```
 
+You could then subscribe to the members of the group for displaying them on a
+group management page via [subscription map](#subscription-maps) such as
+```clojure
+{member-ids [:zeno/sharing group-id :zeno/members :zeno/keys]
+ members [:zeno/crdt :users member-ids]}
+```
+Of course the particulars of the subscription map will depend on how you've
+organized your application data. If some members of your group are themselves
+groups then you'll need to decide how you want to handle extracting that nested
+information.
+
 #### Permissions
+* `:zeno/add-members`
+  * Whether or not one is allowed to add others to a group.
+* `:zeno/change-others-permissions`
+  * Whether or not one is allowed to change other's permissions in the group.
+* `:zeno/change-own-permissions`
+  * Whether or not one is allowed to change their own permissions in the group.
+* `:zeno/read-member-status`
+  * Whether or not one is allowed to see other's [member status](#member-status).
+* `:zeno/read-membership`
+  * Whether or not one is allowed to see who is in the group.
+* `:zeno/read-data`
+* `:zeno/write-data`
+* `:zeno/remove-members`
+* `:zeno/remove-self`
 
 #### Shared Paths
 
