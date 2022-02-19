@@ -202,8 +202,8 @@ offline. While online, all the data available to the client (controlled via
 only access data that existed the last time they were connected. Any of said
 data can be edited while offline and when the client reconnects it is synced up
 to the server and any conflicts are merged via CRDT semantics. [The
-example](TODO) will be useful in clarifying what conflicts may exist and a bit
-about what CRDT semantics are.
+example](./example-app.md) will be useful in clarifying what conflicts may
+exist and a bit about what CRDT semantics are.
 
 This is the state we intend application developers to use the most often.
 
@@ -358,7 +358,7 @@ interface is the same. They can be summed up shortly as follows:
 * `:zeno/crdt` supports sharing and sharing is actually the mechanism by which
   CRDT behavior is triggered. Once a path is shared among multiple actors any
   changes made to the data at that path will be merged among them via CRDT
-  merging semantics. Reading the [example app](TODO) may help your
+  merging semantics. Reading the [example app](./example-app.md) may help your
   understanding.
 * `:zeno/online` will support sharing. In this case sharing will behave as
   a more typical access control. Concurrent edits cannot be merged but the most
