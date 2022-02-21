@@ -390,8 +390,7 @@ should have originated from calling `make-id`).
 {:path [:zeno/sharing]
  :op :set
  :arg {group-id
-        {:zeno/members {member-id {:zeno/status :zeno/pending
-                                   :zeno/permissions #{:zeno/read-data}}}
+        {:zeno/members {member-id {:zeno/permissions #{:zeno/read-data}}}
          :zeno/paths #{[:zeno/crdt :books :zeno/* :author "Ernest Hemingway"]}}}
 ```
 
@@ -407,41 +406,51 @@ groups then you'll need to decide how you want to handle extracting that nested
 information.
 
 #### Permissions
-* `:zeno/add-members`
-  * Whether or not one is allowed to add others to a group.
-* `:zeno/change-others-permissions`
-  * Whether or not one is allowed to change other's permissions in the group.
-* `:zeno/change-own-permissions`
-  * Whether or not one is allowed to change their own permissions in the group.
-* `:zeno/read-member-status`
-  * Whether or not one is allowed to see other's [member status](#member-status).
-* `:zeno/read-membership`
-  * Whether or not one is allowed to see who is in the group.
-* `:zeno/read-data`
-* `:zeno/write-data`
-* `:zeno/remove-members`
-* `:zeno/remove-self`
 
-add-members - Add others to the group. Implement join requests by having someone
-  essentially ask to be invited. Then you'd need two share hooks since it would
-  be silly to have them accept their acceptance.
+* `add-members`
+  * This grants the ability to execute an update command that that will result
+  in adding a member to a sharing group. An example of this would be this
+  command if `member-id` was not already in the group:
+  ```clojure
+  {:path [:zeno/sharing group-id :zeno/members member-id]
+   :op :set
+   :arg {:zeno/permissions #{...}}}
+  ```
+* `add-others-permissions`
+  * This grants the ability to execute an update command that will add
+  permissons to another member.
+* `add-own-permissions`
+  * This grants the ability to execute an update command that will add
+  permissions to one's self.
+* `read-accepted`
+  * This grants the ability to see the members in the group who have the
+  `:zeno/accepted` status, this includes seeing said status.
+* `read-data`
+  * This grants the ability to see the data at the paths specified in the group
+  under the `:zeno/paths` key.
+* `read-declined`
+  * This grants the ability to see the members in the group who have the
+  `:zeno/dcelined` status, this includes seeing said status.
+* `read-pending`
+  * This grants the ability to see the members in the group who have the
+  `:zeno/pending` status, this includes seeing said status.
+* `remove-members`
+  * This grants the ability to execute an update command that will result in
+  members being removed from the group.
+* `remove-others-permissions`
+  * This grants the ability to execute an update command that will result in
+  other member's permissions being removed.
+* `remove-own-permissions`
+  * This grants the ability to execute an update command that will result in
+  one's own permissions being removed.
+* `remove-self`
+  * This grants the ability to execute an update command that will result in
+  one's self being removed from the group.
+* `write-data`
+  * This grants the ability to write data at the paths specified in the group
+  under the `:zeno/paths` key.
 
-remove-members
-
-remove-self
-
-read-accepted
-read-invited
-read-declined
-
-add-others-permissions
-remove-others-permissions
-
-add-own-permissions
-remove-own-permissions
-
-read-data
-write-data
+-------------------------
 
 Standard Member
 remove-self
@@ -494,11 +503,14 @@ to request to join a group. In either case the same update command is issued:
 ```clojure
 {:path [:zeno/sharing group-id :zeno/members member-id]
  :op :set
- :arg {:zeno/status :zeno/pending :zeno/permissions #{...}}}
+ :arg {:zeno/permissions #{...}}}
 ```
-Only the Zeno server is allowed to set the status to anything besides
-`:zeno/pending` and this is accomplished via the [Share Hook](#share-hook)
-described below.
+If this person is already in the group the member record is simply overwritten,
+if not, the [Share Hook](#share-hook) is triggered (in either case the actor
+issuing the update command must have the permissions to do so). Note that there
+is no `:zeno/status :zeno/pending` in the `:arg` map. Only the Zeno server is
+allowed to set the `:zeno/status` field for a member and this is accomplished
+via the [Share Hook](#share-hook) described below.
 
 ### Share Hook
 
