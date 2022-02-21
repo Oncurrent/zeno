@@ -330,12 +330,13 @@ See [zeno-client](#zeno-client) for more details about `zc`.
   * TODO
 * `:insert-before`
   * TODO
-* `insert-after`
+* `:insert-after`
   * TODO
-* `insert-range-before`
+* `:insert-range-before`
   * TODO
-* `insert-range-after`
+* `:insert-range-after`
   * TODO
+* `:add-to-set`
 * TODO
 
 ## Sharing
@@ -389,7 +390,8 @@ should have originated from calling `make-id`).
 {:path [:zeno/sharing]
  :op :set
  :arg {group-id
-        {:zeno/members {member-id {:zeno/permissions #{:zeno/read-data}}}}
+        {:zeno/members {member-id {:zeno/status :zeno/pending
+                                   :zeno/permissions #{:zeno/read-data}}}
          :zeno/paths #{[:zeno/crdt :books :zeno/* :author "Ernest Hemingway"]}}}
 ```
 
@@ -420,11 +422,86 @@ information.
 * `:zeno/remove-members`
 * `:zeno/remove-self`
 
+add-members - Add others to the group. Implement join requests by having someone
+  essentially ask to be invited. Then you'd need two share hooks since it would
+  be silly to have them accept their acceptance.
+
+remove-members
+
+remove-self
+
+read-accepted
+read-invited
+read-declined
+
+add-others-permissions
+remove-others-permissions
+
+add-own-permissions
+remove-own-permissions
+
+read-data
+write-data
+
+Standard Member
+remove-self
+read-accepted
+read-data
+write-data
+
+
 #### Shared Paths
+There isn't much special about the paths you include in a share group. They are
+specified as a set as seen in the example in [Sharing Groups](#sharing-groups).
+To change the paths of an existing group use a command like so:
+
+```clojure
+{:path [:zeno/sharing group-id :zeno/paths]
+ ;; Use :set to overwrite the set of paths.
+ :op :set
+ ;; Or use :add-to-set to do a union with the existing paths
+ ;; :op :add-to-set
+ :arg #{[:zeno/crdt :some :path] [:zeno/crdt :another :path]}}
+```
+
+##### Inheritance
+When you share a path, say `[:zeno/crdt :a]`, with a group the sharing is
+inherited by paths beneath. This means the group member's permissions will
+apply to `[:zeno/crdt :a :b]` just as well as `[:zeno/crdt :a]`. This
+inheritance will continue deeper into the tree unless it is overridden. Such
+overrides won't occur within a single group since there is no path negation or
+way to say "except not this sub-path" and members permissions apply to all
+paths in the group with no way to qualify. It could be the case however that
+someone is in multiple groups. Say for example `:memberA` is in `:group1` and
+`:group2`. Let's say that `:group1` grants `:memberA` `:data-read` to
+`[:zeno/crdt :employees]`. It turns out that `:memberA` shouldn't be able to
+see other employee's salaries. While there are other, perhaps better, ways to
+structure the data and groups to handle this, one way that illustrates the
+point at hand would be to add `:memberA` to `:group2` _without_ `:data-read`
+(or any other permissions) and add the path `[:zeno/crdt :employees :zeno/*
+:salary]`. This would effectively stop `memberA`'s `:data-read` inheritance on
+the `[:zeno/crdt :employees]` sub-tree for the `:salary` field.
 
 #### Member Status
+Member's can be in one of three statuses:
+1. `:zeno/pending`
+1. `:zeno/accepted`
+1. `:zeno/declined`
+
+It's up to the application to determine how a member becomes pending. For
+example there may be an interface to invite someone to a group or for someone
+to request to join a group. In either case the same update command is issued:
+```clojure
+{:path [:zeno/sharing group-id :zeno/members member-id]
+ :op :set
+ :arg {:zeno/status :zeno/pending :zeno/permissions #{...}}}
+```
+Only the Zeno server is allowed to set the status to anything besides
+`:zeno/pending` and this is accomplished via the [Share Hook](#share-hook)
+described below.
 
 ### Share Hook
+
 
 ## Async API
 In order to work well in browsers, the Zeno API is asynchronous. Most Zeno
