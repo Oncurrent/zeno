@@ -1,12 +1,5 @@
 # Zeno
 
-DOCS TODO
-[ ] Technical Design Doc
-[ ] More about CRDT Merging semantics
-[ ] An example app:
-    [ ] First just write about it in english
-    [ ] Make it (probably won't ever get around to this).
-
 # About
 Zeno is a framework for building applications that are:
 * connected, meaning reactive within and between clients (aka no pressing
@@ -372,8 +365,13 @@ interface is the same. They can be summed up shortly as follows:
 * `:zeno/server` doesn't support sharing since the data at this path comes with
   the hard coded behavior of being accessible by the server only.
 
+In short, only non-`:zeno/client` data roots support access control. Data roots
+meaning ones that are meant to store application data like `:zeno/crdt` and
+`:zeno/online`.
+
 Zeno will throw an exception rather than allow you to use one of the above
 roots that doesn't support sharing in a path assigned to a sharing group.
+
 
 ### Sharing Groups
 A sharing group is simply a grouping of members (individual actors and soon
@@ -407,57 +405,112 @@ information.
 
 #### Permissions
 
-* `add-members`
+* `:zeno/add-members`
   * This grants the ability to execute an update command that that will result
-  in adding a member to a sharing group. An example of this would be this
-  command if `member-id` was not already in the group:
+  in adding a member to a sharing group.
+  * An example of this would be the following command if `member-id` was _not_
+  already in the group:
   ```clojure
   {:path [:zeno/sharing group-id :zeno/members member-id]
    :op :set
-   :arg {:zeno/permissions #{...}}}
+   :arg {}}
   ```
-* `add-others-permissions`
+  Note that one needs to have `:zeno/add-others-permissions` to add permissions
+  with the above command at the same time as adding them to the group.
+* `:zeno/add-others-permissions`
   * This grants the ability to execute an update command that will add
   permissons to another member.
-* `add-own-permissions`
+  * An example of this would be the following
+  command if `member-id` did not already have `:read-data` permissions and was
+  already in the group (else you'd need `add-members`).
+  ```clojure
+  {:path [:zeno/sharing group-id :zeno/members member-id :zeno/permissions]
+   :op :add-to-set
+   :arg :zeno/read-data}
+  ```
+  Note that if `:arg` was `#{:zeno/read-data}` (in a set and not as a scalar)
+  then `member-id`s permissions would be overwritten (see `:add-to-set` under
+  [Supported Update Operations](#supported-update-operations), meaning the
+  actor executing this command may also need to have
+  `:zeno/remove-others-permissions` in order for this to succeed depending on
+  what permissions `member-id` already had.
+* `:zeno/add-own-permissions`
   * This grants the ability to execute an update command that will add
   permissions to one's self.
-* `read-accepted`
+  * Everything is the same as `:zeno/add-other-permissions` except in this case
+  `member-id` is also the actor executing the command.
+  * See the example for `:zeno/add-other-permissions`.
+* `:zeno/read-accepted`
   * This grants the ability to see the members in the group who have the
   `:zeno/accepted` status, this includes seeing said status.
-* `read-data`
+  * This effects what results are returned when subscribing to the following
+  path:
+  ```clojure
+  [:zeno/sharing group-id :zeno/members]
+  ```
+* `:zeno/read-data`
   * This grants the ability to see the data at the paths specified in the group
   under the `:zeno/paths` key.
-* `read-declined`
+  * This effects what results are returned when subscribing to a path. Some
+  combination of permissions from all the sharing groups a subscriber is in
+  may, for example, result in being able to see all books (e.g. the path
+  `[:zeno/crdt :books]`) but not those written by themselves (perhaps a strange
+  app, but it illustrates the point). In this case the subscription will not
+  actually return all the books since the ones the subscriber authored will be
+  left out. There will be no indication that this happened for security
+  reasons.
+  * Also note that in some cases, like `[:zeno/crdt ...]`, one needn't have
+  explicit access to a path to access it, read more in [Default Access
+  Control](#default-access-control).
+* `:zeno/read-declined`
   * This grants the ability to see the members in the group who have the
-  `:zeno/dcelined` status, this includes seeing said status.
-* `read-pending`
+  `:zeno/declined` status, this includes seeing said status.
+  * See `:zeno/read-accepted` for an example.
+* `:zeno/read-pending`
   * This grants the ability to see the members in the group who have the
   `:zeno/pending` status, this includes seeing said status.
-* `remove-members`
+  * See `:zeno/read-accepted` for an example.
+* `:zeno/remove-other-members`
   * This grants the ability to execute an update command that will result in
   members being removed from the group.
-* `remove-others-permissions`
+  * An example of this would be the following command if `member-id` was
+  already in the group:
+  ```clojure
+  {:path [:zeno/sharing group-id :zeno/members member-id]
+   :op :remove}
+  ```
+  * Note also that you may trigger this if you try to add a member by issuing
+  the following when `member-id1` was already in th group:
+  ```clojure
+  {:path [:zeno/sharing group-id :zeno/members]
+   :op :set
+   :arg {member-id2 {}}}
+   ```
+* `:zeno/remove-others-permissions`
   * This grants the ability to execute an update command that will result in
   other member's permissions being removed.
-* `remove-own-permissions`
+  * See the example for `:zeno/add-other-permissions`.
+* `:zeno/remove-own-permissions`
   * This grants the ability to execute an update command that will result in
   one's own permissions being removed.
-* `remove-self`
+  * Everything is the same as `:zeno/remove-other-permissions` except in this
+  case `member-id` is also the actor executing the command.
+  * See the example for `:zeno/add-other-permissions`.
+* `:zeno/remove-self`
   * This grants the ability to execute an update command that will result in
   one's self being removed from the group.
-* `write-data`
+  * Everything is the same as `:zeno/remove-other-members` except in this case
+  the `member-id` is also the actor executing the command.
+  * See `:zeno/remove-other-members` for example.
+* `:zeno/write-data`
   * This grants the ability to write data at the paths specified in the group
   under the `:zeno/paths` key.
+  * Also note that in some cases, like `[:zeno/crdt ...]`, one needn't have
+  explicit access to a path to access it, read more in [Default Access
+  Control](#default-access-control).
 
--------------------------
-
-Standard Member
-remove-self
-read-accepted
-read-data
-write-data
-
+As an example or convenience you can use these predefined sets of permissions
+rather than stepping down to low-level control. TODO: add link.
 
 #### Shared Paths
 There isn't much special about the paths you include in a share group. They are
@@ -513,6 +566,26 @@ allowed to set the `:zeno/status` field for a member and this is accomplished
 via the [Share Hook](#share-hook) described below.
 
 ### Share Hook
+
+### Default Access Control
+The default access one has to a path depends on the root. By default access we
+mean what happens if the actor subscribing/issuing an update command doesn't
+have the path in question appearing in any of the sharing groups they are in.
+
+* `:zeno/crdt` defaults to allow.
+  * This is essentially because it supports offline access. Any path in
+  `:zeno/crdt` that isn't explicitly shared is private to the actor using it.
+  Thus two actors can store the same data at the same path and have no conflict
+  until one of them shares that path with the other. This behavior allows an
+  actor to write new data while offline.
+* `:zeno/online` would default to deny.
+  * Since `:zeno/online` data would be strongly consistent all actors have the
+  same view of the data at the same time, thus one needs explicit access to
+  something in order to read or write it. Paths are not private if not shared
+  since all users share everything in this case.
+
+It might be accurate to say any root that supports offline writing will have
+the default to allow and private behavior.
 
 
 ## Async API
