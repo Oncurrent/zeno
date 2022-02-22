@@ -49,18 +49,12 @@
   [:ws-url ws-url-schema])
 
 (l/def-enum-schema command-op-schema
-  :add-ids-to-group
-  :create-group
-  :delete-group
   :insert-after
   :insert-before
   :insert-range-after
   :insert-range-before
   :remove
-  :set-sharing-rule
-  :remove-ids-from-group
-  :set
-  :set-sharing-rule)
+  :set)
 
 (l/def-record-schema modify-group-arg-schema
   [:group-subject-id id-schema]
@@ -161,37 +155,6 @@
   [:serialized-update-info serialized-value-schema]
   [:update-type l/keyword-schema])
 
-;;;;;;;;;;;;;;; Sharing ;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(l/def-enum-schema sharing-group-member-status-schema
-  :zeno/invited
-  :zeno/accepted
-  :zeno/declined)
-
-(l/def-enum-schema sharing-group-member-permissions-schema
-  :zeno/add-members
-  :zeno/change-others-permissions
-  :zeno/change-own-permissions
-  :zeno/read-member-status
-  :zeno/read-membership
-  :zeno/read-data
-  :zeno/write-data
-  :zeno/remove-members
-  :zeno/remove-self)
-
-(l/def-record-schema sharing-group-member-info-schema
-  ;; Keys are stringified permissions
-  [:zeno/permissions (l/map-schema l/boolean-schema)]
-  [:zeno/membership-status sharing-group-member-status-schema])
-
-(l/def-record-schema sharing-group-schema
-  [:zeno/members (l/map-schema sharing-group-member-info-schema)]
-  ;; Keys are stringified paths
-  [:zeno/paths (l/map-schema l/boolean-schema)])
-
-(def sharing-store-schema
-  (l/map-schema sharing-group-schema))
-
 ;;;;;;;;;;;;;;; RPCs ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (l/def-enum-schema unauthorized-schema
@@ -205,28 +168,18 @@
 (def rpc-ret-schema
   (l/union-schema [l/null-schema unauthorized-schema serialized-value-schema]))
 
-;;;;;;;;;;;;;;; Protocols ;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;; Talk2 Protocols ;;;;;;;;;;;;;;;;;;;;;
 
 (def client-server-protocol
-  {:roles
-   [:client :server]
-
-   :msgs
-   {:get-schema-pcf-for-fingerprint {:arg fingerprint-schema
-                                     :ret (l/maybe l/string-schema)
-                                     :sender :either}
-    :log-in {:arg log-in-arg-schema
-             :ret (l/maybe log-in-ret-schema)
-             :sender :client}
-    :log-out {:arg l/null-schema
-              :ret l/boolean-schema
-              :sender :client}
-    :resume-session {:arg session-token-schema
-                     :ret (l/maybe session-info-schema)
-                     :sender :client}
-    :rpc {:arg rpc-arg-schema
-          :ret rpc-ret-schema
-          :sender :client}
-    :update-authenticator-state {:arg update-authenticator-state-arg-schema
-                                 :ret serialized-value-schema
-                                 :sender :client}}})
+  {:get-schema-pcf-for-fingerprint {:arg fingerprint-schema
+                                    :ret (l/maybe l/string-schema)}
+   :log-in {:arg log-in-arg-schema
+            :ret (l/maybe log-in-ret-schema)}
+   :log-out {:arg l/null-schema
+             :ret l/boolean-schema}
+   :resume-session {:arg session-token-schema
+                    :ret (l/maybe session-info-schema)}
+   :rpc {:arg rpc-arg-schema
+         :ret rpc-ret-schema}
+   :update-authenticator-state {:arg update-authenticator-state-arg-schema
+                                :ret serialized-value-schema}})

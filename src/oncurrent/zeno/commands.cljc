@@ -4,7 +4,6 @@
    [deercreeklabs.lancaster :as l]
    [oncurrent.zeno.crdt.commands :as crdt-commands]
    [oncurrent.zeno.schemas :as schemas]
-   [oncurrent.zeno.sharing :as sharing]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
@@ -14,10 +13,6 @@
 (defmethod process-cmd :zeno/client
   [arg]
   :foo)
-
-(defmethod process-cmd :zeno/sharing
-  [arg]
-  (sharing/process-cmd arg))
 
 (defmethod process-cmd :zeno/crdt
   [arg]
