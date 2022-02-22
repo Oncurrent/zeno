@@ -1,9 +1,10 @@
 {:deps
  {binaryage/oops {:mvn/version "0.7.1"}
   com.cognitect.aws/api {:mvn/version "0.8.539"}
-  com.cognitect.aws/dynamodb {:mvn/version "814.2.1053.0"}
-  com.cognitect.aws/endpoints {:mvn/version "1.1.12.136"}
+  com.cognitect.aws/dynamodb {:mvn/version "814.2.1069.0"}
+  com.cognitect.aws/endpoints {:mvn/version "1.1.12.153"}
   com.cognitect.aws/s3 {:mvn/version "814.2.1053.0"}
+  com.deercreeklabs/talk2 {:mvn/version "0.1.1"}
   com.taoensso/timbre {:mvn/version "5.1.2"}
   compact-uuids/compact-uuids {:mvn/version "0.2.0"}
   crypto-password/crypto-password {:mvn/version "0.3.0"}
@@ -29,7 +30,7 @@
                ["-m" "nrepl.cmdline" "--middleware"
                 "[cider.nrepl/cider-middleware,cider.piggieback/wrap-cljs-repl]"]}
 
-  :cider-nrepl {:extra-deps {cider/cider-nrepl {:mvn/version "0.27.3"}}}
+  :cider-nrepl {:extra-deps {cider/cider-nrepl {:mvn/version "0.28.3"}}}
 
   :clj {:extra-deps {org.clojure/clojure {:mvn/version "1.10.3"}}}
 
@@ -47,9 +48,9 @@
              :main-opts ["-m" "cognitect.test-runner"]}
 
   :test-cljs {:extra-paths ["test"]
-              :extra-deps {thheller/shadow-cljs {:mvn/version "2.16.12"}}}
+              :extra-deps {thheller/shadow-cljs {:mvn/version "2.17.4"}}}
 
   :test-kaocha {:extra-paths ["test"]
-                :extra-deps {lambdaisland/kaocha {:mvn/version "1.60.977"}}}
+                :extra-deps {lambdaisland/kaocha {:mvn/version "1.63.998"}}}
 
   :test-libs {:extra-deps {org.clojure/math.combinatorics {:mvn/version "0.1.6"}}}}}

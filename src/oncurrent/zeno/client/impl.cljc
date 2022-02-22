@@ -1,6 +1,7 @@
 (ns oncurrent.zeno.client.impl
   (:require
    [clojure.core.async :as ca]
+   [com.deercreeklabs.talk2 :as talk2]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
    [oncurrent.zeno.client.state-subscriptions :as state-subscriptions]
