@@ -39,7 +39,7 @@
 (defn <remove-identifier! [zc identifier]
   "Works on current subject. Must be logged in. Returns a boolean success value."
   (when-not (string? identifier)
-    (throw (ex-info (str "`idenfifier` must be a string. Got `"
+    (throw (ex-info (str "`identifier` must be a string. Got `"
                          (or identifier "nil") "`.")
                     (u/sym-map identifier))))
   (when-not (zc/logged-in? zc)
