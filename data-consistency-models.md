@@ -21,10 +21,10 @@
   node as the leader, which decides on a total order of operations and prevents
   concurrent access from causing conflicts [[1]](#1).
 
-This means that when an actor updates some data it is blocked and no other actor
-con update it nor client view it until all notes that service requests agree on
-and/or are made aware of the new value. Thus network connectivity is required
-and scalability is poor. But the guarantees are sometimes very useful.
+This means that when an actor updates some data it is blocked and no other
+actor can update it nor client view it until all nodes that service requests
+agree on and/or are made aware of the new value. Thus network connectivity is
+required and scalability is poor. But the guarantees are sometimes very useful.
 
 Zeno uses strong consistency for all data stored at `[:zeno/server ...]` (which
 data can only be accessed by the server) as well as `[:zeno/client ...]` (which
@@ -62,19 +62,21 @@ to use eventual consistency.
   possibly in a different order -- their view of the shared state is identical,
   and any conflicting updates are merged automatically [[1]](#1).
 
-CRDT's implement strong eventual consistency. Since conflicting changes are
-merged automatically the order in which they occured becomes a concern. Strong
-eventual consistency, and thus CRDT's, require that the order in which the
-updates are applied does not matter. In other words the updates must be
-commutative. And since we are not picking one as the winner we have to consider
-duplicate updates (due to e.g. the network) and so updates must be idempotent.
-While from the users perspective commutativity and idempotency don't have to
-exist, the underlying data structures and update semantics must obey them.
+Conflict-Free Replicated Data Types (CRDT's) implement strong eventual
+consistency. Since conflicting changes are merged automatically the order in
+which they occurred becomes a concern. Strong eventual consistency, and thus
+CRDT's, requires that the order in which the updates are applied not matter. In
+other words the updates must be commutative. And since we are not picking one
+as the winner we have to consider duplicate updates (due to e.g. the network)
+and so updates must be idempotent. While from the users perspective
+commutativity and idempotency don't have to exist, the underlying data
+structures and update semantics must obey them.
 
 Zeno uses strong eventual consistency for all data stored at `[:zeno/crdt
 ...]`. We expect this to be the most common place application developers turn
-to store data. `[:zeno/sharing ...]` is also backed by the same CRDT data
-structures and so can be used offline etc.
+to store data. CRDT data storage is also provided as an option for
+authorization plugins but not authentication plugins (since you must be online
+to authenticate).
 
 # References
 <a id="1">[1]</a>
