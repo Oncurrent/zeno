@@ -81,7 +81,7 @@
 (defn <log-in! [zc identifier secret]
   (au/go
     (when-not (string? identifier)
-      (throw (ex-info (str "`idenfifier` must be a string. Got `"
+      (throw (ex-info (str "`identifier` must be a string. Got `"
                            (or identifier "nil") "`.")
                       (u/sym-map identifier))))
     (when-not (string? secret)
