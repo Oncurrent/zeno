@@ -335,18 +335,29 @@ data. Thus, Zeno provides a plugin architecture to allow application developers
 to customize this behavior while providing them as much help as possible.
 
 ### Authentication
+
+#### Using an Authenticator
+When you create a Zeno client you can specify an authenticator to use. TODO:
+Show example. Your application can then call whatever functions it needs to
+that the authenticator provides. You'll need to reference the authenticator's
+documentation.
+
+Zeno ships with one authentication plugin to support identifier/secret (e.g.
+username/password) authentication which you can use in your application. It's
+located at
+[src/oncurrent/zeno/authenticators/identifier_secret/](#src/oncurrent/zeno/authenticators/identifier_secret/)
+
+#### Writing a Custom Authenticator
 The general idea is that an application developer can implement a client side
 and server side aspect of authentication while Zeno supplies the communication
 plumbing and storage for the plugin to use.
 
-When you create a Zeno client you can specify an authenticator to use. Your
-application then calls whatever functions it needs in the authenticator's
-client side implementation. The authenticator's client side uses Zeno's
-provided client side authentication interface to send RPC's with arbitrary
-authentication data to the Zeno server which can forward them to the
-authenticator's server side implementation. The Zeno client/server
-authentication interface is intended to provide communication and storage
-plumbing to make the authenticator plugin author's job as easy as possible.
+The authenticator's client side uses Zeno's provided client side authentication
+interface to send RPC's with arbitrary authentication data to the Zeno server
+which forwards them to the authenticator's server side implementation. The Zeno
+client/server authentication interface is intended to provide communication and
+storage plumbing to make the authenticator plugin author's job as easy as
+possible.
 
 The authentication plugin interface supports a number of operations namely
 log-in, log-out, resume-session, and update-authenticator-state. The job of the
@@ -374,9 +385,8 @@ the authenticator plugin must still define Lancaster Schema's for that data
 and provide the schemas to Zeno for serializing/deserializing.
 
 Zeno ships with one authentication plugin to support identifier/secret (e.g.
-username/password) authentication. You can use it in your application or just
-look at it as an example to better understand how to write an authentication
-plugin. It's located at
+username/password) authentication which you can reference as an example. It's
+located at
 [src/oncurrent/zeno/authenticators/identifier_secret/](#src/oncurrent/zeno/authenticators/identifier_secret/)
 
 ### Authorization
