@@ -50,7 +50,7 @@
                                      (u/sym-map authenticator-storage
                                                 login-info)))]
       (when login-ret
-        (let [{:keys [extra-info login-lifetime-mins subject-id]} login-ret
+        (let [{:keys [extra-info login-lifetime-mins actor-id]} login-ret
               _ (when (not (int? login-lifetime-mins))
                   (throw
                    (ex-info
@@ -59,12 +59,12 @@
                          "`:login-lifetime-mins` from `<log-in!`. Got `"
                          (or login-lifetime-mins "nil") "`.")
                     (u/sym-map login-lifetime-mins authenticator-name))))
-              _ (when (not (string? subject-id))
+              _ (when (not (string? actor-id))
                   (throw
                    (ex-info
                     (str "Authenticator `" authenticator-name "` did not "
-                         "return a string value for key `:subject-id` from "
-                         "`<log-in!`. Got `" (or subject-id "nil") "`.")
+                         "return a string value for key `:actor-id` from "
+                         "`<log-in!`. Got `" (or actor-id "nil") "`.")
                     (u/sym-map login-lifetime-mins authenticator-name))))
               serialized-extra-info (when extra-info
                                       (au/<? (storage/<value->serialized-value
@@ -75,12 +75,12 @@
               session-token (generate-session-token)
               session-info {:session-token session-token
                             :session-token-minutes-remaining login-lifetime-mins
-                            :subject-id subject-id}
+                            :actor-id actor-id}
               token-k (str storage/session-token-to-token-info-key-prefix
                            session-token)
               exp-ms (+ (u/current-time-ms) (* 60 1000 login-lifetime-mins))
               token-info {:session-token-expiration-time-ms exp-ms
-                          :subject-id subject-id}]
+                          :actor-id actor-id}]
           (au/<? (storage/<add! storage token-k
                                 schemas/session-token-info-schema token-info))
           (swap! *connection-info
@@ -89,7 +89,7 @@
                       (assoc ::authenticator-storage authenticator-storage)
                       (assoc ::branch-id (:branch-id msg-arg))
                       (assoc ::session-token session-token)
-                      (assoc ::subject-id subject-id)))
+                      (assoc ::actor-id actor-id)))
           (u/sym-map serialized-extra-info session-info))))))
 
 (defn <handle-log-out
@@ -115,7 +115,7 @@
           info (au/<? (storage/<get storage
                                     token-k
                                     schemas/session-token-info-schema))
-          {:keys [session-token-expiration-time-ms subject-id]} info
+          {:keys [session-token-expiration-time-ms actor-id]} info
           remaining-ms (- session-token-expiration-time-ms (u/current-time-ms))
           session-token-minutes-remaining (u/floor-int
                                            (/ remaining-ms 1000 60))]
@@ -123,8 +123,8 @@
         (do
           (swap! *connection-info #(-> %
                                        (assoc ::session-token session-token)
-                                       (assoc ::subject-id subject-id)))
-          (u/sym-map session-token session-token-minutes-remaining subject-id))
+                                       (assoc ::actor-id actor-id)))
+          (u/sym-map session-token session-token-minutes-remaining actor-id))
         (do
           (au/<? (storage/<delete! storage token-k))
           nil)))))
@@ -154,11 +154,11 @@
                               (get-update-state-info-schema authenticator
                                                             update-type)
                               serialized-update-info))
-          subject-id (::subject-id @*connection-info)
+          actor-id (::actor-id @*connection-info)
           ret (au/<? (<update-authenticator-state!
                       authenticator
                       (u/sym-map authenticator-storage
-                                 subject-id
+                                 actor-id
                                  update-info
                                  update-type)))]
       (au/<? (storage/<value->serialized-value

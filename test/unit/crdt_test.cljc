@@ -327,7 +327,7 @@
             v (crdt/get-value (u/sym-map crdt make-id path schema))]
         (is (= expected-v v))))))
 
-(deftest test-array-indexing
+(deftest ^:this test-array-indexing
   (let [schema (l/array-schema l/string-schema)
         sys-time-ms (u/str->long "1640205282858")
         ops [;; Start state: ABC
@@ -369,7 +369,7 @@
             arg (u/sym-map crdt path schema)
             v (crdt/get-value arg)
             _ (is (= ["A" "B" "C"] v))
-            kv (crdt/get-value (assoc arg :path 1))
+            kv (crdt/get-value (assoc arg :path [1]))
             _ (is (= "B" kv))]))))
 
 (deftest test-change-value-of-array-item

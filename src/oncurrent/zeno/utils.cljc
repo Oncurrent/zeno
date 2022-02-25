@@ -25,6 +25,9 @@
 
 (def terminal-kw-ops #{:zeno/keys :zeno/count :zeno/concat})
 (def kw-ops (conj terminal-kw-ops :zeno/*))
+(def valid-path-roots #{:zeno/actor-id
+                        :zeno/client
+                        :zeno/crdt})
 
 (defmacro sym-map
   "Builds a map from symbols.
@@ -234,8 +237,6 @@
     [path]
     (let [{:keys [template colls]} (parse-path ks-at-path path)]
       (expand-template template colls))))
-
-(def valid-path-roots #{:client :sys :zeno/subject-id :client-msgs :sys-msgs})
 
 (defn throw-bad-path-root [path]
   (let [[head & tail] path

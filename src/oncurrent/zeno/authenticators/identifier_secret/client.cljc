@@ -13,12 +13,12 @@
 (defn <create-subject!
   ([zc identifier secret]
    (<create-subject! zc identifier secret nil))
-  ([zc identifier secret subject-id]
-   "Returns the subject-id of the created subject."
+  ([zc identifier secret actor-id]
+   "Returns the actor-id of the created subject."
    (let [arg {:authenticator-name shared/authenticator-name
-              :return-value-schema schemas/subject-id-schema
+              :return-value-schema schemas/actor-id-schema
               :update-info-schema shared/create-subject-info-schema
-              :update-info (u/sym-map identifier secret subject-id)
+              :update-info (u/sym-map identifier secret actor-id)
               :update-type :create-subject
               :zc zc}]
      (za/<client-update-authenticator-state arg))))

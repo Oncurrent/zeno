@@ -7,20 +7,20 @@
    [taoensso.timbre :as log]))
 
 (deftest test-sub-map->map-info
-  (let [sub-map '{c [:client :b-to-c b]
-                  b [:client :a-to-b a]
-                  a [:client :a]
-                  x [:client x]
+  (let [sub-map '{c [:zeno/client :b-to-c b]
+                  b [:zeno/client :a-to-b a]
+                  a [:zeno/client :a]
+                  x [:zeno/client x]
                   z dynamic-path}
         resolution-map '{x :foo
-                         dynamic-path [:client :dp]}
+                         dynamic-path [:zeno/client :dp]}
         info (u/sub-map->map-info sub-map resolution-map)
         {:keys [independent-pairs ordered-dependent-pairs]} info
-        expected-independent-pairs-set (set '[[x [:client :foo]]
-                                              [a [:client :a]]
-                                              [z [:client :dp]]]),
-        expected-ordered-dependent-pairs '[[b [:client :a-to-b a]]
-                                           [c [:client :b-to-c b]]]]
+        expected-independent-pairs-set (set '[[x [:zeno/client :foo]]
+                                              [a [:zeno/client :a]]
+                                              [z [:zeno/client :dp]]]),
+        expected-ordered-dependent-pairs '[[b [:zeno/client :a-to-b a]]
+                                           [c [:zeno/client :b-to-c b]]]]
     (is (= expected-ordered-dependent-pairs ordered-dependent-pairs))
     (is (= expected-independent-pairs-set
            (set independent-pairs)))))

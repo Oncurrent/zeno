@@ -23,14 +23,14 @@
                :serialized-login-info ser-login-info}
           ;; TODO: Implement w/ talk2 API
           ret nil #_(au/<? (cc/<send-msg capsule-client :log-in arg))
-          subject-id (some-> ret :session-info :subject-id)
-          _ (when subject-id
-              (reset! (:*subject-id zc) subject-id))]
+          actor-id (some-> ret :session-info :actor-id)
+          _ (when actor-id
+              (reset! (:*actor-id zc) actor-id))]
       ret)))
 
 (defn <client-log-out [zc]
   ;; TODO: Delete stored transaction log data
-  (reset! (:*subject-id zc) nil)
+  (reset! (:*actor-id zc) nil)
   ;; TODO: Implement w/ talk2 API
   #_
   (cc/<send-msg capsule-client :log-out nil))
