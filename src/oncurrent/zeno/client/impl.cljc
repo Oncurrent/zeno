@@ -78,7 +78,7 @@
                                                 :zeno/client)
           update-infos (concat (:update-infos crdt-ret)
                                (:update-infos client-ret))]
-      ;; We can use reset! here because we know this is a serial loop
+      ;; We can use reset! here because we know this is called seriallly
       ;; with no concurrent updates.
       (reset! *client-state (:state client-ret))
       (state-subscriptions/do-subscription-updates! zc update-infos)

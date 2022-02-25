@@ -325,6 +325,28 @@
                                            :path []
                                            :schema (:crdt-schema arg)})))))
 
+(deftest test-crdt-array-of-maps-set-and-remove
+  (let [*next-id-num (atom 0)
+        sys-time-ms (u/str->long "1643061294999")
+        arg {:cmds [{:zeno/arg [{"a" 1 "b" 2}
+                                {"y" 10 "z" 20}
+                                {"c" 3}]
+                     :zeno/op :set
+                     :zeno/path [:zeno/crdt]}
+                    {:zeno/op :remove
+                     :zeno/path [:zeno/crdt 1 "y"]}]
+             :crdt-schema (l/array-schema (l/map-schema l/int-schema))
+             :make-id #(let [n (swap! *next-id-num inc)]
+                         (str "I" n))
+             :sys-time-ms sys-time-ms}
+        {:keys [crdt ops]} (commands/process-cmds arg)
+        expected-value [{"a" 1 "b" 2}
+                        {"z" 20}
+                        {"c" 3}]]
+    (is (= expected-value (crdt/get-value {:crdt crdt
+                                           :path []
+                                           :schema (:crdt-schema arg)})))))
+
 (deftest test-crdt-array-set-and-reset
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294999")
