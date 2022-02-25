@@ -64,11 +64,11 @@
                path-tail
                path)))))
 
-(defmulti eval-cmd (fn [state {:keys [op]} prefix]
+(defmulti eval-cmd (fn [state {:zeno/keys [op]} prefix]
                      op))
 
 (defmethod eval-cmd :set
-  [state {:keys [path op arg]} prefix]
+  [state {:zeno/keys [path op arg]} prefix]
   (let [{:keys [norm-path]} (get-in-state state path prefix)
         state-path (if prefix
                      (rest norm-path)
@@ -82,7 +82,7 @@
                    :value arg}}))
 
 (defmethod eval-cmd :remove
-  [state {:keys [path op]} prefix]
+  [state {:zeno/keys [path op]} prefix]
   (let [parent-path (butlast path)
         k (last path)
         {:keys [norm-path val]} (get-in-state state parent-path prefix)
@@ -156,15 +156,15 @@
                    :value arg}}))
 
 (defmethod eval-cmd :insert-before
-  [state {:keys [path op arg]} prefix]
+  [state {:zeno/keys [path op arg]} prefix]
   (insert* state path prefix op arg))
 
 (defmethod eval-cmd :insert-after
-  [state {:keys [path op arg]} prefix]
+  [state {:zeno/keys [path op arg]} prefix]
   (insert* state path prefix op arg))
 
 (defn eval-math-cmd [state cmd prefix op-fn]
-  (let [{:keys [path op arg]} cmd
+  (let [{:zeno/keys [path op arg]} cmd
         {:keys [norm-path val]} (get-in-state state path prefix)
         _ (when-not (number? val)
             (throw (ex-info (str "Can't do math on non-numeric type. "
@@ -214,26 +214,3 @@
           {:state initial-state
            :update-infos []}
           cmds))
-
-(def valid-ops (-> (l/edn schemas/command-op-schema)
-                   (:symbols)
-                   (set)))
-
-(defn valid-op? [op]
-  (boolean (valid-ops op)))
-
-(def valid-path-roots #{:client :sys})
-
-(defn check-cmd [cmd]
-  (let [{:keys [path op]} cmd
-        _ (when-not (sequential? path)
-            (throw (ex-info
-                    (str "The `path` parameter of the update "
-                         "command must be a sequence. Got: `"
-                         path "`.")
-                    (u/sym-map cmd path))))]
-    (when-not (valid-op? op)
-      (throw (ex-info
-              (str "The `op` parameter of the update command "
-                   "is not a valid op. Got: `" op "`.")
-              (u/sym-map cmd op))))))

@@ -13,7 +13,7 @@
 (def fingerprint-schema l/bytes-schema)
 (def id-schema l/string-schema)
 (def session-token-schema l/string-schema)
-(def subject-id-schema l/string-schema)
+(def actor-id-schema l/string-schema)
 (def timestamp-ms-schema l/long-schema)
 (def ws-url-schema l/string-schema)
 
@@ -56,10 +56,6 @@
   :remove
   :set)
 
-(l/def-record-schema modify-group-arg-schema
-  [:group-subject-id id-schema]
-  [:member-subject-ids (l/array-schema id-schema)])
-
 (l/def-union-schema path-item-schema
   l/keyword-schema
   l/string-schema
@@ -69,9 +65,9 @@
   path-item-schema)
 
 (l/def-record-schema serializable-command-schema
-  [:arg serialized-value-schema]
-  [:op command-op-schema]
-  [:path path-schema])
+  [:zeno/arg serialized-value-schema]
+  [:zeno/op command-op-schema]
+  [:zeno/path path-schema])
 
 ;;;;;;;;;;;;;;;;; CRDT Schemas ;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -93,7 +89,7 @@
 
 (l/def-record-schema tx-info-schema
   [:crdt-ops (l/array-schema crdt-op-schema)]
-  [:subject-id subject-id-schema]
+  [:actor-id actor-id-schema]
   [:sys-time-ms timestamp-ms-schema]
   [:update-cmds (l/array-schema serializable-command-schema)])
 
@@ -105,40 +101,17 @@
   [:tx-id id-schema]
   [:tx-info tx-info-schema])
 
-;;;;;;;;;;;;;; ACL Schemas ;;;;;;;;;;;;;;;;;
-
-(l/def-enum-schema permissions-schema
-  :r :w :rw :no-access)
-
-(l/def-record-schema acl-entry-schema
-  [:subject-id id-schema]
-  [:permissions permissions-schema])
-
-(l/def-record-schema crdt-acl-entry-info-schema
-  [:deletion-tx-id id-schema]
-  [:acl-entry acl-entry-schema])
-
-(l/def-record-schema acl-info-schema
-  [:acl-add-id-to-info (l/map-schema crdt-acl-entry-info-schema)]
-  [:acl-current-add-ids (l/array-schema id-schema)])
-
-(l/def-record-schema crdt-map-key-info-schema
-  [:acl-info acl-info-schema]
-  [:crdt-reference id-schema])
-
-(l/def-record-schema crdt-map-chunk-schema
-  [:key-to-key-info (l/map-schema crdt-map-key-info-schema)])
 
 ;;;;;;;;;;;;;;; Authentication ;;;;;;;;;;;;;;;;
 
 (l/def-record-schema session-info-schema
   [:session-token session-token-schema]
   [:session-token-minutes-remaining l/int-schema]
-  [:subject-id subject-id-schema])
+  [:actor-id actor-id-schema])
 
 (l/def-record-schema session-token-info-schema
   [:session-token-expiration-time-ms l/long-schema]
-  [:subject-id subject-id-schema])
+  [:actor-id actor-id-schema])
 
 (l/def-record-schema log-in-arg-schema
   [:authenticator-name authenticator-name-schema]

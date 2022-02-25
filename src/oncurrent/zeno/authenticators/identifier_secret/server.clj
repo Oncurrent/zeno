@@ -17,30 +17,30 @@
 
 (set! *warn-on-reflection* true)
 
-(def identifier-to-subject-id-key-prefix "IDENTIFIER-TO-SUBJECT-ID-")
-(def subject-id-to-hashed-secret-key-prefix "_SUBJECT-ID-TO-HASHED-SECRET-")
+(def identifier-to-actor-id-key-prefix "IDENTIFIER-TO-ACTOR-ID-")
+(def actor-id-to-hashed-secret-key-prefix "_ACTOR-ID-TO-HASHED-SECRET-")
 (def work-factor 12)
 
-(defn <get-subject-id-for-identifier [authenticator-storage identifier]
-  (let [k (str identifier-to-subject-id-key-prefix identifier)]
-    (storage/<get authenticator-storage k schemas/subject-id-schema)))
+(defn <get-actor-id-for-identifier [authenticator-storage identifier]
+  (let [k (str identifier-to-actor-id-key-prefix identifier)]
+    (storage/<get authenticator-storage k schemas/actor-id-schema)))
 
-(defn <get-hashed-secret-for-subject-id [authenticator-storage subject-id]
-  (let [k (str subject-id-to-hashed-secret-key-prefix subject-id)]
+(defn <get-hashed-secret-for-actor-id [authenticator-storage actor-id]
+  (let [k (str actor-id-to-hashed-secret-key-prefix actor-id)]
     (storage/<get authenticator-storage k l/string-schema)))
 
 (defn <log-in!* [{:keys [login-lifetime-mins authenticator-storage login-info]}]
   (au/go
     (let [identifier (-> login-info :identifier str/lower-case)
-          subject-id (au/<? (<get-subject-id-for-identifier
+          actor-id (au/<? (<get-actor-id-for-identifier
                              authenticator-storage identifier))
-          hashed-secret (when subject-id
-                          (au/<? (<get-hashed-secret-for-subject-id
-                                  authenticator-storage subject-id)))]
+          hashed-secret (when actor-id
+                          (au/<? (<get-hashed-secret-for-actor-id
+                                  authenticator-storage actor-id)))]
       (when (and hashed-secret
                  (bcrypt/check (:secret login-info) hashed-secret))
         ;; Can also return `:extra-info`, but we don't have any
-        (u/sym-map login-lifetime-mins subject-id)))))
+        (u/sym-map login-lifetime-mins actor-id)))))
 
 (defn <log-out!* [arg]
   (au/go
@@ -52,18 +52,18 @@
 (defmethod <update-authenticator-state!* :create-subject
   [{:keys [authenticator-storage update-info]}]
   (au/go
-    (let [{:keys [identifier secret subject-id]} update-info
-          ik (str identifier-to-subject-id-key-prefix identifier)
-          sk (str subject-id-to-hashed-secret-key-prefix subject-id)
+    (let [{:keys [identifier secret actor-id]} update-info
+          ik (str identifier-to-actor-id-key-prefix identifier)
+          sk (str actor-id-to-hashed-secret-key-prefix actor-id)
           hashed-secret (bcrypt/encrypt secret work-factor)]
       (try
-        (au/<? (storage/<add! authenticator-storage ik schemas/subject-id-schema
-                              subject-id))
+        (au/<? (storage/<add! authenticator-storage ik schemas/actor-id-schema
+                              actor-id))
         (catch ExceptionInfo e
           (if (= :key-exists (some-> e ex-data :type))
             (throw (ex-info
                     (str "Identifier `" identifier "` already exists.")
-                    (u/sym-map identifier subject-id)))
+                    (u/sym-map identifier actor-id)))
             (throw e))))
       (try
         (au/<? (storage/<add! authenticator-storage sk l/string-schema
@@ -71,46 +71,46 @@
         (catch ExceptionInfo e
           (if (= :key-exists (some-> e ex-data :type))
             (throw (ex-info
-                    (str "Subject `" subject-id "` already exists.")
-                    (u/sym-map identifier subject-id)))
+                    (str "Subject `" actor-id "` already exists.")
+                    (u/sym-map identifier actor-id)))
             (throw e))))
       true)))
 
 (defmethod <update-authenticator-state!* :add-identifier
-  [{:keys [authenticator-storage subject-id] :as arg}]
+  [{:keys [authenticator-storage actor-id] :as arg}]
   (au/go
-    (when-not subject-id
+    (when-not actor-id
       (throw (ex-info "Subject is not logged in." {})))
     (let [identifier (:update-info arg)
-          ik (str identifier-to-subject-id-key-prefix identifier)]
+          ik (str identifier-to-actor-id-key-prefix identifier)]
       (try
-        (au/<? (storage/<add! authenticator-storage ik schemas/subject-id-schema
-                              subject-id))
+        (au/<? (storage/<add! authenticator-storage ik schemas/actor-id-schema
+                              actor-id))
         (catch ExceptionInfo e
           (if (= :key-exists (some-> e ex-data :type))
             (throw (ex-info
                     (str "Identifier `" identifier "` already exists.")
-                    (u/sym-map identifier subject-id)))
+                    (u/sym-map identifier actor-id)))
             (throw e))))
       true)))
 
 (defmethod <update-authenticator-state!* :remove-identifier
-  [{:keys [authenticator-storage subject-id] :as arg}]
+  [{:keys [authenticator-storage actor-id] :as arg}]
   (au/go
-    (when-not subject-id
+    (when-not actor-id
       (throw (ex-info "Subject is not logged in." {})))
     (let [identifier (:update-info arg)
-          ik (str identifier-to-subject-id-key-prefix identifier)]
+          ik (str identifier-to-actor-id-key-prefix identifier)]
       (au/<? (storage/<delete! authenticator-storage ik))
       true)))
 
 (defmethod <update-authenticator-state!* :set-secret
-  [{:keys [authenticator-storage subject-id update-info]}]
+  [{:keys [authenticator-storage actor-id update-info]}]
   (au/go
-    (when-not subject-id
+    (when-not actor-id
       (throw (ex-info "Subject is not logged in." {})))
     (let [{:keys [identifier old-secret new-secret]} update-info
-          sk (str subject-id-to-hashed-secret-key-prefix subject-id)]
+          sk (str actor-id-to-hashed-secret-key-prefix actor-id)]
       (au/<? (storage/<swap! authenticator-storage sk l/string-schema
                              (fn [old-hashed-secret]
                                (when-not
@@ -142,7 +142,7 @@
   (get-update-state-ret-schema [this update-type]
     (case update-type
       :add-identifier l/boolean-schema
-      :create-subject schemas/subject-id-schema
+      :create-subject schemas/actor-id-schema
       :remove-identifier l/boolean-schema
       :set-secret l/boolean-schema)))
 

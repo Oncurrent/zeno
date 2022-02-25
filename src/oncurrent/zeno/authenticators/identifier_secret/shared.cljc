@@ -12,7 +12,7 @@
 (l/def-record-schema create-subject-info-schema
   [:identifier identifier-schema]
   [:secret secret-schema]
-  [:subject-id schemas/subject-id-schema])
+  [:actor-id schemas/actor-id-schema])
 
 (l/def-record-schema login-info-schema
   [:identifier identifier-schema]
@@ -25,4 +25,4 @@
 
 (l/def-record-schema session-token-info-schema
   [:expiration-time-ms schemas/timestamp-ms-schema]
-  [:subject-id schemas/subject-id-schema])
+  [:actor-id schemas/actor-id-schema])

@@ -14,7 +14,7 @@
                   :insert-range-before})
 
 (defmulti process-cmd* (fn [{:keys [cmd]}]
-                         (let [{:keys [op]} cmd]
+                         (let [{:zeno/keys [op]} cmd]
                            (if (insert-ops op)
                              :insert
                              op))))
@@ -121,6 +121,11 @@
                          :crdt crdt
                          :get-child-path-info
                          (fn [[i & sub-path]]
+                           (when-not (integer? i)
+                             (throw (ex-info
+                                     (str "Index into array must be an "
+                                          "integer. Got: `" (or i "nil") "`.")
+                                     (u/sym-map i sub-path path op-path cmd))))
                            (let [ci (array/get-clamped-array-index
                                      {:array-len (count ordered-node-ids)
                                       :i i})]
@@ -139,7 +144,7 @@
                            current-edge-add-ids)
 
                    (and (empty? sub-path)
-                        (= :remove (:op cmd)))
+                        (= :remove (:zeno/op cmd)))
                    (let [node-id (nth ordered-node-ids i)]
                      (get-ops-del-single-node (u/sym-map crdt make-id node-id
                                                          op-path sys-time-ms)))
@@ -329,7 +334,7 @@
               (u/sym-map path i cmd-type cmd-arg cmd-path))))))
 
 (defn do-single-insert
-  [{:keys [crdt-store-schema make-id op-path path schema]
+  [{:keys [crdt-schema make-id op-path path schema]
     :as arg}]
   (check-insert-arg arg)
   (let [{repair-ops :ops
@@ -355,18 +360,18 @@
         final-crdt (apply-ops/apply-ops
                     (assoc arg
                            :crdt repaired-crdt
-                           :schema crdt-store-schema
+                           :schema crdt-schema
                            :ops (set/union node-ops edge-ops)))]
     {:crdt final-crdt
      :ops (set/union repair-ops node-ops edge-ops)}))
 
 (defn do-range-insert
-  [{:keys [cmd cmd-arg crdt crdt-store-schema make-id op-path path schema]
+  [{:keys [cmd cmd-arg crdt crdt-schema make-id op-path path schema]
     :as arg}]
   (check-insert-arg arg)
   (when-not (sequential? cmd-arg)
-    (throw (ex-info (str "The `:arg` value in a `" (:op cmd) "` command must "
-                         "be a sequence. Got `" cmd-arg "`.")
+    (throw (ex-info (str "The `:zeno/arg` value in a `" (:zeno/op cmd)
+                         "` command must be a sequence. Got `" cmd-arg "`.")
                     cmd)))
   (let [{repair-ops :ops
          repaired-crdt :crdt} (do-repair arg)
@@ -402,7 +407,7 @@
         final-crdt (apply-ops/apply-ops
                     (assoc arg
                            :crdt repaired-crdt
-                           :schema crdt-store-schema
+                           :schema crdt-schema
                            :ops (set/union node-ops edge-ops)))]
     {:crdt final-crdt
      :ops (set/union repair-ops node-ops edge-ops)}))
@@ -499,9 +504,24 @@
   (do-insert arg))
 
 (defn process-cmd [{:keys [cmd] :as arg}]
-  (process-cmd* (assoc arg
-                       :cmd-arg (:arg cmd)
-                       :cmd-path (:path cmd)
-                       :cmd-type (:op cmd)
-                       :op-path []
-                       :path (-> cmd :path vec))))
+  (let [path (-> cmd :zeno/path rest vec)]
+    (process-cmd* (-> arg
+                      (assoc :cmd-arg (:zeno/arg cmd))
+                      (assoc :cmd-path path)
+                      (assoc :cmd-type (:zeno/op cmd))
+                      (assoc :op-path [])
+                      (assoc :path path)
+                      (assoc :schema (:crdt-schema arg))))))
+
+(defn process-cmds [{:keys [cmds make-id]
+                     :or {make-id u/compact-random-uuid}
+                     :as arg}]
+  (reduce (fn [acc cmd]
+            (let [ret (process-cmd (assoc acc
+                                          :cmd cmd
+                                          :make-id make-id))]
+              (-> acc
+                  (assoc :crdt (:crdt ret))
+                  (update :ops set/union (:ops ret)))))
+          arg
+          cmds))

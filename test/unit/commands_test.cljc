@@ -3,7 +3,7 @@
    [clojure.set :as set]
    [clojure.test :as t :refer [deftest is]]
    [deercreeklabs.lancaster :as l]
-   [oncurrent.zeno.commands :as commands]
+   [oncurrent.zeno.crdt.commands :as commands]
    [oncurrent.zeno.crdt :as crdt]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log])
@@ -22,14 +22,14 @@
 (deftest test-crdt-set
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294782")
-        arg {:cmds [{:arg "Hi"
-                     :op :set
-                     :path [:crdt]}]
-             :crdt-store-schema l/string-schema
+        arg {:cmds [{:zeno/arg "Hi"
+                     :zeno/op :set
+                     :zeno/path [:zeno/crdt]}]
+             :crdt-schema l/string-schema
              :make-id #(let [n (swap! *next-id-num inc)]
                          (str "I" n))
              :sys-time-ms sys-time-ms}
-        {:keys [crdt-store ops]} (commands/process-cmds arg)
+        {:keys [crdt ops]} (commands/process-cmds arg)
         expected-ops #{{:add-id "I1"
                         :op-type :add-value
                         :path []
@@ -37,23 +37,23 @@
                         :value "Hi"}}
         expected-value "Hi"]
     (is (= expected-ops ops))
-    (is (= expected-value (crdt/get-value {:crdt crdt-store
+    (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
-                                           :schema (:crdt-store-schema arg)})))))
+                                           :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-set-and-remove
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294782")
-        arg {:cmds [{:arg "Hello"
-                     :op :set
-                     :path [:crdt]}
-                    {:op :remove
-                     :path [:crdt]}]
-             :crdt-store-schema l/string-schema
+        arg {:cmds [{:zeno/arg "Hello"
+                     :zeno/op :set
+                     :zeno/path [:zeno/crdt]}
+                    {:zeno/op :remove
+                     :zeno/path [:zeno/crdt]}]
+             :crdt-schema l/string-schema
              :make-id #(let [n (swap! *next-id-num inc)]
                          (str "I" n))
              :sys-time-ms sys-time-ms}
-        {:keys [crdt-store ops]} (commands/process-cmds arg)
+        {:keys [crdt ops]} (commands/process-cmds arg)
         expected-ops #{{:add-id "I1"
                         :op-type :add-value
                         :path []
@@ -64,24 +64,24 @@
                         :path []}}
         expected-value nil]
     (is (= expected-ops ops))
-    (is (= expected-value (crdt/get-value {:crdt crdt-store
+    (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
-                                           :schema (:crdt-store-schema arg)})))))
+                                           :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-set-and-reset
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294782")
-        arg {:cmds [{:arg "Hello"
-                     :op :set
-                     :path [:crdt]}
-                    {:arg "Goodbye"
-                     :op :set
-                     :path [:crdt]}]
-             :crdt-store-schema l/string-schema
+        arg {:cmds [{:zeno/arg "Hello"
+                     :zeno/op :set
+                     :zeno/path [:zeno/crdt]}
+                    {:zeno/arg "Goodbye"
+                     :zeno/op :set
+                     :zeno/path [:zeno/crdt]}]
+             :crdt-schema l/string-schema
              :make-id #(let [n (swap! *next-id-num inc)]
                          (str "I" n))
              :sys-time-ms sys-time-ms}
-        {:keys [crdt-store ops]} (commands/process-cmds arg)
+        {:keys [crdt ops]} (commands/process-cmds arg)
         expected-ops #{{:add-id "I1"
                         :op-type :add-value
                         :path []
@@ -97,27 +97,27 @@
                         :value "Goodbye"}}
         expected-value "Goodbye"]
     (is (= expected-ops ops))
-    (is (= expected-value (crdt/get-value {:crdt crdt-store
+    (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
-                                           :schema (:crdt-store-schema arg)})))))
+                                           :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-map-set-and-reset
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294782")
-        arg {:cmds [{:arg 31
-                     :op :set
-                     :path [:crdt "Alice"]}
-                    {:arg 8
-                     :op :set
-                     :path [:crdt "Bob"]}
-                    {:arg 12
-                     :op :set
-                     :path [:crdt "Bob"]}]
-             :crdt-store-schema (l/map-schema l/int-schema)
+        arg {:cmds [{:zeno/arg 31
+                     :zeno/op :set
+                     :zeno/path [:zeno/crdt "Alice"]}
+                    {:zeno/arg 8
+                     :zeno/op :set
+                     :zeno/path [:zeno/crdt "Bob"]}
+                    {:zeno/arg 12
+                     :zeno/op :set
+                     :zeno/path [:zeno/crdt "Bob"]}]
+             :crdt-schema (l/map-schema l/int-schema)
              :make-id #(let [n (swap! *next-id-num inc)]
                          (str "I" n))
              :sys-time-ms sys-time-ms}
-        {:keys [crdt-store ops]} (commands/process-cmds arg)
+        {:keys [crdt ops]} (commands/process-cmds arg)
         expected-ops #{{:add-id "I2"
                         :op-type :delete-value
                         :path ["Bob"]}
@@ -139,27 +139,27 @@
         expected-value {"Alice" 31
                         "Bob" 12}]
     (is (= expected-ops ops))
-    (is (= expected-value (crdt/get-value {:crdt crdt-store
+    (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
-                                           :schema (:crdt-store-schema arg)})))))
+                                           :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-record-set-and-reset
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294782")
-        arg {:cmds [{:arg "Lamby"
-                     :op :set
-                     :path [:crdt :name]}
-                    {:arg "Ovis aries"
-                     :op :set
-                     :path [:crdt :species]}
-                    {:arg "Sheepy"
-                     :op :set
-                     :path [:crdt :name]}]
-             :crdt-store-schema pet-schema
+        arg {:cmds [{:zeno/arg "Lamby"
+                     :zeno/op :set
+                     :zeno/path [:zeno/crdt :name]}
+                    {:zeno/arg "Ovis aries"
+                     :zeno/op :set
+                     :zeno/path [:zeno/crdt :species]}
+                    {:zeno/arg "Sheepy"
+                     :zeno/op :set
+                     :zeno/path [:zeno/crdt :name]}]
+             :crdt-schema pet-schema
              :make-id #(let [n (swap! *next-id-num inc)]
                          (str "I" n))
              :sys-time-ms sys-time-ms}
-        {:keys [crdt-store ops]} (commands/process-cmds arg)
+        {:keys [crdt ops]} (commands/process-cmds arg)
         expected-ops #{{:add-id "I1"
                         :op-type :delete-value
                         :path [:name 1]}
@@ -181,24 +181,24 @@
         expected-value {:name "Sheepy"
                         :species "Ovis aries"}]
     (is (= expected-ops ops))
-    (is (= expected-value (crdt/get-value {:crdt crdt-store
+    (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
-                                           :schema (:crdt-store-schema arg)})))))
+                                           :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-union-set-and-reset
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294782")
-        arg {:cmds [{:arg 3.14
-                     :op :set
-                     :path [:crdt]}
-                    {:arg "pi"
-                     :op :set
-                     :path [:crdt]}]
-             :crdt-store-schema (l/union-schema [l/string-schema l/float-schema])
+        arg {:cmds [{:zeno/arg 3.14
+                     :zeno/op :set
+                     :zeno/path [:zeno/crdt]}
+                    {:zeno/arg "pi"
+                     :zeno/op :set
+                     :zeno/path [:zeno/crdt]}]
+             :crdt-schema (l/union-schema [l/string-schema l/float-schema])
              :make-id #(let [n (swap! *next-id-num inc)]
                          (str "I" n))
              :sys-time-ms sys-time-ms}
-        {:keys [crdt-store ops]} (commands/process-cmds arg)
+        {:keys [crdt ops]} (commands/process-cmds arg)
         expected-ops #{{:add-id "I1"
                         :op-type :delete-value
                         :path [1]}
@@ -214,21 +214,21 @@
                         :value "pi"}}
         expected-value "pi"]
     (is (= expected-ops ops))
-    (is (= expected-value (crdt/get-value {:crdt crdt-store
+    (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
-                                           :schema (:crdt-store-schema arg)})))))
+                                           :schema (:crdt-schema arg)})))))
 
 (deftest  test-crdt-array-set
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294999")
-        arg {:cmds [{:arg ["Hi" "There"]
-                     :op :set
-                     :path [:crdt]}]
-             :crdt-store-schema (l/array-schema l/string-schema)
+        arg {:cmds [{:zeno/arg ["Hi" "There"]
+                     :zeno/op :set
+                     :zeno/path [:zeno/crdt]}]
+             :crdt-schema (l/array-schema l/string-schema)
              :make-id #(let [n (swap! *next-id-num inc)]
                          (str "I" n))
              :sys-time-ms sys-time-ms}
-        {:keys [crdt-store ops]} (commands/process-cmds arg)
+        {:keys [crdt ops]} (commands/process-cmds arg)
         expected-ops #{{:add-id "I5"
                         :op-type :add-array-edge
                         :path []
@@ -259,23 +259,23 @@
                         :value "There"}}
         expected-value ["Hi" "There"]]
     (is (= expected-ops ops))
-    (is (= expected-value (crdt/get-value {:crdt crdt-store
+    (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
-                                           :schema (:crdt-store-schema arg)})))))
+                                           :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-array-set-and-remove
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294999")
-        arg {:cmds [{:arg ["Hi" "There"]
-                     :op :set
-                     :path [:crdt]}
-                    {:op :remove
-                     :path [:crdt 0]}]
-             :crdt-store-schema (l/array-schema l/string-schema)
+        arg {:cmds [{:zeno/arg ["Hi" "There"]
+                     :zeno/op :set
+                     :zeno/path [:zeno/crdt]}
+                    {:zeno/op :remove
+                     :zeno/path [:zeno/crdt 0]}]
+             :crdt-schema (l/array-schema l/string-schema)
              :make-id #(let [n (swap! *next-id-num inc)]
                          (str "I" n))
              :sys-time-ms sys-time-ms}
-        {:keys [crdt-store ops]} (commands/process-cmds arg)
+        {:keys [crdt ops]} (commands/process-cmds arg)
         expected-ops #{{:add-id "I6"
                         :op-type :delete-array-edge
                         :path []}
@@ -321,24 +321,24 @@
                         :value "There"}}
         expected-value ["There"]]
     (is (= expected-ops ops))
-    (is (= expected-value (crdt/get-value {:crdt crdt-store
+    (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
-                                           :schema (:crdt-store-schema arg)})))))
+                                           :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-array-set-and-reset
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294999")
-        arg {:cmds [{:arg ["Hi" "There"]
-                     :op :set
-                     :path [:crdt]}
-                    {:arg "Go"
-                     :op :set
-                     :path [:crdt 0]}]
-             :crdt-store-schema (l/array-schema l/string-schema)
+        arg {:cmds [{:zeno/arg ["Hi" "There"]
+                     :zeno/op :set
+                     :zeno/path [:zeno/crdt]}
+                    {:zeno/arg "Go"
+                     :zeno/op :set
+                     :zeno/path [:zeno/crdt 0]}]
+             :crdt-schema (l/array-schema l/string-schema)
              :make-id #(let [n (swap! *next-id-num inc)]
                          (str "I" n))
              :sys-time-ms sys-time-ms}
-        {:keys [crdt-store ops]} (commands/process-cmds arg)
+        {:keys [crdt ops]} (commands/process-cmds arg)
         expected-ops #{{:add-id "I2"
                         :op-type :delete-value
                         :path ["I1"]}
@@ -377,27 +377,27 @@
                         :value "Go"}}
         expected-value ["Go" "There"]]
     (is (= expected-ops ops))
-    (is (= expected-value (crdt/get-value {:crdt crdt-store
+    (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
-                                           :schema (:crdt-store-schema arg)})))))
+                                           :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-array-simple-inserts
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294999")
-        arg {:cmds [{:arg ["Hi" "There"]
-                     :op :set
-                     :path [:crdt]}
-                    {:arg "Hello!"
-                     :op :insert-before
-                     :path [:crdt 0]}
-                    {:arg "Bob"
-                     :op :insert-after
-                     :path [:crdt -1]}]
-             :crdt-store-schema (l/array-schema l/string-schema)
+        arg {:cmds [{:zeno/arg ["Hi" "There"]
+                     :zeno/op :set
+                     :zeno/path [:zeno/crdt]}
+                    {:zeno/arg "Hello!"
+                     :zeno/op :insert-before
+                     :zeno/path [:zeno/crdt 0]}
+                    {:zeno/arg "Bob"
+                     :zeno/op :insert-after
+                     :zeno/path [:zeno/crdt -1]}]
+             :crdt-schema (l/array-schema l/string-schema)
              :make-id #(let [n (swap! *next-id-num inc)]
                          (str "I" n))
              :sys-time-ms sys-time-ms}
-        {:keys [crdt-store ops]} (commands/process-cmds arg)
+        {:keys [crdt ops]} (commands/process-cmds arg)
         expected-ops #{{:add-id "I5"
                         :op-type :delete-array-edge
                         :path []}
@@ -468,21 +468,21 @@
                         :value "Hello!"}}
         expected-value ["Hello!" "Hi" "There" "Bob"]]
     (is (= expected-ops ops))
-    (is (= expected-value (crdt/get-value {:crdt crdt-store
+    (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
-                                           :schema (:crdt-store-schema arg)})))))
+                                           :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-array-insert-before-into-empty
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294999")
-        arg {:cmds [{:arg "Hello!"
-                     :op :insert-before
-                     :path [:crdt 0]}]
-             :crdt-store-schema (l/array-schema l/string-schema)
+        arg {:cmds [{:zeno/arg "Hello!"
+                     :zeno/op :insert-before
+                     :zeno/path [:zeno/crdt 0]}]
+             :crdt-schema (l/array-schema l/string-schema)
              :make-id #(let [n (swap! *next-id-num inc)]
                          (str "I" n))
              :sys-time-ms sys-time-ms}
-        {:keys [crdt-store ops]} (commands/process-cmds arg)
+        {:keys [crdt ops]} (commands/process-cmds arg)
         expected-ops #{{:add-id "I4"
                         :op-type :add-array-edge
                         :path []
@@ -502,21 +502,21 @@
                         :value "Hello!"}}
         expected-value ["Hello!"]]
     (is (= expected-ops ops))
-    (is (= expected-value (crdt/get-value {:crdt crdt-store
+    (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
-                                           :schema (:crdt-store-schema arg)})))))
+                                           :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-array-insert-after-into-empty
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294999")
-        arg {:cmds [{:arg "Hello!"
-                     :op :insert-after
-                     :path [:crdt -1]}]
-             :crdt-store-schema (l/array-schema l/string-schema)
+        arg {:cmds [{:zeno/arg "Hello!"
+                     :zeno/op :insert-after
+                     :zeno/path [:zeno/crdt -1]}]
+             :crdt-schema (l/array-schema l/string-schema)
              :make-id #(let [n (swap! *next-id-num inc)]
                          (str "I" n))
              :sys-time-ms sys-time-ms}
-        {:keys [crdt-store ops]} (commands/process-cmds arg)
+        {:keys [crdt ops]} (commands/process-cmds arg)
         expected-ops #{{:add-id "I3"
                         :op-type :add-array-edge
                         :path []
@@ -536,21 +536,21 @@
                         :value "Hello!"}}
         expected-value ["Hello!"]]
     (is (= expected-ops ops))
-    (is (= expected-value (crdt/get-value {:crdt crdt-store
+    (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
-                                           :schema (:crdt-store-schema arg)})))))
+                                           :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-array-insert-range-after-into-empty
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294999")
-        arg {:cmds [{:arg ["1" "2" "3"]
-                     :op :insert-range-after
-                     :path [:crdt -1]}]
-             :crdt-store-schema (l/array-schema l/string-schema)
+        arg {:cmds [{:zeno/arg ["1" "2" "3"]
+                     :zeno/op :insert-range-after
+                     :zeno/path [:zeno/crdt -1]}]
+             :crdt-schema (l/array-schema l/string-schema)
              :make-id #(let [n (swap! *next-id-num inc)]
                          (str "I" n))
              :sys-time-ms sys-time-ms}
-        {:keys [crdt-store ops]} (commands/process-cmds arg)
+        {:keys [crdt ops]} (commands/process-cmds arg)
         expected-ops #{{:add-id "I10"
                         :op-type :add-array-edge
                         :path []
@@ -592,21 +592,21 @@
                         :value "3"}}
         expected-value ["1" "2" "3"]]
     (is (= expected-ops ops))
-    (is (= expected-value (crdt/get-value {:crdt crdt-store
+    (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
-                                           :schema (:crdt-store-schema arg)})))))
+                                           :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-array-insert-range-before-into-empty
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294999")
-        arg {:cmds [{:arg ["1" "2" "3"]
-                     :op :insert-range-before
-                     :path [:crdt 0]}]
-             :crdt-store-schema (l/array-schema l/string-schema)
+        arg {:cmds [{:zeno/arg ["1" "2" "3"]
+                     :zeno/op :insert-range-before
+                     :zeno/path [:zeno/crdt 0]}]
+             :crdt-schema (l/array-schema l/string-schema)
              :make-id #(let [n (swap! *next-id-num inc)]
                          (str "I" n))
              :sys-time-ms sys-time-ms}
-        {:keys [crdt-store ops]} (commands/process-cmds arg)
+        {:keys [crdt ops]} (commands/process-cmds arg)
         expected-ops #{{:add-id "I10"
                         :op-type :add-array-edge
                         :path []
@@ -648,160 +648,163 @@
                         :value "3"}}
         expected-value ["1" "2" "3"]]
     (is (= expected-ops ops))
-    (is (= expected-value (crdt/get-value {:crdt crdt-store
+    (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
-                                           :schema (:crdt-store-schema arg)})))))
+                                           :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-array-insert-range-before-into-front
-  (let [arg {:cmds [{:arg ["4" "5"]
-                     :op :set
-                     :path [:crdt]}
-                    {:arg ["1" "2" "3"]
-                     :op :insert-range-before
-                     :path [:crdt 0]}]
-             :crdt-store-schema (l/array-schema l/string-schema)}
-        {:keys [crdt-store ops]} (commands/process-cmds arg)
+  (let [arg {:cmds [{:zeno/arg ["4" "5"]
+                     :zeno/op :set
+                     :zeno/path [:zeno/crdt]}
+                    {:zeno/arg ["1" "2" "3"]
+                     :zeno/op :insert-range-before
+                     :zeno/path [:zeno/crdt 0]}]
+             :crdt-schema (l/array-schema l/string-schema)}
+        {:keys [crdt ops]} (commands/process-cmds arg)
         expected-value ["1" "2" "3" "4" "5"]]
-    (is (= expected-value (crdt/get-value {:crdt crdt-store
+    (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
-                                           :schema (:crdt-store-schema arg)})))))
+                                           :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-array-insert-range-after-end
-  (let [arg {:cmds [{:arg ["4" "5"]
-                     :op :set
-                     :path [:crdt]}
-                    {:arg ["1" "2" "3"]
-                     :op :insert-range-after
-                     :path [:crdt -1]}]
-             :crdt-store-schema (l/array-schema l/string-schema)}
-        {:keys [crdt-store ops]} (commands/process-cmds arg)
+  (let [arg {:cmds [{:zeno/arg ["4" "5"]
+                     :zeno/op :set
+                     :zeno/path [:zeno/crdt]}
+                    {:zeno/arg ["1" "2" "3"]
+                     :zeno/op :insert-range-after
+                     :zeno/path [:zeno/crdt -1]}]
+             :crdt-schema (l/array-schema l/string-schema)}
+        {:keys [crdt ops]} (commands/process-cmds arg)
         expected-value ["4" "5" "1" "2" "3"]]
-    (is (= expected-value (crdt/get-value {:crdt crdt-store
+    (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
-                                           :schema (:crdt-store-schema arg)})))))
+                                           :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-array-insert-range-before-into-middle
-  (let [arg {:cmds [{:arg ["1" "2" "3"]
-                     :op :set
-                     :path [:crdt]}
-                    {:arg ["A" "B"]
-                     :op :insert-range-before
-                     :path [:crdt -2]}]
-             :crdt-store-schema (l/array-schema l/string-schema)}
-        {:keys [crdt-store ops]} (commands/process-cmds arg)
+  (let [arg {:cmds [{:zeno/arg ["1" "2" "3"]
+                     :zeno/op :set
+                     :zeno/path [:zeno/crdt]}
+                    {:zeno/arg ["A" "B"]
+                     :zeno/op :insert-range-before
+                     :zeno/path [:zeno/crdt -2]}]
+             :crdt-schema (l/array-schema l/string-schema)}
+        {:keys [crdt ops]} (commands/process-cmds arg)
         expected-value ["1" "A" "B" "2" "3"]]
-    (is (= expected-value (crdt/get-value {:crdt crdt-store
+    (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
-                                           :schema (:crdt-store-schema arg)})))))
+                                           :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-array-insert-range-after-into-middle
-  (let [arg {:cmds [{:arg ["1" "2" "3"]
-                     :op :set
-                     :path [:crdt]}
-                    {:arg ["A" "B"]
-                     :op :insert-range-after
-                     :path [:crdt -2]}]
-             :crdt-store-schema (l/array-schema l/string-schema)}
-        {:keys [crdt-store]} (commands/process-cmds arg)
+  (let [arg {:cmds [{:zeno/arg ["1" "2" "3"]
+                     :zeno/op :set
+                     :zeno/path [:zeno/crdt]}
+                    {:zeno/arg ["A" "B"]
+                     :zeno/op :insert-range-after
+                     :zeno/path [:zeno/crdt -2]}]
+             :crdt-schema (l/array-schema l/string-schema)}
+        {:keys [crdt]} (commands/process-cmds arg)
         expected-value ["1" "2" "A" "B" "3"]]
-    (is (= expected-value (crdt/get-value {:crdt crdt-store
+    (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
-                                           :schema (:crdt-store-schema arg)})))))
+                                           :schema (:crdt-schema arg)})))))
 
 (deftest test-nested-set
-  (let [arg {:cmds [{:arg {:name "Bill"
+  (let [arg {:cmds [{:zeno/arg {:name "Bill"
                            :pets [{:name "Pinky"
                                    :species "Felis catus"}
                                   {:name "Fishy"
                                    :species "Carassius auratus"}]}
-                     :op :set
-                     :path [:crdt]}
-                    {:arg "Goldy"
-                     :op :set
-                     :path [:crdt :pets -1 :name]}]
-             :crdt-store-schema pet-owner-schema}
-        {:keys [crdt-store]} (commands/process-cmds arg)
+                     :zeno/op :set
+                     :zeno/path [:zeno/crdt]}
+                    {:zeno/arg "Goldy"
+                     :zeno/op :set
+                     :zeno/path [:zeno/crdt :pets -1 :name]}]
+             :crdt-schema pet-owner-schema}
+        {:keys [crdt]} (commands/process-cmds arg)
         expected-value {:name "Bill"
                         :pets [{:name "Pinky"
                                 :species "Felis catus"}
                                {:name "Goldy"
                                 :species "Carassius auratus"}]}]
-    (is (= expected-value (crdt/get-value {:crdt crdt-store
+    (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
-                                           :schema (:crdt-store-schema arg)})))
+                                           :schema (:crdt-schema arg)})))
     (is (= {:name "Pinky"
             :species "Felis catus"}
-           (crdt/get-value {:crdt crdt-store
+           (crdt/get-value {:crdt crdt
                             :path [:pets -2]
-                            :schema (:crdt-store-schema arg)})))))
+                            :schema (:crdt-schema arg)})))))
 
 (deftest test-nested-set-and-remove
-  (let [arg {:cmds [{:arg {:name "Bill"
-                           :pets [{:name "Pinky"
-                                   :species "Felis catus"}
-                                  {:name "Fishy"
-                                   :species "Carassius auratus"}]}
-                     :op :set
-                     :path [:crdt]}
-                    {:op :remove
-                     :path [:crdt :pets 0]}]
-             :crdt-store-schema pet-owner-schema}
-        {:keys [crdt-store]} (commands/process-cmds arg)
+  (let [*next-id-num (atom 0)
+        arg {:cmds [{:zeno/arg {:name "Bill"
+                                :pets [{:name "Pinky"
+                                        :species "Felis catus"}
+                                       {:name "Fishy"
+                                        :species "Carassius auratus"}]}
+                     :zeno/op :set
+                     :zeno/path [:zeno/crdt]}
+                    {:zeno/op :remove
+                     :zeno/path [:zeno/crdt :pets 0]}]
+             :crdt-schema pet-owner-schema
+             :make-id #(let [n (swap! *next-id-num inc)]
+                         (str "I" n))}
+        {:keys [crdt ops]} (commands/process-cmds arg)
         expected-value {:name "Bill"
                         :pets [{:name "Fishy"
                                 :species "Carassius auratus"}]}]
-    (is (= expected-value (crdt/get-value {:crdt crdt-store
+    (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
-                                           :schema (:crdt-store-schema arg)})))))
+                                           :schema (:crdt-schema arg)})))))
 
 (deftest test-subsequent-txns
-  (let [arg1 {:cmds [{:arg {:name "Bill"
+  (let [arg1 {:cmds [{:zeno/arg {:name "Bill"
                             :pets [{:name "Pinky"
                                     :species "Felis catus"}
                                    {:name "Fishy"
                                     :species "Carassius auratus"}]}
-                      :op :set
-                      :path [:crdt]}]
-              :crdt-store-schema pet-owner-schema}
+                      :zeno/op :set
+                      :zeno/path [:zeno/crdt]}]
+              :crdt-schema pet-owner-schema}
         ret1 (commands/process-cmds arg1)
-        arg2 {:cmds [{:op :remove
-                      :path [:crdt :pets 0]}]
-              :crdt-store (:crdt-store ret1)
-              :crdt-store-schema pet-owner-schema}
+        arg2 {:cmds [{:zeno/op :remove
+                      :zeno/path [:zeno/crdt :pets 0]}]
+              :crdt (:crdt ret1)
+              :crdt-schema pet-owner-schema}
         ret2 (commands/process-cmds arg2)
         expected-value {:name "Bill"
                         :pets [{:name "Fishy"
                                 :species "Carassius auratus"}]}]
-    (is (= expected-value (crdt/get-value {:crdt (:crdt-store ret2)
+    (is (= expected-value (crdt/get-value {:crdt (:crdt ret2)
                                            :path []
-                                           :schema (:crdt-store-schema arg1)})))))
+                                           :schema (:crdt-schema arg1)})))))
 
 (deftest test-nested-merge-array-no-conflict
-  (let [arg0 {:cmds [{:arg {:name "Bill"
-                            :pets [{:name "Pinky"
-                                    :species "Felis catus"}
-                                   {:name "Fishy"
-                                    :species "Carassius auratus"}]}
-                      :op :set
-                      :path [:crdt]}]
-              :crdt-store-schema pet-owner-schema}
+  (let [arg0 {:cmds [{:zeno/arg {:name "Bill"
+                                 :pets [{:name "Pinky"
+                                         :species "Felis catus"}
+                                        {:name "Fishy"
+                                         :species "Carassius auratus"}]}
+                      :zeno/op :set
+                      :zeno/path [:zeno/crdt]}]
+              :crdt-schema pet-owner-schema}
         ret0 (commands/process-cmds arg0)
-        arg1 {:cmds [{:arg {:name "Chris"
-                            :species "Canis familiaris"}
-                      :op :insert-before
-                      :path [:crdt :pets 0]}]
-              :crdt-store (:crdt-store ret0)
-              :crdt-store-schema pet-owner-schema}
-        arg2 {:cmds [{:arg {:name "Pat"
-                            :species "Canis familiaris"}
-                      :op :insert-after
-                      :path [:crdt :pets -1]}]
-              :crdt-store (:crdt-store ret0)
-              :crdt-store-schema pet-owner-schema}
+        arg1 {:cmds [{:zeno/arg {:name "Chris"
+                                 :species "Canis familiaris"}
+                      :zeno/op :insert-before
+                      :zeno/path [:zeno/crdt :pets 0]}]
+              :crdt (:crdt ret0)
+              :crdt-schema pet-owner-schema}
+        arg2 {:cmds [{:zeno/arg {:name "Pat"
+                                 :species "Canis familiaris"}
+                      :zeno/op :insert-after
+                      :zeno/path [:zeno/crdt :pets -1]}]
+              :crdt (:crdt ret0)
+              :crdt-schema pet-owner-schema}
         ret1 (commands/process-cmds arg1)
         ret2 (commands/process-cmds arg2)
         new-ops (set/union (:ops ret1) (:ops ret2))
-        merged-crdt (crdt/apply-ops {:crdt (:crdt-store ret0)
+        merged-crdt (crdt/apply-ops {:crdt (:crdt ret0)
                                      :ops new-ops
                                      :schema pet-owner-schema})
         expected-value [{:name "Chris"
@@ -820,34 +823,34 @@
   (let [*next-id-num (atom 0)
         make-id #(let [n (swap! *next-id-num inc)]
                    (str "I" n))
-        arg0 {:cmds [{:arg {:name "Bill"
+        arg0 {:cmds [{:zeno/arg {:name "Bill"
                             :pets [{:name "Pinky"
                                     :species "Felis catus"}
                                    {:name "Fishy"
                                     :species "Carassius auratus"}]}
-                      :op :set
-                      :path [:crdt]}]
-              :crdt-store-schema pet-owner-schema
+                      :zeno/op :set
+                      :zeno/path [:zeno/crdt]}]
+              :crdt-schema pet-owner-schema
               :make-id make-id}
         ret0 (commands/process-cmds arg0)
-        arg1 {:cmds [{:arg {:name "Chris"
+        arg1 {:cmds [{:zeno/arg {:name "Chris"
                             :species "Canis familiaris"}
-                      :op :insert-before
-                      :path [:crdt :pets 0]}]
-              :crdt-store (:crdt-store ret0)
-              :crdt-store-schema pet-owner-schema
+                      :zeno/op :insert-before
+                      :zeno/path [:zeno/crdt :pets 0]}]
+              :crdt (:crdt ret0)
+              :crdt-schema pet-owner-schema
               :make-id make-id}
-        arg2 {:cmds [{:arg {:name "Pat"
+        arg2 {:cmds [{:zeno/arg {:name "Pat"
                             :species "Canis familiaris"}
-                      :op :insert-before
-                      :path [:crdt :pets 0]}]
-              :crdt-store (:crdt-store ret0)
-              :crdt-store-schema pet-owner-schema
+                      :zeno/op :insert-before
+                      :zeno/path [:zeno/crdt :pets 0]}]
+              :crdt (:crdt ret0)
+              :crdt-schema pet-owner-schema
               :make-id make-id}
         ret1 (commands/process-cmds arg1)
         ret2 (commands/process-cmds arg2)
         new-ops (set/union (:ops ret1) (:ops ret2))
-        merged-crdt (crdt/apply-ops {:crdt (:crdt-store ret0)
+        merged-crdt (crdt/apply-ops {:crdt (:crdt ret0)
                                      :ops new-ops
                                      :schema pet-owner-schema})
         expected-value [{:name "Chris"
@@ -867,35 +870,35 @@
         make-id #(let [n (swap! *next-id-num inc)]
                    (str "I" n))
         schema (l/array-schema l/string-schema)
-        arg0 {:cmds [{:arg ["A" "B"]
-                      :op :set
-                      :path [:crdt]}]
-              :crdt-store-schema schema
+        arg0 {:cmds [{:zeno/arg ["A" "B"]
+                      :zeno/op :set
+                      :zeno/path [:zeno/crdt]}]
+              :crdt-schema schema
               :make-id make-id}
         ret0 (commands/process-cmds arg0)
-        arg1 {:cmds [{:arg "1"
-                      :op :insert-before
-                      :path [:crdt 0]}]
-              :crdt-store (:crdt-store ret0)
-              :crdt-store-schema schema
+        arg1 {:cmds [{:zeno/arg "1"
+                      :zeno/op :insert-before
+                      :zeno/path [:zeno/crdt 0]}]
+              :crdt (:crdt ret0)
+              :crdt-schema schema
               :make-id make-id}
-        arg2 {:cmds [{:arg "2"
-                      :op :insert-before
-                      :path [:crdt 0]}]
-              :crdt-store (:crdt-store ret0)
-              :crdt-store-schema schema
+        arg2 {:cmds [{:zeno/arg "2"
+                      :zeno/op :insert-before
+                      :zeno/path [:zeno/crdt 0]}]
+              :crdt (:crdt ret0)
+              :crdt-schema schema
               :make-id make-id}
-        arg3 {:cmds [{:arg "3"
-                      :op :insert-before
-                      :path [:crdt 0]}]
-              :crdt-store (:crdt-store ret0)
-              :crdt-store-schema schema
+        arg3 {:cmds [{:zeno/arg "3"
+                      :zeno/op :insert-before
+                      :zeno/path [:zeno/crdt 0]}]
+              :crdt (:crdt ret0)
+              :crdt-schema schema
               :make-id make-id}
         ret1 (commands/process-cmds arg1)
         ret2 (commands/process-cmds arg2)
         ret3 (commands/process-cmds arg3)
         new-ops (set/union (:ops ret1) (:ops ret2) (:ops ret3))
-        merged-crdt (crdt/apply-ops {:crdt (:crdt-store ret0)
+        merged-crdt (crdt/apply-ops {:crdt (:crdt ret0)
                                      :ops new-ops
                                      :schema schema})
         ;; Order of the first three items is determined by their add-ids.
@@ -912,44 +915,44 @@
         make-id #(let [n (swap! *next-id-num inc)]
                    (str "I" n))
         schema (l/array-schema l/string-schema)
-        arg0 {:cmds [{:arg ["A" "B"]
-                      :op :set
-                      :path [:crdt]}]
-              :crdt-store-schema schema
+        arg0 {:cmds [{:zeno/arg ["A" "B"]
+                      :zeno/op :set
+                      :zeno/path [:zeno/crdt]}]
+              :crdt-schema schema
               :make-id make-id}
         ret0 (commands/process-cmds arg0)
-        arg1 {:cmds [{:arg "X1"
-                      :op :insert-before
-                      :path [:crdt 0]}
-                     {:arg "X2"
-                      :op :insert-after
-                      :path [:crdt 0]}]
-              :crdt-store (:crdt-store ret0)
-              :crdt-store-schema schema
+        arg1 {:cmds [{:zeno/arg "X1"
+                      :zeno/op :insert-before
+                      :zeno/path [:zeno/crdt 0]}
+                     {:zeno/arg "X2"
+                      :zeno/op :insert-after
+                      :zeno/path [:zeno/crdt 0]}]
+              :crdt (:crdt ret0)
+              :crdt-schema schema
               :make-id make-id}
-        arg2 {:cmds [{:arg "Y1"
-                      :op :insert-before
-                      :path [:crdt 0]}
-                     {:arg "Y2"
-                      :op :insert-after
-                      :path [:crdt 0]}]
-              :crdt-store (:crdt-store ret0)
-              :crdt-store-schema schema
+        arg2 {:cmds [{:zeno/arg "Y1"
+                      :zeno/op :insert-before
+                      :zeno/path [:zeno/crdt 0]}
+                     {:zeno/arg "Y2"
+                      :zeno/op :insert-after
+                      :zeno/path [:zeno/crdt 0]}]
+              :crdt (:crdt ret0)
+              :crdt-schema schema
               :make-id make-id}
-        arg3 {:cmds [{:arg "Z1"
-                      :op :insert-before
-                      :path [:crdt 0]}
-                     {:arg "Z2"
-                      :op :insert-after
-                      :path [:crdt 0]}]
-              :crdt-store (:crdt-store ret0)
-              :crdt-store-schema schema
+        arg3 {:cmds [{:zeno/arg "Z1"
+                      :zeno/op :insert-before
+                      :zeno/path [:zeno/crdt 0]}
+                     {:zeno/arg "Z2"
+                      :zeno/op :insert-after
+                      :zeno/path [:zeno/crdt 0]}]
+              :crdt (:crdt ret0)
+              :crdt-schema schema
               :make-id make-id}
         ret1 (commands/process-cmds arg1)
         ret2 (commands/process-cmds arg2)
         ret3 (commands/process-cmds arg3)
         new-ops (set/union (:ops ret1) (:ops ret2) (:ops ret3))
-        merged-crdt (crdt/apply-ops {:crdt (:crdt-store ret0)
+        merged-crdt (crdt/apply-ops {:crdt (:crdt ret0)
                                      :ops new-ops
                                      :schema schema})
         ;; Order of the first three pairs of items is determined by their
@@ -966,44 +969,44 @@
         make-id #(let [n (swap! *next-id-num inc)]
                    (str "I" n))
         schema (l/array-schema l/string-schema)
-        arg0 {:cmds [{:arg ["A" "B" "C"]
-                      :op :set
-                      :path [:crdt]}]
-              :crdt-store-schema schema
+        arg0 {:cmds [{:zeno/arg ["A" "B" "C"]
+                      :zeno/op :set
+                      :zeno/path [:zeno/crdt]}]
+              :crdt-schema schema
               :make-id make-id}
         ret0 (commands/process-cmds arg0)
-        arg1 {:cmds [{:arg "XF"
-                      :op :insert-before
-                      :path [:crdt 0]}
-                     {:arg "XL"
-                      :op :insert-after
-                      :path [:crdt -1]}]
-              :crdt-store (:crdt-store ret0)
-              :crdt-store-schema schema
+        arg1 {:cmds [{:zeno/arg "XF"
+                      :zeno/op :insert-before
+                      :zeno/path [:zeno/crdt 0]}
+                     {:zeno/arg "XL"
+                      :zeno/op :insert-after
+                      :zeno/path [:zeno/crdt -1]}]
+              :crdt (:crdt ret0)
+              :crdt-schema schema
               :make-id make-id}
-        arg2 {:cmds [{:arg "YF"
-                      :op :insert-before
-                      :path [:crdt 0]}
-                     {:arg "YL"
-                      :op :insert-after
-                      :path [:crdt -1]}]
-              :crdt-store (:crdt-store ret0)
-              :crdt-store-schema schema
+        arg2 {:cmds [{:zeno/arg "YF"
+                      :zeno/op :insert-before
+                      :zeno/path [:zeno/crdt 0]}
+                     {:zeno/arg "YL"
+                      :zeno/op :insert-after
+                      :zeno/path [:zeno/crdt -1]}]
+              :crdt (:crdt ret0)
+              :crdt-schema schema
               :make-id make-id}
-        arg3 {:cmds [{:arg "ZF"
-                      :op :insert-before
-                      :path [:crdt 0]}
-                     {:arg "ZL"
-                      :op :insert-after
-                      :path [:crdt -1]}]
-              :crdt-store (:crdt-store ret0)
-              :crdt-store-schema schema
+        arg3 {:cmds [{:zeno/arg "ZF"
+                      :zeno/op :insert-before
+                      :zeno/path [:zeno/crdt 0]}
+                     {:zeno/arg "ZL"
+                      :zeno/op :insert-after
+                      :zeno/path [:zeno/crdt -1]}]
+              :crdt (:crdt ret0)
+              :crdt-schema schema
               :make-id make-id}
         ret1 (commands/process-cmds arg1)
         ret2 (commands/process-cmds arg2)
         ret3 (commands/process-cmds arg3)
         new-ops (set/union (:ops ret1) (:ops ret2) (:ops ret3))
-        merged-crdt (crdt/apply-ops {:crdt (:crdt-store ret0)
+        merged-crdt (crdt/apply-ops {:crdt (:crdt ret0)
                                      :ops new-ops
                                      :schema schema})
         expected-value ["XF" "YF" "ZF" "A" "B" "C" "XL" "YL" "ZL"]]
@@ -1013,30 +1016,30 @@
                                            :schema schema})))))
 
 (deftest test-nested-merge-conflict
-  (let [arg0 {:cmds [{:arg {:name "Bill"
-                            :pets [{:name "Pinky"
-                                    :species "Felis catus"}
-                                   {:name "Fishy"
-                                    :species "Carassius auratus"}]}
-                      :op :set
-                      :path [:crdt]}]
-              :crdt-store-schema pet-owner-schema}
+  (let [arg0 {:cmds [{:zeno/arg {:name "Bill"
+                                 :pets [{:name "Pinky"
+                                         :species "Felis catus"}
+                                        {:name "Fishy"
+                                         :species "Carassius auratus"}]}
+                      :zeno/op :set
+                      :zeno/path [:zeno/crdt]}]
+              :crdt-schema pet-owner-schema}
         ret0 (commands/process-cmds arg0)
-        arg1 {:cmds [{:arg "Goldy"
-                      :op :set
-                      :path [:crdt :pets -1 :name]}]
-              :crdt-store (:crdt-store ret0)
-              :crdt-store-schema pet-owner-schema
+        arg1 {:cmds [{:zeno/arg "Goldy"
+                      :zeno/op :set
+                      :zeno/path [:zeno/crdt :pets -1 :name]}]
+              :crdt (:crdt ret0)
+              :crdt-schema pet-owner-schema
               :sys-time-ms (u/str->long "1640205282000")}
-        arg2 {:cmds [{:arg "Herman"
-                      :op :set
-                      :path [:crdt :pets -1 :name]}]
-              :crdt-store (:crdt-store ret0)
-              :crdt-store-schema pet-owner-schema
+        arg2 {:cmds [{:zeno/arg "Herman"
+                      :zeno/op :set
+                      :zeno/path [:zeno/crdt :pets -1 :name]}]
+              :crdt (:crdt ret0)
+              :crdt-schema pet-owner-schema
               :sys-time-ms (u/str->long "1640205282999")}
         ret1 (commands/process-cmds arg1)
         ret2 (commands/process-cmds arg2)
-        merged-crdt (crdt/apply-ops {:crdt (:crdt-store ret0)
+        merged-crdt (crdt/apply-ops {:crdt (:crdt ret0)
                                      :ops (set/union (:ops ret1) (:ops ret2))
                                      :schema pet-owner-schema})]
     ;; We expect "Herman" because its sys-time-ms is later
@@ -1045,10 +1048,10 @@
                                      :schema pet-owner-schema})))))
 
 (deftest test-set-into-empty-array
-  (let [arg {:cmds [{:arg "1"
-                     :op :set
-                     :path [:crdt]}]
-             :crdt-store-schema (l/array-schema l/string-schema)}]
+  (let [arg {:cmds [{:zeno/arg "1"
+                     :zeno/op :set
+                     :zeno/path [:zeno/crdt]}]
+             :crdt-schema (l/array-schema l/string-schema)}]
     (is (thrown-with-msg?
          #?(:clj ExceptionInfo :cljs js/Error)
          #"arg is not sequential"

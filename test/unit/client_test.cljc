@@ -9,7 +9,7 @@
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
-(deftest test-subscribe-local-update
+(deftest test-subscribe-client-update
   (au/test-async
    3000
    (ca/go
@@ -17,30 +17,12 @@
                                '{page :home}})
            ch (ca/chan 1)
            update-fn #(ca/put! ch %)
-           sub-map '{page [:client :page]}]
+           sub-map '{page [:zeno/client :page]}]
        (is (= '{page nil} (zc/subscribe-to-state!
                            zc "test" sub-map update-fn)))
        (is (= true
-              (au/<? (zc/<update-state! zc [{:path [:client :page]
-                                             :op :set
-                                             :arg :login}]))))
+              (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/client :page]
+                                             :zeno/op :set
+                                             :zeno/arg :login}]))))
        (is (= '{page :login} (au/<? ch)))
-       (zc/shutdown! zc)))))
-#_
-(deftest test-subscribe-sys-update
-  (au/test-async
-   3000
-   (ca/go
-     (let [sys-schema l/string-schema
-           zc (zc/zeno-client (u/sym-map sys-schema))
-           ch (ca/chan 1)
-           update-fn #(ca/put! ch %)
-           sub-map '{the-string [:sys]}]
-       (is (= '{the-string nil} (zc/subscribe-to-state!
-                                 zc "test" sub-map update-fn)))
-       (is (= true
-              (au/<? (zc/<update-state! zc [{:path [:sys]
-                                             :op :set
-                                             :arg "Hi"}]))))
-       #_(is (= '{the-string "Hi"} (au/<? ch)))
        (zc/shutdown! zc)))))

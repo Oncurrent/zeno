@@ -26,13 +26,13 @@
 (defn update-sub?* [update-infos sub-path]
   (reduce (fn [acc {:keys [norm-path op]}]
             (cond
-              (= [:zeno/subject-id] sub-path)
-              (if (= [:zeno/subject-id] norm-path)
+              (= [:zeno/actor-id] sub-path)
+              (if (= [:zeno/actor-id] norm-path)
                 (reduced true)
                 false)
 
-              (= [:zeno/subject-id] norm-path)
-              (if (= [:zeno/subject-id] sub-path)
+              (= [:zeno/actor-id] norm-path)
+              (if (= [:zeno/actor-id] sub-path)
                 (reduced true)
                 false)
 
@@ -173,8 +173,8 @@
       (u/empty-sequence-in-path? path)
       [nil [path]]
 
-      (= [:zeno/subject-id] path)
-      [@(:*subject-id zc) [path]]
+      (= [:zeno/actor-id] path)
+      [state [path]]
 
       (and (not terminal-kw?) (not join?))
       (let [{:keys [norm-path val]} (commands/get-in-state state path prefix)]
@@ -237,11 +237,10 @@
                         (resolve-symbols-in-path acc-state path)
                         path)
         [head & tail] resolved-path
-        state @(:*client-state zc)
         state-src (case head
-                    :client state
-                    :sys (:sys state)
-                    {})]
+                    :zeno/actor-id @(:*actor-id zc)
+                    :zeno/client @(:*client-state zc)
+                    :zeno/crdt @(:*crdt-state zc))]
     (u/sym-map state-src resolved-path head)))
 
 (defn get-state-and-expanded-paths

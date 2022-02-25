@@ -1,35 +1,35 @@
 (ns oncurrent.zeno.client.impl
   (:require
    [clojure.core.async :as ca]
-   [com.deercreeklabs.talk2 :as talk2]
+   [com.deercreeklabs.talk2.client :as talk2-client]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
    [oncurrent.zeno.client.state-subscriptions :as state-subscriptions]
+   [oncurrent.zeno.client.client-commands :as client-commands]
    [oncurrent.zeno.commands :as commands]
-   [oncurrent.zeno.client.sys-state :as ss]
+   [oncurrent.zeno.schemas :as schemas]
    [oncurrent.zeno.storage :as storage]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
 (def default-config
   {:branch-id "prod"
-   :data-storage (storage/make-storage (storage/make-mem-raw-storage))
    :initial-client-state {}
-   :log-storage (storage/make-storage (storage/make-mem-raw-storage))})
+   :storage (storage/make-storage (storage/make-mem-raw-storage))})
 
 (def config-rules
   {:branch-id {:required? true
                :checks [{:pred string?
                          :msg "must be a string"}]}
-   :data-storage {:required? true
-                  :checks [{:pred #(satisfies? storage/IStorage %)
-                            :msg "must satisfy the IStorage protocol"}]}
-   :log-storage {:required? true
-                 :checks [{:pred #(satisfies? storage/IStorage %)
-                           :msg "must satisfy the IStorage protocol"}]}
-   :sys-schema {:required? false
-                :checks [{:pred l/schema?
-                          :msg "must be a valid Lancaster schema"}]}})
+   :initial-client-state {:required? false
+                          :checks [{:pred associative?
+                                    :msg "must be associative"}]}
+   :storage {:required? true
+             :checks [{:pred #(satisfies? storage/IStorage %)
+                       :msg "must satisfy the IStorage protocol"}]}
+   :crdt-schema {:required? false
+                 :checks [{:pred l/schema?
+                           :msg "must be a valid Lancaster schema"}]}})
 
 (defn check-config [{:keys [config config-type config-rules]}]
   (doseq [[k info] config-rules]
@@ -48,27 +48,15 @@
                  msg ". Got `" (or v "nil") "`.")
             (u/sym-map k v config))))))))
 
-;; TODO: Remove
-#_
+
 (defn split-cmds [cmds]
   (reduce
    (fn [acc cmd]
      (commands/check-cmd cmd)
-     (let [{:keys [path]} cmd
-           [head & tail] path
-           k (case head
-               :client :client-cmds
-               :sys :sys-cmds
-               (let [[head & tail] path
-                     disp-head (or head "nil")]
-                 (throw
-                  (ex-info (str "Paths must begin with one of "
-                                commands/valid-path-roots
-                                ". Got: `" disp-head "` in path `" path "`.")
-                           (u/sym-map path head)))))]
-       (update acc k conj (assoc cmd :path path))))
-   {:client-cmds []
-    :sys-cmds []}
+     (let [{:zeno/keys [path]} cmd
+           [head & tail] path]
+       (update acc head #(conj (or % []) cmd))))
+   {}
    cmds))
 
 (defn <do-update-state! [zc cmds]
@@ -78,21 +66,20 @@
   ;; all commit or none commit. A transaction may include  many kinds of
   ;; updates.
   (au/go
-    (let [{:keys [*state-stores]} zc
-          {:keys []} @*state-stores
-          ops #{}
-          ret :lakjdslkas]
-      true))
-
-  #_
-  (au/go
     (let [{:keys [*client-state]} zc
-          {:keys [client-cmds sys-cmds]} (split-cmds cmds)
-
-          ;; Do sys updates first; only do the client updates if sys succeeds
-          sys-update-infos (au/<? (ss/<do-sys-updates! zc sys-cmds))
-          client-ret (commands/eval-cmds @*client-state client-cmds :client)
-          update-infos (concat sys-update-infos (:update-infos client-ret))]
+          root->cmds (split-cmds cmds)
+          ;; When we support :zeno/online, do those cmds first and fail the txn
+          ;; if the online cmds fail.
+          crdt-ret {}
+          ;; TODO: Log the crdt update infos and ops
+          cur-client-state @*client-state
+          client-ret (client-commands/eval-cmds cur-client-state
+                                                (:zeno/client root->cmds)
+                                                :zeno/client)
+          update-infos (concat (:update-infos crdt-ret)
+                               (:update-infos client-ret))]
+      ;; We can use reset! here because we know this is a serial loop
+      ;; with no concurrent updates.
       (reset! *client-state (:state client-ret))
       (state-subscriptions/do-subscription-updates! zc update-infos)
       true)))
@@ -130,27 +117,28 @@
         {:keys [branch-id
                 initial-client-state
                 log-storage
-                sys-schema]} config*
+                crdt-schema]} config*
         *next-instance-num (atom 0)
         *next-topic-sub-id (atom 0)
         *topic-name->sub-id->cb (atom {})
         *shutdown? (atom false)
         *client-state (atom initial-client-state)
-        *sys-data-store (atom {})
+        ;; TODO: Load crdt-state from logs in IDB
+        *crdt-state (atom {})
         *state-sub-name->info (atom {})
-        *subject-id (atom nil)
+        *actor-id (atom nil)
         talk2-client (make-talk2-client)
         update-state-ch (ca/chan (ca/sliding-buffer 1000))
         zc (u/sym-map *client-state
-                      *sys-data-store
+                      *crdt-state
                       *next-instance-num
                       *next-topic-sub-id
                       *shutdown?
                       *state-sub-name->info
-                      *subject-id
+                      *actor-id
                       *topic-name->sub-id->cb
                       log-storage
-                      sys-schema
+                      crdt-schema
                       update-state-ch)]
     (start-update-state-loop! zc)
     zc))
@@ -196,4 +184,4 @@
 
 (defn logged-in?
   [zc]
-  (boolean (:*subject-id zc)))
+  (boolean (:*actor-id zc)))

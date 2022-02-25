@@ -33,7 +33,7 @@
 
 (deftest test-non-sym-key-in-sub-map
   (let [zc (zc/zeno-client)
-        bad-sub-map {:not-a-symbol [:client :user-id]}]
+        bad-sub-map {:not-a-symbol [:zeno/client :user-id]}]
     (is (thrown-with-msg?
          #?(:clj ExceptionInfo :cljs js/Error)
          #"Keys must be symbols"
@@ -43,7 +43,7 @@
 
 (deftest test-bad-path-in-sub-map
   (let [zc (zc/zeno-client)
-        bad-sub-map '{user-id [:client 8.9]}]
+        bad-sub-map '{user-id [:zeno/client 8.9]}]
     (is (thrown-with-msg?
          #?(:clj ExceptionInfo :cljs js/Error)
          #"Only integers"
@@ -60,17 +60,17 @@
            update-fn #(ca/put! ch %)
            name "Alice"
            user-id "123"
-           sub-map '{id [:client :user-id]
-                     name [:client :users id :name]}
+           sub-map '{id [:zeno/client :user-id]
+                     name [:zeno/client :users id :name]}
            expected '{id "123"
                       name "Alice"}]
        (is (= true
-              (au/<? (zc/<update-state! zc [{:path [:client :users]
-                                             :op :set
-                                             :arg {user-id {:name name}}}
-                                            {:path [:client :user-id]
-                                             :op :set
-                                             :arg user-id}]))))
+              (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/client :users]
+                                             :zeno/op :set
+                                             :zeno/arg {user-id {:name name}}}
+                                            {:zeno/path [:zeno/client :user-id]
+                                             :zeno/op :set
+                                             :zeno/arg user-id}]))))
        (is (= expected (zc/subscribe-to-state! zc "test" sub-map
                                                update-fn)))
        (zc/shutdown! zc)))))
@@ -83,10 +83,10 @@
            update-fn (constantly nil)
            name "Alice"
            user-id "123"
-           sub-map '{id [:client :user-id]}]
-       (au/<? (zc/<update-state! zc [{:path [:client :user-id]
-                                      :op :set
-                                      :arg user-id}]))
+           sub-map '{id [:zeno/client :user-id]}]
+       (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/client :user-id]
+                                      :zeno/op :set
+                                      :zeno/arg user-id}]))
        (is (= {'id user-id} (zc/subscribe-to-state! zc "test" sub-map
                                                     update-fn)))
        (zc/shutdown! zc)))))
@@ -103,7 +103,7 @@
 
 (deftest test-bad-path-root-in-sub-map-not-a-sequence
   (let [zc (zc/zeno-client)
-        sub-map '{subject-id :zeno/subject-id}]
+        sub-map '{actor-id :zeno/actor-id}]
     (is (thrown-with-msg?
          #?(:clj ExceptionInfo :cljs js/Error)
          #"Paths must be sequences"
@@ -115,7 +115,7 @@
   (let [update-infos [{:norm-path [:sys 0]
                        :op :insert
                        :value "hi"}]
-        sub-paths [[:client :page]]]
+        sub-paths [[:zeno/client :page]]]
     (is (= false (state-subscriptions/update-sub? update-infos sub-paths)))))
 
 (deftest test-order-by-lineage
@@ -148,27 +148,27 @@
 
 (deftest test-get-state-and-expanded-paths
   (let [zc (zc/zeno-client {:initial-client-state {:page :frobnozzle}})
-        independent-pairs [['page [:client :page]]
-                           ['subject-id [:zeno/subject-id]]]
+        independent-pairs [['page [:zeno/client :page]]
+                           ['actor-id [:zeno/actor-id]]]
         ordered-dependent-pairs []
 
         ret (state-subscriptions/get-state-and-expanded-paths
              zc independent-pairs ordered-dependent-pairs)
         {:keys [state expanded-paths]} ret
         expected-state {'page :frobnozzle
-                        'subject-id nil}
-        expected-expanded-paths [[:client :page]
-                                 [:zeno/subject-id]]
+                        'actor-id nil}
+        expected-expanded-paths [[:zeno/client :page]
+                                 [:zeno/actor-id]]
         _ (is (= expected-state state))
         _ (is (= expected-expanded-paths expanded-paths))
-        subject-id2 "AAAA"
-        _ (reset! (:*subject-id zc) subject-id2) ; Simulate login
+        actor-id2 "AAAA"
+        _ (reset! (:*actor-id zc) actor-id2) ; Simulate login
         ret2 (state-subscriptions/get-state-and-expanded-paths
               zc independent-pairs ordered-dependent-pairs)
         expected-state2 {'page :frobnozzle
-                         'subject-id subject-id2}
-        expected-expanded-paths2 [[:client :page]
-                                  [:zeno/subject-id]]]
+                         'actor-id actor-id2}
+        expected-expanded-paths2 [[:zeno/client :page]
+                                  [:zeno/actor-id]]]
     (is (= expected-state2 (:state ret2)))
     (is (= expected-expanded-paths2 (:expanded-paths ret2)))
     (zc/shutdown! zc)))

@@ -355,9 +355,12 @@
 (defmethod c/get-value :array
   [{:keys [path schema] :as arg}]
   (let [ordered-node-ids (get-ordered-node-ids (assoc arg :repair? true))
-        arg* (assoc arg :get-child-schema (fn [k]
-                                            (l/schema-at-path schema [0])))]
-    (if (seq path)
+        arg* (assoc arg
+                    :get-child-schema (fn [k]
+                                        (l/schema-at-path schema [0])))]
+    (if (empty? path)
+      (let [id->v (c/associative-get-value arg*)]
+        (mapv id->v ordered-node-ids))
       (let [[raw-k & sub-path] path
             k (cond
                 (string? raw-k)
@@ -377,9 +380,7 @@
             new-path (vec (concat [k] (rest path)))]
         (c/associative-get-value (assoc arg*
                                         :path new-path
-                                        :string-array-keys? true)))
-      (let [id->v (c/associative-get-value arg*)]
-        (mapv id->v ordered-node-ids)))))
+                                        :string-array-keys? true))))))
 
 (defmulti get-edge-ops-for-insert :cmd-type)
 
