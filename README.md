@@ -26,6 +26,10 @@ In deps.edn:
 
 # Zeno Concepts
 
+## Branches
+When you create a Zeno client you specify which branch it will use.
+TODO
+
 ## Data
 Zeno stores all state in a tree. There is one schema for the tree, usually
 quite nested. The schema is created and passed to the Zeno server at creation
@@ -325,13 +329,66 @@ See [zeno-client](#zeno-client) for more details about `zc`.
 * TODO
 
 ## Authentication and Authorization
-Zeno does is not able to provide an out of the box generalization for how any
-and every application may want to authenticate users or authorize their access
-to data. Thus, Zeno provides a plugin architecture application developers to
-customize this behavior while providing them as much help as possible.
+Zeno is not able to provide an out of the box generalization for how any and
+every application may want to authenticate users or authorize their access to
+data. Thus, Zeno provides a plugin architecture to allow application developers
+to customize this behavior while providing them as much help as possible.
 
 ### Authentication
-TODO
+
+#### Using an Authenticator
+When you create a Zeno client you can specify an authenticator to use. TODO:
+Show example. Your application can then call whatever functions it needs to
+that the authenticator provides. You'll need to reference the authenticator's
+documentation.
+
+Zeno ships with one authentication plugin to support identifier/secret (e.g.
+username/password) authentication which you can use in your application. It's
+located at
+[src/oncurrent/zeno/authenticators/identifier_secret/](#src/oncurrent/zeno/authenticators/identifier_secret/)
+
+#### Writing a Custom Authenticator
+The general idea is that an application developer can implement a client side
+and server side aspect of authentication while Zeno supplies the communication
+plumbing and storage for the plugin to use.
+
+The authenticator's client side uses Zeno's provided client side authentication
+interface to send RPC's with arbitrary authentication data to the Zeno server
+which forwards them to the authenticator's server side implementation. The Zeno
+client/server authentication interface is intended to provide communication and
+storage plumbing to make the authenticator plugin author's job as easy as
+possible.
+
+The authentication plugin interface supports a number of operations namely
+log-in, log-out, resume-session, and update-authenticator-state. The job of the
+plugin author is to create client side functions for the application to call
+that implement any specifics of logging in/out, resuming a session, or any
+other arbitrary action like creating a user. The plugin author also writes the
+server side code to fulfill the requests to log in/out etc. The Zeno provided
+client/server side authentication code facilitates communication between
+the two and storage for the server side implementation.
+
+The client side interface is specified in the
+`oncurrent.zeno.client.authentication` namespace. You'll see the following
+functions available for an authentication plugin's client side to hook in to
+* `<client-log-in`
+* `<client-log-out`
+* `<client-resume-session`
+* `<client-update-authenticator-state`
+  * Used to perform arbitrary actions as implemented by the authenticator
+    plugin.
+
+Both `<client-log-in` and `<client-update-authenticator-state` allow the
+authenticator's client side to pass arbitrary data to the authenticator's
+server side. While the data is arbitrary and opaque from Zeno's perspective
+the authenticator plugin must still define Lancaster Schema's for that data
+and provide the schemas to Zeno for serializing/deserializing.
+
+Zeno ships with one authentication plugin to support identifier/secret (e.g.
+username/password) authentication which you can reference as an example. It's
+located at
+[src/oncurrent/zeno/authenticators/identifier_secret/](#src/oncurrent/zeno/authenticators/identifier_secret/)
+
 ### Authorization
 TODO
 
