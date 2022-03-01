@@ -1,6 +1,6 @@
 (ns oncurrent.zeno.crdt
   (:require
-   [oncurrent.zeno.crdt.apply-ops :as apply-ops]
+   [oncurrent.zeno.crdt.apply-ops-impl :as apply-ops]
    [oncurrent.zeno.crdt.common :as c]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))

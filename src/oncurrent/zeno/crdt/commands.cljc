@@ -2,7 +2,7 @@
   (:require
    [clojure.set :as set]
    [deercreeklabs.lancaster :as l]
-   [oncurrent.zeno.crdt.apply-ops :as apply-ops]
+   [oncurrent.zeno.crdt.apply-ops-impl :as apply-ops]
    [oncurrent.zeno.crdt.array :as array]
    [oncurrent.zeno.crdt.common :as c]
    [oncurrent.zeno.utils :as u]

@@ -1,4 +1,4 @@
-(ns oncurrent.zeno.crdt.apply-ops
+(ns oncurrent.zeno.crdt.apply-ops-impl
   (:require
    [deercreeklabs.lancaster :as l]
    [oncurrent.zeno.crdt.common :as c]

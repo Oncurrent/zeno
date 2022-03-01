@@ -44,6 +44,10 @@
      (set-state! zc path arg cb)
      ch)))
 
+(defn get-subscription-info [zc state-sub-name]
+  (when-let [info (-> zc :*state-sub-name->info deref (get state-sub-name))]
+    (select-keys info [:state :resolution-map])))
+
 (defn subscribe-to-state!
   "Creates a Zeno subscription. When the state or events referred to by any
    of the paths in the `sub-map` changes, `update-fn` is called.

@@ -3,7 +3,7 @@
    [clojure.set :as set]
    [clojure.string :as str]
    [deercreeklabs.lancaster :as l]
-   [oncurrent.zeno.crdt.apply-ops :as apply-ops]
+   [oncurrent.zeno.crdt.apply-ops-impl :as apply-ops]
    [oncurrent.zeno.crdt.common :as c]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
