@@ -6,6 +6,7 @@
    [clojure.core.async :as ca]
    [clojure.string :as str]
    [deercreeklabs.async-utils :as au]
+   [oncurrent.zeno.client :as zeno.client]
    [oncurrent.zeno.client.macro-impl :as macro-impl]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]
@@ -132,28 +133,29 @@
                                      :resolution-map resolution-map}
                                update-fn (fn [new-state]
                                            (render! (u/current-time-ms)))]
-                           (u/subscribe-to-state! zc component-name sub-map
-                                                  update-fn opts))
+                           (zeno.client/subscribe-to-state!
+                             zc component-name sub-map update-fn opts))
             cleanup-effect (fn []
-                             #(u/unsubscribe-from-state! zc component-name))
-            sub-info (u/get-subscription-info zc component-name)]
+                             #(zeno.client/unsubscribe-from-state!
+                                zc component-name))
+            sub-info (zeno.client/get-subscription-info zc component-name)]
         (use-effect cleanup-effect #js [])
         (if (not sub-info)
           (subscribe*!)
           (if (= resolution-map (:resolution-map sub-info))
             (:state sub-info)
             (do
-              (u/unsubscribe-from-state! zc component-name)
+              (zeno.client/unsubscribe-from-state! zc component-name)
               (subscribe*!))))))))
 
 (defn use-topic-subscription
   "React hook for Zeno topic subscriptions."
-  ([zc scope topic-name cb]
+  ([zc topic-name cb]
    #?(:cljs
-      (use-effect #(u/subscribe-to-topic! zc scope topic-name cb))))
-  ([zc scope topic-name cb dependencies]
+      (use-effect #(zeno.client/subscribe-to-topic! zc topic-name cb))))
+  ([zc topic-name cb dependencies]
    #?(:cljs
-      (use-effect #(u/subscribe-to-topic! zc scope topic-name cb)
+      (use-effect #(zeno.client/subscribe-to-topic! zc topic-name cb)
                   dependencies))))
 
 ;;;;;;;;;;;;;;;;;;;; Macro runtime helpers ;;;;;;;;;;;;;;;;;;;;
