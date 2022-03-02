@@ -10,21 +10,21 @@
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
-(defn <create-subject!
+(defn <create-actor!
   ([zc identifier secret]
-   (<create-subject! zc identifier secret nil))
+   (<create-actor! zc identifier secret nil))
   ([zc identifier secret actor-id]
-   "Returns the actor-id of the created subject."
+   "Returns the actor-id of the created actor."
    (let [arg {:authenticator-name shared/authenticator-name
               :return-value-schema schemas/actor-id-schema
-              :update-info-schema shared/create-subject-info-schema
+              :update-info-schema shared/create-actor-info-schema
               :update-info (u/sym-map identifier secret actor-id)
-              :update-type :create-subject
+              :update-type :create-actor
               :zc zc}]
      (za/<client-update-authenticator-state arg))))
 
 (defn <add-identifier! [zc identifier]
-  "Works on current subject. Must be logged in. Returns a boolean success value."
+  "Works on current actor. Must be logged in. Returns a boolean success value."
   (when-not (zc/logged-in? zc)
     (throw (ex-info "Must be logged in to call `<add-identifier!`"
                     (u/sym-map identifier))))
@@ -37,7 +37,7 @@
     (za/<client-update-authenticator-state arg)))
 
 (defn <remove-identifier! [zc identifier]
-  "Works on current subject. Must be logged in. Returns a boolean success value."
+  "Works on current actor. Must be logged in. Returns a boolean success value."
   (when-not (string? identifier)
     (throw (ex-info (str "`identifier` must be a string. Got `"
                          (or identifier "nil") "`.")
@@ -54,7 +54,7 @@
     (za/<client-update-authenticator-state arg)))
 
 (defn <set-secret! [zc identifier old-secret new-secret]
-  "Works on current subject. Must be logged in. Returns a boolean success value."
+  "Works on current actor. Must be logged in. Returns a boolean success value."
   (when-not (zc/logged-in? zc)
     (throw (ex-info "Must be logged in to call `<set-secret!`"
                     (u/sym-map identifier))))

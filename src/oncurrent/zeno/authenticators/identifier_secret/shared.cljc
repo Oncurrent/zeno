@@ -9,7 +9,7 @@
 (def identifier-schema l/string-schema)
 (def secret-schema l/string-schema)
 
-(l/def-record-schema create-subject-info-schema
+(l/def-record-schema create-actor-info-schema
   [:identifier identifier-schema]
   [:secret secret-schema]
   [:actor-id schemas/actor-id-schema])

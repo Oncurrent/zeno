@@ -49,7 +49,7 @@
 
 (defmulti <update-authenticator-state!* :update-type)
 
-(defmethod <update-authenticator-state!* :create-subject
+(defmethod <update-authenticator-state!* :create-actor
   [{:keys [authenticator-storage update-info]}]
   (au/go
     (let [{:keys [identifier secret actor-id]} update-info
@@ -71,7 +71,7 @@
         (catch ExceptionInfo e
           (if (= :key-exists (some-> e ex-data :type))
             (throw (ex-info
-                    (str "Subject `" actor-id "` already exists.")
+                    (str "Actor `" actor-id "` already exists.")
                     (u/sym-map identifier actor-id)))
             (throw e))))
       true)))
@@ -80,7 +80,7 @@
   [{:keys [authenticator-storage actor-id] :as arg}]
   (au/go
     (when-not actor-id
-      (throw (ex-info "Subject is not logged in." {})))
+      (throw (ex-info "Actor is not logged in." {})))
     (let [identifier (:update-info arg)
           ik (str identifier-to-actor-id-key-prefix identifier)]
       (try
@@ -98,7 +98,7 @@
   [{:keys [authenticator-storage actor-id] :as arg}]
   (au/go
     (when-not actor-id
-      (throw (ex-info "Subject is not logged in." {})))
+      (throw (ex-info "Actor is not logged in." {})))
     (let [identifier (:update-info arg)
           ik (str identifier-to-actor-id-key-prefix identifier)]
       (au/<? (storage/<delete! authenticator-storage ik))
@@ -108,7 +108,7 @@
   [{:keys [authenticator-storage actor-id update-info]}]
   (au/go
     (when-not actor-id
-      (throw (ex-info "Subject is not logged in." {})))
+      (throw (ex-info "Actor is not logged in." {})))
     (let [{:keys [identifier old-secret new-secret]} update-info
           sk (str actor-id-to-hashed-secret-key-prefix actor-id)]
       (au/<? (storage/<swap! authenticator-storage sk l/string-schema
@@ -136,13 +136,13 @@
   (get-update-state-info-schema [this update-type]
     (case update-type
       :add-identifier shared/identifier-schema
-      :create-subject shared/create-subject-info-schema
+      :create-actor shared/create-actor-info-schema
       :remove-identifier shared/identifier-schema
       :set-secret shared/set-secret-info-schema))
   (get-update-state-ret-schema [this update-type]
     (case update-type
       :add-identifier l/boolean-schema
-      :create-subject schemas/actor-id-schema
+      :create-actor schemas/actor-id-schema
       :remove-identifier l/boolean-schema
       :set-secret l/boolean-schema)))
 
