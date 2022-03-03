@@ -163,48 +163,6 @@
   [state {:zeno/keys [path op arg]} prefix]
   (insert* state path prefix op arg))
 
-(defn eval-math-cmd [state cmd prefix op-fn]
-  (let [{:zeno/keys [path op arg]} cmd
-        {:keys [norm-path value]} (get-in-state state path prefix)
-        _ (when-not (number? value)
-            (throw (ex-info (str "Can't do math on non-numeric type. "
-                                 "Value in state at path `"
-                                 path "` is not a number. Got: " value ".")
-                            (u/sym-map path cmd))))
-        _ (when-not (number? arg)
-            (throw (ex-info (str "Can't do math on non-numeric type. "
-                                 "Arg `" arg "` in update command `"
-                                 cmd "` is not a number.")
-                            (u/sym-map path cmd op))))
-        new-value (op-fn value arg)
-        state-path (if prefix
-                     (rest norm-path)
-                     norm-path)]
-    {:state (assoc-in state state-path new-value)
-     :update-info {:norm-path norm-path
-                   :op op
-                   :value new-value}}))
-
-(defmethod eval-cmd :zeno/+
-  [state cmd prefix]
-  (eval-math-cmd state cmd prefix +))
-
-(defmethod eval-cmd :zeno/-
-  [state cmd prefix]
-  (eval-math-cmd state cmd prefix -))
-
-(defmethod eval-cmd :zeno/*
-  [state cmd prefix]
-  (eval-math-cmd state cmd prefix *))
-
-(defmethod eval-cmd :zeno//
-  [state cmd prefix]
-  (eval-math-cmd state cmd prefix /))
-
-(defmethod eval-cmd :zeno/mod
-  [state cmd prefix]
-  (eval-math-cmd state cmd prefix mod))
-
 (defn eval-cmds [initial-state cmds prefix]
   (reduce (fn [{:keys [state] :as acc} cmd]
             (let [ret (eval-cmd state cmd prefix)]

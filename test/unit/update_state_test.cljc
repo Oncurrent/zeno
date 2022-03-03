@@ -493,7 +493,7 @@
          (log/error (u/ex-msg-and-stacktrace e))
          (is (= :unexpected e)))))))
 
-(deftest ^:this test-crdt-wildcard-sub
+(deftest test-crdt-wildcard-sub
   (au/test-async
    3000
    (ca/go
