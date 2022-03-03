@@ -61,12 +61,16 @@
                  (:children crdt))]
       (u/sym-map value norm-path))
     (let [[k & ks] path]
-      (check-key (assoc arg :key k))
-      (get-value-info (assoc arg
-                             :crdt (get-in crdt [:children k])
-                             :norm-path (conj norm-path k)
-                             :path (or ks [])
-                             :schema (get-child-schema k))))))
+      (if-not k
+        {:norm-path norm-path
+         :value nil}
+        (do
+          (check-key (assoc arg :key k))
+          (get-value-info (assoc arg
+                                 :crdt (get-in crdt [:children k])
+                                 :norm-path (conj norm-path k)
+                                 :path (or ks [])
+                                 :schema (get-child-schema k))))))))
 
 ;; TODO: Replace this with conflict resolution?
 (defn get-most-recent [current-add-id-to-value-info]
@@ -163,6 +167,6 @@
   [{:keys [crdt path] :as arg}]
   (if (empty? crdt)
     {:norm-path path
-     :value crdt}
+     :value nil}
     (let [member-schema (get-member-schema arg)]
       (get-value-info (assoc arg :schema member-schema)))))

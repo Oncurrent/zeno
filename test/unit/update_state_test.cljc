@@ -421,6 +421,28 @@
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
+(deftest test-crdt-nil-in-path-2
+  (au/test-async
+   1000
+   (ca/go
+     (try
+       (let [zc (zc/zeno-client {:crdt-schema info-schema})
+             books {"123" {:title "Treasure Island"}
+                    "456" {:title "Kidnapped"}
+                    "789" {:title "Dr Jekyll and Mr Hyde"}}
+             sub-map '{title [:zeno/crdt :books num :title]}
+             resolution-map {'num nil}
+             opts (u/sym-map resolution-map)
+             update-fn (constantly nil)
+             ret (au/<? (zc/<set-state! zc [:zeno/crdt :books] books))
+             _ (is (= true ret))
+             expected {'title nil}]
+         (is (= expected (zc/subscribe-to-state! zc "test" sub-map update-fn
+                                                 opts)))
+         (zc/shutdown! zc))
+       (catch #?(:clj Exception :cljs js/Error) e
+         (is (= :unexpected e)))))))
+
 (deftest test-nil-return
   (au/test-async
    1000
@@ -433,6 +455,25 @@
              sub-map '{title-999 [:zeno/client :books "999" :title]}
              update-fn (constantly nil)
              ret (au/<? (zc/<set-state! zc [:zeno/client :books] books))]
+         (is (= true ret))
+         (is (= {'title-999 nil}
+                (zc/subscribe-to-state! zc "test" sub-map update-fn)))
+         (zc/shutdown! zc))
+       (catch #?(:clj Exception :cljs js/Error) e
+         (is (= :unexpected e)))))))
+
+(deftest test-crdt-nil-return
+  (au/test-async
+   1000
+   (ca/go
+     (try
+       (let [zc (zc/zeno-client {:crdt-schema info-schema})
+             books {"123" {:title "Treasure Island"}
+                    "456" {:title "Kidnapped"}
+                    "789" {:title "Dr Jekyll and Mr Hyde"}}
+             sub-map '{title-999 [:zeno/crdt :books "999" :title]}
+             update-fn (constantly nil)
+             ret (au/<? (zc/<set-state! zc [:zeno/crdt :books] books))]
          (is (= true ret))
          (is (= {'title-999 nil}
                 (zc/subscribe-to-state! zc "test" sub-map update-fn)))
@@ -453,6 +494,24 @@
              update-fn (constantly nil)
              expected {'my-titles [nil]}]
          (au/<? (zc/<set-state! zc [:zeno/client :books] books))
+         (is (= expected (zc/subscribe-to-state! zc "test" sub-map update-fn)))
+         (zc/shutdown! zc))
+       (catch #?(:clj Exception :cljs js/Error) e
+         (is (= :unexpected e)))))))
+
+(deftest test-crdt-seq-w-nil-return
+  (au/test-async
+   1000
+   (ca/go
+     (try
+       (let [zc (zc/zeno-client {:crdt-schema info-schema})
+             books {"123" {:title "Treasure Island"}
+                    "456" {:title "Kidnapped"}
+                    "789" {:title "Dr Jekyll and Mr Hyde"}}
+             sub-map '{my-titles [:zeno/crdt :books ["999"] :title]}
+             update-fn (constantly nil)
+             expected {'my-titles [nil]}]
+         (au/<? (zc/<set-state! zc [:zeno/crdt :books] books))
          (is (= expected (zc/subscribe-to-state! zc "test" sub-map update-fn)))
          (zc/shutdown! zc))
        (catch #?(:clj Exception :cljs js/Error) e

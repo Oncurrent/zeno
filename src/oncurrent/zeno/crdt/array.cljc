@@ -371,11 +371,15 @@
                  (:children crdt))]
       (u/sym-map value norm-path))
     (let [[k & ks] path]
-      (c/check-key (assoc arg :key k))
-      (c/get-value-info (assoc arg
-                               :crdt (get-in crdt [:children k])
-                               :path ks
-                               :schema (get-child-schema k))))))
+      (if-not k
+        {:norm-path norm-path
+         :value nil}
+        (do
+          (c/check-key (assoc arg :key k))
+          (c/get-value-info (assoc arg
+                                   :crdt (get-in crdt [:children k])
+                                   :path ks
+                                   :schema (get-child-schema k))))))))
 
 (defmethod c/get-value-info :array
   [{:keys [norm-path path schema] :as arg}]

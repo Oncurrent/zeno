@@ -258,22 +258,15 @@
                     :zeno/concat (apply concat results))]
             [v xpaths*]))))))
 
-(defmulti resolve-symbols-in-path (fn [{:keys [path]}]
-                                    (first path)))
-
-(defmethod resolve-symbols-in-path :zeno/client
-  [{:keys [path state]}]
-  (let [reducer (fn [acc element]
-                  (conj acc (if-not (symbol? element)
-                              element
-                              (get state element))))]
-    (if(symbol? path)
-      (get state path)
-      (reduce reducer [] path))))
-
-(defmethod resolve-symbols-in-path :zeno/crdt
-  [{:keys [path state] :as arg}]
-  (throw (ex-info "Implement me!!" {})))
+(defn resolve-symbols-in-path [{:keys [path state]}]
+  (if (symbol? path)
+    (get state path)
+    (reduce (fn [acc element]
+              (conj acc (if-not (symbol? element)
+                          element
+                          (get state element))))
+            []
+            path)))
 
 (defn get-path-info [zc acc-state path resolve-path?]
   (let [resolved-path (if resolve-path?
