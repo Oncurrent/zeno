@@ -49,12 +49,12 @@
   [:ws-url ws-url-schema])
 
 (l/def-enum-schema command-op-schema
-  :insert-after
-  :insert-before
-  :insert-range-after
-  :insert-range-before
-  :remove
-  :set)
+  :zeno/insert-after
+  :zeno/insert-before
+  :zeno/insert-range-after
+  :zeno/insert-range-before
+  :zeno/remove
+  :zeno/set)
 
 (l/def-union-schema path-item-schema
   l/keyword-schema

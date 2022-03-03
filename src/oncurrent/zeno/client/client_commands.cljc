@@ -67,7 +67,7 @@
 (defmulti eval-cmd (fn [state {:zeno/keys [op]} prefix]
                      op))
 
-(defmethod eval-cmd :set
+(defmethod eval-cmd :zeno/set
   [state {:zeno/keys [path op arg]} prefix]
   (let [{:keys [norm-path]} (get-in-state state path prefix)
         state-path (if prefix
@@ -81,7 +81,7 @@
                    :op op
                    :value arg}}))
 
-(defmethod eval-cmd :remove
+(defmethod eval-cmd :zeno/remove
   [state {:zeno/keys [path op]} prefix]
   (let [parent-path (butlast path)
         k (last path)
@@ -138,7 +138,7 @@
                  i
                  (+ (count value) i))
         ;; TODO: Check for out of range norm-i
-        split-i (if (= :insert-before op)
+        split-i (if (= :zeno/insert-before op)
                   norm-i
                   (inc norm-i))
         [h t] (split-at split-i value)
@@ -155,11 +155,11 @@
                    :op op
                    :value arg}}))
 
-(defmethod eval-cmd :insert-before
+(defmethod eval-cmd :zeno/insert-before
   [state {:zeno/keys [path op arg]} prefix]
   (insert* state path prefix op arg))
 
-(defmethod eval-cmd :insert-after
+(defmethod eval-cmd :zeno/insert-after
   [state {:zeno/keys [path op arg]} prefix]
   (insert* state path prefix op arg))
 
@@ -185,23 +185,23 @@
                    :op op
                    :value new-value}}))
 
-(defmethod eval-cmd :+
+(defmethod eval-cmd :zeno/+
   [state cmd prefix]
   (eval-math-cmd state cmd prefix +))
 
-(defmethod eval-cmd :-
+(defmethod eval-cmd :zeno/-
   [state cmd prefix]
   (eval-math-cmd state cmd prefix -))
 
-(defmethod eval-cmd :*
+(defmethod eval-cmd :zeno/*
   [state cmd prefix]
   (eval-math-cmd state cmd prefix *))
 
-(defmethod eval-cmd :/
+(defmethod eval-cmd :zeno//
   [state cmd prefix]
   (eval-math-cmd state cmd prefix /))
 
-(defmethod eval-cmd :mod
+(defmethod eval-cmd :zeno/mod
   [state cmd prefix]
   (eval-math-cmd state cmd prefix mod))
 

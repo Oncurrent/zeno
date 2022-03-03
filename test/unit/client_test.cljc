@@ -22,7 +22,7 @@
                            zc "test" sub-map update-fn)))
        (is (= true
               (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/client :page]
-                                             :zeno/op :set
+                                             :zeno/op :zeno/set
                                              :zeno/arg :login}]))))
        (is (= '{page :login} (au/<? ch)))
        (zc/shutdown! zc)))))

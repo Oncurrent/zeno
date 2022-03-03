@@ -66,10 +66,10 @@
                       name "Alice"}]
        (is (= true
               (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/client :users]
-                                             :zeno/op :set
+                                             :zeno/op :zeno/set
                                              :zeno/arg {user-id {:name name}}}
                                             {:zeno/path [:zeno/client :user-id]
-                                             :zeno/op :set
+                                             :zeno/op :zeno/set
                                              :zeno/arg user-id}]))))
        (is (= expected (zc/subscribe-to-state! zc "test" sub-map
                                                update-fn)))
@@ -85,7 +85,7 @@
            user-id "123"
            sub-map '{id [:zeno/client :user-id]}]
        (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/client :user-id]
-                                      :zeno/op :set
+                                      :zeno/op :zeno/set
                                       :zeno/arg user-id}]))
        (is (= {'id user-id} (zc/subscribe-to-state! zc "test" sub-map
                                                     update-fn)))
@@ -113,7 +113,7 @@
 
 (deftest test-update-sub?-numeric
   (let [update-infos [{:norm-path [:sys 0]
-                       :op :insert
+                       :op :zeno/insert
                        :value "hi"}]
         sub-paths [[:zeno/client :page]]]
     (is (= false (state-subscriptions/update-sub? update-infos sub-paths)))))

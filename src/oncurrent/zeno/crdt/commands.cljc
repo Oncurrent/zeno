@@ -8,15 +8,15 @@
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
-(def insert-ops #{:insert-after
-                  :insert-before
-                  :insert-range-after
-                  :insert-range-before})
+(def insert-ops #{:zeno/insert-after
+                  :zeno/insert-before
+                  :zeno/insert-range-after
+                  :zeno/insert-range-before})
 
 (defmulti process-cmd* (fn [{:keys [cmd]}]
                          (let [{:zeno/keys [op]} cmd]
                            (if (insert-ops op)
-                             :insert*
+                             :zeno/insert*
                              op))))
 
 (defmulti do-insert (fn [{:keys [schema]}]
@@ -156,7 +156,7 @@
                            current-edge-add-ids)
 
                    (and (empty? sub-path)
-                        (= :remove (:zeno/op cmd)))
+                        (= :zeno/remove (:zeno/op cmd)))
                    (let [node-id (nth ordered-node-ids i)]
                      (get-ops-del-single-node (u/sym-map crdt make-id node-id
                                                          sys-time-ms)))
@@ -455,10 +455,10 @@
 (defmethod do-insert :array
   [{:keys [cmd-type] :as arg}]
   (case cmd-type
-    :insert-after (do-single-insert arg)
-    :insert-before (do-single-insert arg)
-    :insert-range-after (do-range-insert arg)
-    :insert-range-before (do-range-insert arg)))
+    :zeno/insert-after (do-single-insert arg)
+    :zeno/insert-before (do-single-insert arg)
+    :zeno/insert-range-after (do-range-insert arg)
+    :zeno/insert-range-before (do-range-insert arg)))
 
 (defn associative-do-insert
   [{:keys [get-child-schema cmd-type cmd-arg crdt norm-path path schema]
@@ -520,7 +520,7 @@
   [arg]
   (assoc arg :ops #{}))
 
-(defmethod process-cmd* :set
+(defmethod process-cmd* :zeno/set
   [{:keys [cmd-arg cmd-type] :as arg}]
   (let [{repair-ops :ops
          repaired-crdt :crdt} (do-repair arg)
@@ -539,7 +539,7 @@
                    :op cmd-type
                    :value cmd-arg}}))
 
-(defmethod process-cmd* :remove
+(defmethod process-cmd* :zeno/remove
   [{:keys [cmd-type] :as arg}]
   (let [{repair-ops :ops
          repaired-crdt :crdt} (do-repair arg)
@@ -551,7 +551,7 @@
                    :op cmd-type
                    :value nil}}))
 
-(defmethod process-cmd* :insert*
+(defmethod process-cmd* :zeno/insert*
   [arg]
   (do-insert arg))
 

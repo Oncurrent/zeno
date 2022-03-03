@@ -34,7 +34,7 @@
    (set-state! zc path arg nil))
   ([zc path arg cb]
    (impl/update-state! zc [{:zeno/path path
-                            :zeno/op :set
+                            :zeno/op :zeno/set
                             :zeno/arg arg}] cb)))
 
 (defn <set-state!

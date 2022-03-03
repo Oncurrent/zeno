@@ -411,7 +411,7 @@
 
 (defmulti get-edge-ops-for-insert :cmd-type)
 
-(defmethod get-edge-ops-for-insert :insert-before
+(defmethod get-edge-ops-for-insert :zeno/insert-before
   [{:keys [crdt i make-id new-node-id ordered-node-ids sys-time-ms]}]
   (let [edges (get-edges {:crdt crdt
                           :edge-type :current})
@@ -442,7 +442,7 @@
                         :op-type :delete-array-edge
                         :path '()}))))
 
-(defmethod get-edge-ops-for-insert :insert-after
+(defmethod get-edge-ops-for-insert :zeno/insert-after
   [{:keys [crdt i make-id new-node-id ordered-node-ids sys-time-ms]}]
   (let [edges (get-edges {:crdt crdt
                           :edge-type :current})
@@ -475,7 +475,7 @@
                         :op-type :delete-array-edge
                         :path '()}))))
 
-(defmethod get-edge-ops-for-insert :insert-range-after
+(defmethod get-edge-ops-for-insert :zeno/insert-range-after
   [{:keys [crdt i make-id new-node-ids ordered-node-ids sys-time-ms]}]
   (let [edges (get-edges {:crdt crdt
                           :edge-type :current})
@@ -518,7 +518,7 @@
                         :op-type :delete-array-edge
                         :path '()}))))
 
-(defmethod get-edge-ops-for-insert :insert-range-before
+(defmethod get-edge-ops-for-insert :zeno/insert-range-before
   [{:keys [crdt i make-id new-node-ids ordered-node-ids sys-time-ms]}]
   (let [edges (get-edges {:crdt crdt
                           :edge-type :current})

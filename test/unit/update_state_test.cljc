@@ -21,7 +21,7 @@
             #?(:clj ExceptionInfo :cljs js/Error)
             #"Paths must begin with "
             (au/<? (zc/<update-state! zc [{:zeno/path [:not-a-valid-root :x]
-                                           :zeno/op :set
+                                           :zeno/op :zeno/set
                                            :zeno/arg 1}]))))
        (zc/shutdown! zc)))))
 
@@ -51,23 +51,23 @@
              new-title "Socrates"]
          (is (= true (au/<? (zc/<update-state!
                              zc [{:zeno/path [:zeno/client]
-                                  :zeno/op :set
+                                  :zeno/op :zeno/set
                                   :zeno/arg {:msgs [{:title orig-title}]}}]))))
          (is (= {'title orig-title}
                 (zc/subscribe-to-state! zc "test" sub-map update-fn)))
          (au/<? (zc/<update-state! zc
                                    [{:zeno/path [:zeno/client :msgs 0]
-                                     :zeno/op :insert-before
+                                     :zeno/op :zeno/insert-before
                                      :zeno/arg {:title orig-title}}
                                     {:zeno/path [:zeno/client :msgs 0 :title]
-                                     :zeno/op :set
+                                     :zeno/op :zeno/set
                                      :zeno/arg new-title}]))
          (is (= new-title (au/<? ch)))
          (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/client :msgs 0 :title]
-                                        :zeno/op :set
+                                        :zeno/op :zeno/set
                                         :zeno/arg new-title}
                                        {:zeno/path [:zeno/client :msgs 0]
-                                        :zeno/op :insert-before
+                                        :zeno/op :zeno/insert-before
                                         :zeno/arg {:title orig-title}}]))
          (is (= orig-title (au/<? ch)))
          (zc/shutdown! zc))
@@ -87,13 +87,13 @@
              new-title "Bar"
              ret (au/<? (zc/<update-state!
                          zc [{:zeno/path [:zeno/client]
-                              :zeno/op :set
+                              :zeno/op :zeno/set
                               :zeno/arg {:msgs [{:title orig-title}]}}]))]
          (is (= true ret))
          (is (= {'last-title orig-title}
                 (zc/subscribe-to-state! zc "test" sub-map update-fn)))
          (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/client :msgs -1]
-                                        :zeno/op :insert-after
+                                        :zeno/op :zeno/insert-after
                                         :zeno/arg {:title new-title}}]))
          (is (= new-title (au/<? ch)))
          (zc/shutdown! zc))
@@ -113,7 +113,7 @@
              update-fn (constantly nil)]
          (is (= true
                 (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/client :books book-id]
-                                               :zeno/op :set
+                                               :zeno/op :zeno/set
                                                :zeno/arg {:title book-title}}]))))
          (is (= {'title book-title}
                 (zc/subscribe-to-state! zc "test" sub-map update-fn
@@ -136,10 +136,10 @@
              update-fn (constantly nil)]
          (is (= true
                 (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/client :the-id]
-                                               :zeno/op :set
+                                               :zeno/op :zeno/set
                                                :zeno/arg book-id}
                                               {:zeno/path [:zeno/client :books book-id]
-                                               :zeno/op :set
+                                               :zeno/op :zeno/set
                                                :zeno/arg {:title book-title}}]))))
          (is (= '{the-id "123"
                   title "Treasure Island"}
@@ -164,7 +164,7 @@
              update-fn (constantly nil)
              expected {'my-books (vals (select-keys books my-book-ids))}]
          (is (= true (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/client :books]
-                                                    :zeno/op :set
+                                                    :zeno/op :zeno/set
                                                     :zeno/arg books}]))))
          (is (= expected (zc/subscribe-to-state!
                           zc "test" sub-map update-fn
@@ -191,16 +191,16 @@
                        'my-books (vals (select-keys books my-book-ids))}]
          (is (= true (au/<? (zc/<update-state!
                              zc [{:zeno/path [:zeno/client :books]
-                                  :zeno/op :set
+                                  :zeno/op :zeno/set
                                   :zeno/arg books}
                                  {:zeno/path [:zeno/client :my-book-ids]
-                                  :zeno/op :set
+                                  :zeno/op :zeno/set
                                   :zeno/arg my-book-ids}]))))
          (is (= expected (zc/subscribe-to-state! zc "test"
                                                  sub-map update-fn)))
          (is (= true (au/<? (zc/<update-state!
                              zc [{:zeno/path [:zeno/client :my-book-ids 0]
-                                  :zeno/op :remove}]))))
+                                  :zeno/op :zeno/remove}]))))
          (is (= {'my-book-ids ["456"]
                  'my-books [{:title "Kidnapped"}]} (au/<? update-ch)))
          (zc/shutdown! zc))
@@ -231,16 +231,16 @@
                                    {:title new-title}]}]
          (is (= true (au/<? (zc/<update-state!
                              zc [{:zeno/path [:zeno/client :books]
-                                  :zeno/op :set
+                                  :zeno/op :zeno/set
                                   :zeno/arg books}
                                  {:zeno/path [:zeno/client :my-book-ids]
-                                  :zeno/op :set
+                                  :zeno/op :zeno/set
                                   :zeno/arg my-book-ids}]))))
          (is (= expected1 (zc/subscribe-to-state! zc "test" sub-map
                                                   update-fn)))
          (is (= true (au/<? (zc/<update-state!
                              zc [{:zeno/path [:zeno/client :books "789" :title]
-                                  :zeno/op :set
+                                  :zeno/op :zeno/set
                                   :zeno/arg new-title}]))))
          (is (= expected2 (au/<? update-ch)))
          (zc/shutdown! zc))
@@ -266,7 +266,7 @@
                 (zc/subscribe-to-state! zc "test" sub-map update-fn
                                         (u/sym-map resolution-map))))
          (is (= true (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/client :books]
-                                                    :zeno/op :set
+                                                    :zeno/op :zeno/set
                                                     :zeno/arg books}]))))
          (is (= expected (au/<? ch)))
          (zc/shutdown! zc))
@@ -311,7 +311,7 @@
                        'msgs msgs}
              update-ret (au/<? (zc/<update-state!
                                 zc [{:zeno/path [:zeno/client]
-                                     :zeno/op :set
+                                     :zeno/op :zeno/set
                                      :zeno/arg (u/sym-map books msgs)}]))
              sub-ret (zc/subscribe-to-state! zc "test" sub-map
                                              update-fn)]
@@ -343,10 +343,10 @@
              expected '{my-book-ids []
                         my-books nil}]
          (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/client :my-book-ids]
-                                        :zeno/op :set
+                                        :zeno/op :zeno/set
                                         :zeno/arg []}
                                        {:zeno/path [:zeno/client :books]
-                                        :zeno/op :set
+                                        :zeno/op :zeno/set
                                         :zeno/arg books}]))
          (is (= expected (zc/subscribe-to-state! zc "test" sub-map
                                                  update-fn)))
@@ -472,12 +472,12 @@
              _ (is (= true ret1))
              _ (is (= {'titles titles-set} (au/<? ch)))
              ret2 (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/client :books "999"]
-                                                 :zeno/op :set
+                                                 :zeno/op :zeno/set
                                                  :zeno/arg {:title "1984"}}]))
              _ (is (= true ret2))
              _ (is (= {'titles (conj titles-set "1984")} (au/<? ch)))
              ret3 (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/client :books "456"]
-                                                 :zeno/op :remove}]))
+                                                 :zeno/op :zeno/remove}]))
              _ (is (= true ret3))
              expected-titles (-> (conj titles-set "1984")
                                  (disj "Kidnapped"))]
@@ -507,12 +507,12 @@
              _ (is (= {'my-nums [2 3 4]} ret2))
              ret3 (au/<? (zc/<update-state!
                           zc [{:zeno/path [:zeno/client :id-to-fav-nums 2 1]
-                               :zeno/op :remove}]))
+                               :zeno/op :zeno/remove}]))
              _ (is (= true ret3))
              _ (is (= {'my-nums [2 4]} (au/<? ch)))
              ret4 (au/<? (zc/<update-state!
                           zc [{:zeno/path [:zeno/client :id-to-fav-nums 2 -1]
-                               :zeno/op :insert-after
+                               :zeno/op :zeno/insert-after
                                :zeno/arg 5}]))]
          (is (= true ret4))
          (is (= {'my-nums [2 4 5]} (au/<? ch)))
@@ -540,12 +540,12 @@
              _ (is (= {'my-nums [2 3 4]} ret2))
              ret3 (au/<? (zc/<update-state!
                           zc [{:zeno/path [:zeno/crdt "2" 1]
-                               :zeno/op :remove}]))
+                               :zeno/op :zeno/remove}]))
              _ (is (= true ret3))
              _ (is (= {'my-nums [2 4]} (au/<? ch)))
              ret4 (au/<? (zc/<update-state!
                           zc [{:zeno/path [:zeno/crdt "2" -1]
-                               :zeno/op :insert-after
+                               :zeno/op :zeno/insert-after
                                :zeno/arg 5}]))]
          (is (= true ret4))
          (is (= {'my-nums [2 4 5]} (au/<? ch)))

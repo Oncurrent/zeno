@@ -23,7 +23,7 @@
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294782")
         arg {:cmds [{:zeno/arg "Hi"
-                     :zeno/op :set
+                     :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}]
              :crdt-schema l/string-schema
              :make-id #(let [n (swap! *next-id-num inc)]
@@ -45,9 +45,9 @@
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294782")
         arg {:cmds [{:zeno/arg "Hello"
-                     :zeno/op :set
+                     :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
-                    {:zeno/op :remove
+                    {:zeno/op :zeno/remove
                      :zeno/path [:zeno/crdt]}]
              :crdt-schema l/string-schema
              :make-id #(let [n (swap! *next-id-num inc)]
@@ -72,10 +72,10 @@
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294782")
         arg {:cmds [{:zeno/arg "Hello"
-                     :zeno/op :set
+                     :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
                     {:zeno/arg "Goodbye"
-                     :zeno/op :set
+                     :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}]
              :crdt-schema l/string-schema
              :make-id #(let [n (swap! *next-id-num inc)]
@@ -105,13 +105,13 @@
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294782")
         arg {:cmds [{:zeno/arg 31
-                     :zeno/op :set
+                     :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt "Alice"]}
                     {:zeno/arg 8
-                     :zeno/op :set
+                     :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt "Bob"]}
                     {:zeno/arg 12
-                     :zeno/op :set
+                     :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt "Bob"]}]
              :crdt-schema (l/map-schema l/int-schema)
              :make-id #(let [n (swap! *next-id-num inc)]
@@ -147,13 +147,13 @@
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294782")
         arg {:cmds [{:zeno/arg "Lamby"
-                     :zeno/op :set
+                     :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt :name]}
                     {:zeno/arg "Ovis aries"
-                     :zeno/op :set
+                     :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt :species]}
                     {:zeno/arg "Sheepy"
-                     :zeno/op :set
+                     :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt :name]}]
              :crdt-schema pet-schema
              :make-id #(let [n (swap! *next-id-num inc)]
@@ -189,10 +189,10 @@
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294782")
         arg {:cmds [{:zeno/arg 3.14
-                     :zeno/op :set
+                     :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
                     {:zeno/arg "pi"
-                     :zeno/op :set
+                     :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}]
              :crdt-schema (l/union-schema [l/string-schema l/float-schema])
              :make-id #(let [n (swap! *next-id-num inc)]
@@ -222,7 +222,7 @@
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg ["Hi" "There"]
-                     :zeno/op :set
+                     :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}]
              :crdt-schema (l/array-schema l/string-schema)
              :make-id #(let [n (swap! *next-id-num inc)]
@@ -267,9 +267,9 @@
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg ["Hi" "There"]
-                     :zeno/op :set
+                     :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
-                    {:zeno/op :remove
+                    {:zeno/op :zeno/remove
                      :zeno/path [:zeno/crdt 0]}]
              :crdt-schema (l/array-schema l/string-schema)
              :make-id #(let [n (swap! *next-id-num inc)]
@@ -331,9 +331,9 @@
         arg {:cmds [{:zeno/arg [{"a" 1 "b" 2}
                                 {"y" 10 "z" 20}
                                 {"c" 3}]
-                     :zeno/op :set
+                     :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
-                    {:zeno/op :remove
+                    {:zeno/op :zeno/remove
                      :zeno/path [:zeno/crdt 1 "y"]}]
              :crdt-schema (l/array-schema (l/map-schema l/int-schema))
              :make-id #(let [n (swap! *next-id-num inc)]
@@ -351,10 +351,10 @@
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg ["Hi" "There"]
-                     :zeno/op :set
+                     :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
                     {:zeno/arg "Go"
-                     :zeno/op :set
+                     :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt 0]}]
              :crdt-schema (l/array-schema l/string-schema)
              :make-id #(let [n (swap! *next-id-num inc)]
@@ -407,13 +407,13 @@
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg ["Hi" "There"]
-                     :zeno/op :set
+                     :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
                     {:zeno/arg "Hello!"
-                     :zeno/op :insert-before
+                     :zeno/op :zeno/insert-before
                      :zeno/path [:zeno/crdt 0]}
                     {:zeno/arg "Bob"
-                     :zeno/op :insert-after
+                     :zeno/op :zeno/insert-after
                      :zeno/path [:zeno/crdt -1]}]
              :crdt-schema (l/array-schema l/string-schema)
              :make-id #(let [n (swap! *next-id-num inc)]
@@ -498,7 +498,7 @@
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg "Hello!"
-                     :zeno/op :insert-before
+                     :zeno/op :zeno/insert-before
                      :zeno/path [:zeno/crdt 0]}]
              :crdt-schema (l/array-schema l/string-schema)
              :make-id #(let [n (swap! *next-id-num inc)]
@@ -532,7 +532,7 @@
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg "Hello!"
-                     :zeno/op :insert-after
+                     :zeno/op :zeno/insert-after
                      :zeno/path [:zeno/crdt -1]}]
              :crdt-schema (l/array-schema l/string-schema)
              :make-id #(let [n (swap! *next-id-num inc)]
@@ -573,7 +573,7 @@
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg ["1" "2" "3"]
-                     :zeno/op :insert-range-after
+                     :zeno/op :zeno/insert-range-after
                      :zeno/path [:zeno/crdt -1]}]
              :crdt-schema (l/array-schema l/string-schema)
              :make-id #(let [n (swap! *next-id-num inc)]
@@ -629,7 +629,7 @@
   (let [*next-id-num (atom 0)
         sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg ["1" "2" "3"]
-                     :zeno/op :insert-range-before
+                     :zeno/op :zeno/insert-range-before
                      :zeno/path [:zeno/crdt 0]}]
              :crdt-schema (l/array-schema l/string-schema)
              :make-id #(let [n (swap! *next-id-num inc)]
@@ -683,10 +683,10 @@
 
 (deftest test-crdt-array-insert-range-before-into-front
   (let [arg {:cmds [{:zeno/arg ["4" "5"]
-                     :zeno/op :set
+                     :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
                     {:zeno/arg ["1" "2" "3"]
-                     :zeno/op :insert-range-before
+                     :zeno/op :zeno/insert-range-before
                      :zeno/path [:zeno/crdt 0]}]
              :crdt-schema (l/array-schema l/string-schema)}
         {:keys [crdt ops]} (commands/process-cmds arg)
@@ -697,10 +697,10 @@
 
 (deftest test-crdt-array-insert-range-after-end
   (let [arg {:cmds [{:zeno/arg ["4" "5"]
-                     :zeno/op :set
+                     :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
                     {:zeno/arg ["1" "2" "3"]
-                     :zeno/op :insert-range-after
+                     :zeno/op :zeno/insert-range-after
                      :zeno/path [:zeno/crdt -1]}]
              :crdt-schema (l/array-schema l/string-schema)}
         {:keys [crdt ops]} (commands/process-cmds arg)
@@ -711,10 +711,10 @@
 
 (deftest test-crdt-array-insert-range-before-into-middle
   (let [arg {:cmds [{:zeno/arg ["1" "2" "3"]
-                     :zeno/op :set
+                     :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
                     {:zeno/arg ["A" "B"]
-                     :zeno/op :insert-range-before
+                     :zeno/op :zeno/insert-range-before
                      :zeno/path [:zeno/crdt -2]}]
              :crdt-schema (l/array-schema l/string-schema)}
         {:keys [crdt ops]} (commands/process-cmds arg)
@@ -725,10 +725,10 @@
 
 (deftest test-crdt-array-insert-range-after-into-middle
   (let [arg {:cmds [{:zeno/arg ["1" "2" "3"]
-                     :zeno/op :set
+                     :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
                     {:zeno/arg ["A" "B"]
-                     :zeno/op :insert-range-after
+                     :zeno/op :zeno/insert-range-after
                      :zeno/path [:zeno/crdt -2]}]
              :crdt-schema (l/array-schema l/string-schema)}
         {:keys [crdt]} (commands/process-cmds arg)
@@ -743,10 +743,10 @@
                                         :species "Felis catus"}
                                        {:name "Fishy"
                                         :species "Carassius auratus"}]}
-                     :zeno/op :set
+                     :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
                     {:zeno/arg "Goldy"
-                     :zeno/op :set
+                     :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt :pets -1 :name]}]
              :crdt-schema pet-owner-schema}
         {:keys [crdt]} (commands/process-cmds arg)
@@ -771,9 +771,9 @@
                                         :species "Felis catus"}
                                        {:name "Fishy"
                                         :species "Carassius auratus"}]}
-                     :zeno/op :set
+                     :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
-                    {:zeno/op :remove
+                    {:zeno/op :zeno/remove
                      :zeno/path [:zeno/crdt :pets 0]}]
              :crdt-schema pet-owner-schema
              :make-id #(let [n (swap! *next-id-num inc)]
@@ -788,15 +788,15 @@
 
 (deftest test-subsequent-txns
   (let [arg1 {:cmds [{:zeno/arg {:name "Bill"
-                            :pets [{:name "Pinky"
-                                    :species "Felis catus"}
-                                   {:name "Fishy"
-                                    :species "Carassius auratus"}]}
-                      :zeno/op :set
+                                 :pets [{:name "Pinky"
+                                         :species "Felis catus"}
+                                        {:name "Fishy"
+                                         :species "Carassius auratus"}]}
+                      :zeno/op :zeno/set
                       :zeno/path [:zeno/crdt]}]
               :crdt-schema pet-owner-schema}
         ret1 (commands/process-cmds arg1)
-        arg2 {:cmds [{:zeno/op :remove
+        arg2 {:cmds [{:zeno/op :zeno/remove
                       :zeno/path [:zeno/crdt :pets 0]}]
               :crdt (:crdt ret1)
               :crdt-schema pet-owner-schema}
@@ -814,19 +814,19 @@
                                          :species "Felis catus"}
                                         {:name "Fishy"
                                          :species "Carassius auratus"}]}
-                      :zeno/op :set
+                      :zeno/op :zeno/set
                       :zeno/path [:zeno/crdt]}]
               :crdt-schema pet-owner-schema}
         ret0 (commands/process-cmds arg0)
         arg1 {:cmds [{:zeno/arg {:name "Chris"
                                  :species "Canis familiaris"}
-                      :zeno/op :insert-before
+                      :zeno/op :zeno/insert-before
                       :zeno/path [:zeno/crdt :pets 0]}]
               :crdt (:crdt ret0)
               :crdt-schema pet-owner-schema}
         arg2 {:cmds [{:zeno/arg {:name "Pat"
                                  :species "Canis familiaris"}
-                      :zeno/op :insert-after
+                      :zeno/op :zeno/insert-after
                       :zeno/path [:zeno/crdt :pets -1]}]
               :crdt (:crdt ret0)
               :crdt-schema pet-owner-schema}
@@ -853,25 +853,25 @@
         make-id #(let [n (swap! *next-id-num inc)]
                    (str "I" n))
         arg0 {:cmds [{:zeno/arg {:name "Bill"
-                            :pets [{:name "Pinky"
-                                    :species "Felis catus"}
-                                   {:name "Fishy"
-                                    :species "Carassius auratus"}]}
-                      :zeno/op :set
+                                 :pets [{:name "Pinky"
+                                         :species "Felis catus"}
+                                        {:name "Fishy"
+                                         :species "Carassius auratus"}]}
+                      :zeno/op :zeno/set
                       :zeno/path [:zeno/crdt]}]
               :crdt-schema pet-owner-schema
               :make-id make-id}
         ret0 (commands/process-cmds arg0)
         arg1 {:cmds [{:zeno/arg {:name "Chris"
-                            :species "Canis familiaris"}
-                      :zeno/op :insert-before
+                                 :species "Canis familiaris"}
+                      :zeno/op :zeno/insert-before
                       :zeno/path [:zeno/crdt :pets 0]}]
               :crdt (:crdt ret0)
               :crdt-schema pet-owner-schema
               :make-id make-id}
         arg2 {:cmds [{:zeno/arg {:name "Pat"
-                            :species "Canis familiaris"}
-                      :zeno/op :insert-before
+                                 :species "Canis familiaris"}
+                      :zeno/op :zeno/insert-before
                       :zeno/path [:zeno/crdt :pets 0]}]
               :crdt (:crdt ret0)
               :crdt-schema pet-owner-schema
@@ -900,25 +900,25 @@
                    (str "I" n))
         schema (l/array-schema l/string-schema)
         arg0 {:cmds [{:zeno/arg ["A" "B"]
-                      :zeno/op :set
+                      :zeno/op :zeno/set
                       :zeno/path [:zeno/crdt]}]
               :crdt-schema schema
               :make-id make-id}
         ret0 (commands/process-cmds arg0)
         arg1 {:cmds [{:zeno/arg "1"
-                      :zeno/op :insert-before
+                      :zeno/op :zeno/insert-before
                       :zeno/path [:zeno/crdt 0]}]
               :crdt (:crdt ret0)
               :crdt-schema schema
               :make-id make-id}
         arg2 {:cmds [{:zeno/arg "2"
-                      :zeno/op :insert-before
+                      :zeno/op :zeno/insert-before
                       :zeno/path [:zeno/crdt 0]}]
               :crdt (:crdt ret0)
               :crdt-schema schema
               :make-id make-id}
         arg3 {:cmds [{:zeno/arg "3"
-                      :zeno/op :insert-before
+                      :zeno/op :zeno/insert-before
                       :zeno/path [:zeno/crdt 0]}]
               :crdt (:crdt ret0)
               :crdt-schema schema
@@ -945,34 +945,34 @@
                    (str "I" n))
         schema (l/array-schema l/string-schema)
         arg0 {:cmds [{:zeno/arg ["A" "B"]
-                      :zeno/op :set
+                      :zeno/op :zeno/set
                       :zeno/path [:zeno/crdt]}]
               :crdt-schema schema
               :make-id make-id}
         ret0 (commands/process-cmds arg0)
         arg1 {:cmds [{:zeno/arg "X1"
-                      :zeno/op :insert-before
+                      :zeno/op :zeno/insert-before
                       :zeno/path [:zeno/crdt 0]}
                      {:zeno/arg "X2"
-                      :zeno/op :insert-after
+                      :zeno/op :zeno/insert-after
                       :zeno/path [:zeno/crdt 0]}]
               :crdt (:crdt ret0)
               :crdt-schema schema
               :make-id make-id}
         arg2 {:cmds [{:zeno/arg "Y1"
-                      :zeno/op :insert-before
+                      :zeno/op :zeno/insert-before
                       :zeno/path [:zeno/crdt 0]}
                      {:zeno/arg "Y2"
-                      :zeno/op :insert-after
+                      :zeno/op :zeno/insert-after
                       :zeno/path [:zeno/crdt 0]}]
               :crdt (:crdt ret0)
               :crdt-schema schema
               :make-id make-id}
         arg3 {:cmds [{:zeno/arg "Z1"
-                      :zeno/op :insert-before
+                      :zeno/op :zeno/insert-before
                       :zeno/path [:zeno/crdt 0]}
                      {:zeno/arg "Z2"
-                      :zeno/op :insert-after
+                      :zeno/op :zeno/insert-after
                       :zeno/path [:zeno/crdt 0]}]
               :crdt (:crdt ret0)
               :crdt-schema schema
@@ -999,34 +999,34 @@
                    (str "I" n))
         schema (l/array-schema l/string-schema)
         arg0 {:cmds [{:zeno/arg ["A" "B" "C"]
-                      :zeno/op :set
+                      :zeno/op :zeno/set
                       :zeno/path [:zeno/crdt]}]
               :crdt-schema schema
               :make-id make-id}
         ret0 (commands/process-cmds arg0)
         arg1 {:cmds [{:zeno/arg "XF"
-                      :zeno/op :insert-before
+                      :zeno/op :zeno/insert-before
                       :zeno/path [:zeno/crdt 0]}
                      {:zeno/arg "XL"
-                      :zeno/op :insert-after
+                      :zeno/op :zeno/insert-after
                       :zeno/path [:zeno/crdt -1]}]
               :crdt (:crdt ret0)
               :crdt-schema schema
               :make-id make-id}
         arg2 {:cmds [{:zeno/arg "YF"
-                      :zeno/op :insert-before
+                      :zeno/op :zeno/insert-before
                       :zeno/path [:zeno/crdt 0]}
                      {:zeno/arg "YL"
-                      :zeno/op :insert-after
+                      :zeno/op :zeno/insert-after
                       :zeno/path [:zeno/crdt -1]}]
               :crdt (:crdt ret0)
               :crdt-schema schema
               :make-id make-id}
         arg3 {:cmds [{:zeno/arg "ZF"
-                      :zeno/op :insert-before
+                      :zeno/op :zeno/insert-before
                       :zeno/path [:zeno/crdt 0]}
                      {:zeno/arg "ZL"
-                      :zeno/op :insert-after
+                      :zeno/op :zeno/insert-after
                       :zeno/path [:zeno/crdt -1]}]
               :crdt (:crdt ret0)
               :crdt-schema schema
@@ -1050,18 +1050,18 @@
                                          :species "Felis catus"}
                                         {:name "Fishy"
                                          :species "Carassius auratus"}]}
-                      :zeno/op :set
+                      :zeno/op :zeno/set
                       :zeno/path [:zeno/crdt]}]
               :crdt-schema pet-owner-schema}
         ret0 (commands/process-cmds arg0)
         arg1 {:cmds [{:zeno/arg "Goldy"
-                      :zeno/op :set
+                      :zeno/op :zeno/set
                       :zeno/path [:zeno/crdt :pets -1 :name]}]
               :crdt (:crdt ret0)
               :crdt-schema pet-owner-schema
               :sys-time-ms (u/str->long "1640205282000")}
         arg2 {:cmds [{:zeno/arg "Herman"
-                      :zeno/op :set
+                      :zeno/op :zeno/set
                       :zeno/path [:zeno/crdt :pets -1 :name]}]
               :crdt (:crdt ret0)
               :crdt-schema pet-owner-schema
@@ -1078,7 +1078,7 @@
 
 (deftest test-set-into-empty-array
   (let [arg {:cmds [{:zeno/arg "1"
-                     :zeno/op :set
+                     :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}]
              :crdt-schema (l/array-schema l/string-schema)}]
     (is (thrown-with-msg?
