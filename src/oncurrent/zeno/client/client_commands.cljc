@@ -41,18 +41,23 @@
                        (u/sym-map path prefixes path-head))))
      (reduce (fn [{:keys [value] :as acc} k]
                (let [[k* value*] (cond
-                                 (or (keyword? k) (nat-int? k) (string? k))
-                                 [k (when value
-                                      (get value k))]
+                                   (or (keyword? k) (nat-int? k) (string? k))
+                                   [k (when value
+                                        (let [x (get value k)]
+                                          ;; Treat empty colls as nil to align
+                                          ;; with CRDT behavior
+                                          (when (or (not (coll? x))
+                                                    (seq x))
+                                            x)))]
 
-                                 (and (int? k) (neg? k))
-                                 (normalize-neg-k k value)
+                                   (and (int? k) (neg? k))
+                                   (normalize-neg-k k value)
 
-                                 (nil? k)
-                                 [nil nil]
+                                   (nil? k)
+                                   [nil nil]
 
-                                 :else
-                                 (throw-bad-path-key path k))]
+                                   :else
+                                   (throw-bad-path-key path k))]
                  (-> acc
                      (update :norm-path conj k*)
                      (assoc :value value*))))

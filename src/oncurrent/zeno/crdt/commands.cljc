@@ -56,7 +56,6 @@
                              (-> (get-delete-ops-info
                                   (assoc arg
                                          :crdt (get-in crdt [:children k])
-                                         :norm-path (conj norm-path k)
                                          :path sub-path
                                          :schema (get-child-schema k)))
                                  (update :ops #(xf-op-paths k %))))]
@@ -82,12 +81,17 @@
             :get-child-schema (constantly values-schema)))))
 
 (defmethod get-delete-ops-info :record
-  [{:keys [schema] :as arg}]
+  [{:keys [path schema] :as arg}]
   (associative-get-delete-ops-info
    (assoc arg
           :get-child-path-info (fn [[k & sub-path]]
                                  (u/sym-map k sub-path))
-          :get-child-schema #(l/schema-at-path schema [%]))))
+          :get-child-schema (fn [k]
+                              (or (l/schema-at-path schema [k])
+                                  (throw (ex-info (str "Bad record key `" k
+                                                       "` in path `"
+                                                       path "`.")
+                                                  (u/sym-map path k))))))))
 
 (defn get-ops-del-single-node
   [{:keys [crdt make-id node-id sys-time-ms]}]
@@ -284,7 +288,6 @@
             k (nth ordered-node-ids ci)
             ret (get-add-ops-info (assoc arg
                                          :crdt (get-in crdt [:children k])
-                                         :norm-path (conj norm-path ci)
                                          :path sub-path
                                          :schema items-schema))]
         (update ret :ops #(xf-op-paths k %)))
@@ -521,7 +524,7 @@
   (assoc arg :ops #{}))
 
 (defmethod process-cmd* :zeno/set
-  [{:keys [cmd-arg cmd-type] :as arg}]
+  [{:keys [cmd-arg cmd-type norm-path path] :as arg}]
   (let [{repair-ops :ops
          repaired-crdt :crdt} (do-repair arg)
         arg0 (assoc arg :crdt repaired-crdt)
@@ -535,19 +538,19 @@
                      repair-ops
                      (:ops del-ops-info)
                      (:ops add-ops-info))
-     :update-info {:norm-path (:norm-path add-ops-info)
+     :update-info {:norm-path norm-path
                    :op cmd-type
                    :value cmd-arg}}))
 
 (defmethod process-cmd* :zeno/remove
-  [{:keys [cmd-type] :as arg}]
+  [{:keys [cmd-type norm-path] :as arg}]
   (let [{repair-ops :ops
          repaired-crdt :crdt} (do-repair arg)
         arg0 (assoc arg :crdt repaired-crdt)
         del-ops-info (get-delete-ops-info arg0)]
     {:crdt (apply-ops/apply-ops (assoc arg0 :ops (:ops del-ops-info)))
      :ops (set/union (:ops arg) repair-ops (:ops del-ops-info))
-     :update-info {:norm-path (:norm-path del-ops-info)
+     :update-info {:norm-path norm-path
                    :op cmd-type
                    :value nil}}))
 
@@ -561,7 +564,7 @@
                       (assoc :cmd-arg (:zeno/arg cmd))
                       (assoc :cmd-path path)
                       (assoc :cmd-type (:zeno/op cmd))
-                      (assoc :norm-path [:zeno/crdt])
+                      (assoc :norm-path (cons :zeno/crdt path))
                       (assoc :path path)
                       (assoc :schema (:crdt-schema arg))))))
 

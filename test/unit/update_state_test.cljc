@@ -13,10 +13,17 @@
       (clojure.lang ExceptionInfo))))
 
 (l/def-record-schema book-schema
-  [:title l/string-schema])
+  [:title l/string-schema]
+  [:nums (l/array-schema l/int-schema)])
+
+(l/def-record-schema msg-schema
+  [:text l/string-schema]
+  [:user-id l/string-schema])
 
 (l/def-record-schema info-schema
   [:books (l/map-schema book-schema)]
+  [:my-book-ids (l/array-schema l/string-schema)]
+  [:msgs (l/array-schema msg-schema)]
   [:num l/int-schema])
 
 (deftest test-bad-path-root-in-update-state!
@@ -280,6 +287,32 @@
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
+(deftest test-crdt-set-join
+  (au/test-async
+   1000
+   (ca/go
+     (try
+       (let [zc (zc/zeno-client {:crdt-schema info-schema})
+             ch (ca/chan 1)
+             my-book-ids #{"123" "789"}
+             books {"123" {:title "Treasure Island"}
+                    "456" {:title "Kidnapped"}
+                    "789" {:title "Dr Jekyll and Mr Hyde"}}
+             sub-map '{my-books [:zeno/crdt :books my-book-ids]}
+             resolution-map {'my-book-ids my-book-ids}
+             update-fn #(ca/put! ch %)
+             expected {'my-books (vals (select-keys books my-book-ids))}]
+         (is (= {'my-books [nil nil]}
+                (zc/subscribe-to-state! zc "test" sub-map update-fn
+                                        (u/sym-map resolution-map))))
+         (is (= true (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/crdt :books]
+                                                    :zeno/op :zeno/set
+                                                    :zeno/arg books}]))))
+         (is (= expected (au/<? ch)))
+         (zc/shutdown! zc))
+       (catch #?(:clj Exception :cljs js/Error) e
+         (is (= :unexpected e)))))))
+
 (deftest test-kw-operators
   (au/test-async
    1000
@@ -335,6 +368,61 @@
          (is (= :unexpected e))
          (println (u/ex-msg-and-stacktrace e)))))))
 
+(deftest test-crdt-kw-operators
+  (au/test-async
+   1000
+   (ca/go
+     (try
+       (let [zc (zc/zeno-client {:crdt-schema info-schema})
+             ch (ca/chan 1)
+             books {"123" {:title "Treasure Island" :nums [2 4 6]}
+                    "456" {:title "Kidnapped" :nums [1 3]}
+                    "789" {:title "Dr Jekyll and Mr Hyde" :nums [5 7]}}
+             msgs [{:text "hi" :user-id "123"}
+                   {:text "there" :user-id "123"}]
+             titles-set (set (map :title (vals books)))
+             sub-map '{books-map [:zeno/crdt :books]
+                       books-vals [:zeno/crdt :books :zeno/*]
+                       titles-1 [:zeno/crdt :books :zeno/* :title]
+                       book-ids [:zeno/crdt :books :zeno/keys]
+                       titles-2 [:zeno/crdt :books book-ids :title]
+                       num-books [:zeno/crdt :books :zeno/count]
+                       num-books-2 [:zeno/crdt :books :zeno/* :zeno/count]
+                       num-msgs [:zeno/crdt :msgs :zeno/count]
+                       book-nums [:zeno/crdt :books :zeno/* :nums :zeno/concat]
+                       msgs [:zeno/crdt :msgs]
+                       msg-indices [:zeno/crdt :msgs :zeno/keys]}
+             update-fn (constantly nil)
+             expected {'book-ids #{"123" "456" "789"}
+                       'books-map books
+                       'books-vals (set (vals books))
+                       'num-books (count books)
+                       'num-books-2 (count books)
+                       'book-nums #{2 4 6 1 3 5 7}
+                       'titles-1 titles-set
+                       'titles-2 titles-set
+                       'num-msgs 2
+                       'msg-indices [0 1]
+                       'msgs msgs}
+             update-ret (au/<? (zc/<update-state!
+                                zc [{:zeno/path [:zeno/crdt]
+                                     :zeno/op :zeno/set
+                                     :zeno/arg (u/sym-map books msgs)}]))
+             sub-ret (zc/subscribe-to-state! zc "test" sub-map
+                                             update-fn)]
+         (is (= true update-ret))
+         (is (= expected
+                (-> sub-ret
+                    (update 'book-ids set)
+                    (update 'books-vals set)
+                    (update 'book-nums set)
+                    (update 'titles-1 set)
+                    (update 'titles-2 set))))
+         (zc/shutdown! zc))
+       (catch #?(:clj Exception :cljs js/Error) e
+         (is (= :unexpected e))
+         (println (u/ex-msg-and-stacktrace e)))))))
+
 (deftest test-empty-sequence-join
   (au/test-async
    1000
@@ -347,7 +435,7 @@
              sub-map '{my-book-ids [:zeno/client :my-book-ids]
                        my-books [:zeno/client :books my-book-ids]}
              update-fn (constantly nil)
-             expected '{my-book-ids []
+             expected '{my-book-ids nil
                         my-books nil}]
          (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/client :my-book-ids]
                                         :zeno/op :zeno/set
@@ -359,6 +447,33 @@
                                                  update-fn)))
          (zc/shutdown! zc))
        (catch #?(:clj Exception :cljs js/Error) e
+         (is (= :unexpected e)))))))
+
+(deftest  test-crdt-empty-sequence-join
+  (au/test-async
+   1000
+   (ca/go
+     (try
+       (let [zc (zc/zeno-client {:crdt-schema info-schema})
+             books {"123" {:title "Treasure Island"}
+                    "456" {:title "Kidnapped"}
+                    "789" {:title "Dr Jekyll and Mr Hyde"}}
+             sub-map '{my-book-ids [:zeno/crdt :my-book-ids]
+                       my-books [:zeno/crdt :books my-book-ids]}
+             update-fn (constantly nil)
+             expected '{my-book-ids nil
+                        my-books nil}]
+         (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/crdt :my-book-ids]
+                                        :zeno/op :zeno/set
+                                        :zeno/arg []}
+                                       {:zeno/path [:zeno/crdt :books]
+                                        :zeno/op :zeno/set
+                                        :zeno/arg books}]))
+         (is (= expected (zc/subscribe-to-state! zc "test" sub-map
+                                                 update-fn)))
+         (zc/shutdown! zc))
+       (catch #?(:clj Exception :cljs js/Error) e
+         (log/error (u/ex-msg-and-stacktrace e))
          (is (= :unexpected e)))))))
 
 (deftest test-explicit-seq-in-path
@@ -374,6 +489,24 @@
              update-fn (constantly nil)
              expected {'my-titles ["Treasure Island" "Dr Jekyll and Mr Hyde"]}]
          (au/<? (zc/<set-state! zc [:zeno/client :books] books))
+         (is (= expected (zc/subscribe-to-state! zc "test" sub-map update-fn)))
+         (zc/shutdown! zc))
+       (catch #?(:clj Exception :cljs js/Error) e
+         (is (= :unexpected e)))))))
+
+(deftest test-crdt-explicit-seq-in-path
+  (au/test-async
+   1000
+   (ca/go
+     (try
+       (let [zc (zc/zeno-client {:crdt-schema info-schema})
+             books {"123" {:title "Treasure Island"}
+                    "456" {:title "Kidnapped"}
+                    "789" {:title "Dr Jekyll and Mr Hyde"}}
+             sub-map '{my-titles [:zeno/crdt :books ["123" "789"] :title]}
+             update-fn (constantly nil)
+             expected {'my-titles ["Treasure Island" "Dr Jekyll and Mr Hyde"]}]
+         (au/<? (zc/<set-state! zc [:zeno/crdt :books] books))
          (is (= expected (zc/subscribe-to-state! zc "test" sub-map update-fn)))
          (zc/shutdown! zc))
        (catch #?(:clj Exception :cljs js/Error) e

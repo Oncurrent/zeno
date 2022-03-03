@@ -94,7 +94,8 @@
 (defmethod get-value-info :map
   [{:keys [schema] :as arg}]
   (let [get-child-schema #(l/schema-at-path schema [%])]
-    (associative-get-value-info (assoc arg :get-child-schema get-child-schema))))
+    (associative-get-value-info
+     (assoc arg :get-child-schema get-child-schema))))
 
 (defmethod get-value-info :record
   [{:keys [schema path] :as arg}]
@@ -104,7 +105,8 @@
                                                     "` in path `"
                                                     path "`.")
                                                (u/sym-map path k)))))]
-    (associative-get-value-info (assoc arg :get-child-schema get-child-schema))))
+    (associative-get-value-info
+     (assoc arg :get-child-schema get-child-schema))))
 
 (defn edn-schema->pred [edn-schema]
   (-> (lu/get-avro-type edn-schema)
