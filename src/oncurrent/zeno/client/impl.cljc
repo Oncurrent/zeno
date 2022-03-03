@@ -129,7 +129,7 @@
         *shutdown? (atom false)
         *client-state (atom initial-client-state)
         ;; TODO: Load crdt-state from logs in IDB
-        *crdt-state (atom {})
+        *crdt-state (atom nil)
         *state-sub-name->info (atom {})
         *actor-id (atom nil)
         talk2-client (make-talk2-client)

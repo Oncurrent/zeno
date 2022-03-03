@@ -160,6 +160,9 @@
                                                           :schema schema}))))
 
 (defmethod get-value-info :union
-  [{:keys [crdt path schema] :as arg}]
-  (let [member-schema (get-member-schema arg)]
-    (get-value-info (assoc arg :schema member-schema))))
+  [{:keys [crdt path] :as arg}]
+  (if (empty? crdt)
+    {:norm-path path
+     :value crdt}
+    (let [member-schema (get-member-schema arg)]
+      (get-value-info (assoc arg :schema member-schema)))))

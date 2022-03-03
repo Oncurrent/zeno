@@ -12,6 +12,12 @@
      (:import
       (clojure.lang ExceptionInfo))))
 
+(l/def-record-schema book-schema
+  [:title l/string-schema])
+
+(l/def-record-schema info-schema
+  [:books (l/map-schema book-schema)])
+
 (deftest test-bad-path-root-in-update-state!
   (au/test-async
    1000
@@ -484,6 +490,46 @@
          (is (= {'titles expected-titles} (au/<? ch)))
          (zc/shutdown! zc))
        (catch #?(:clj Exception :cljs js/Error) e
+         (log/error (u/ex-msg-and-stacktrace e))
+         (is (= :unexpected e)))))))
+
+(deftest ^:this test-crdt-wildcard-sub
+  (au/test-async
+   3000
+   (ca/go
+     (try
+       (let [zc (zc/zeno-client {:crdt-schema info-schema})
+             ch (ca/chan 1)
+             books {"123" {:title "Treasure Island"}
+                    "456" {:title "Kidnapped"}
+                    "789" {:title "Dr Jekyll and Mr Hyde"}}
+             titles-set (set (map :title (vals books)))
+             sub-map '{titles [:zeno/crdt :books :zeno/* :title]}
+             update-fn #(ca/put! ch (update % 'titles set))
+             ret0 (zc/subscribe-to-state! zc "test" sub-map
+                                          update-fn)
+             _ (is (= {'titles []} ret0))
+             ret1 (au/<? (zc/<set-state! zc [:zeno/crdt :books] books))
+             _ (is (= true ret1))
+             _ (is (= {'titles titles-set} (au/<? ch)))
+             ret2 (au/<? (zc/<update-state!
+                          zc
+                          [{:zeno/path [:zeno/crdt :books "999"]
+                            :zeno/op :zeno/set
+                            :zeno/arg {:title "1984"}}]))
+             _ (is (= true ret2))
+             _ (is (= {'titles (conj titles-set "1984")} (au/<? ch)))
+             ret3 (au/<? (zc/<update-state!
+                          zc
+                          [{:zeno/path [:zeno/crdt :books "456"]
+                            :zeno/op :zeno/remove}]))
+             _ (is (= true ret3))
+             expected-titles (-> (conj titles-set "1984")
+                                 (disj "Kidnapped"))]
+         (is (= {'titles expected-titles} (au/<? ch)))
+         (zc/shutdown! zc))
+       (catch #?(:clj Exception :cljs js/Error) e
+         (log/error (u/ex-msg-and-stacktrace e))
          (is (= :unexpected e)))))))
 
 (deftest test-array-ops
