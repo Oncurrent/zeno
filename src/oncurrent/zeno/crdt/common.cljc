@@ -97,8 +97,13 @@
     (associative-get-value-info (assoc arg :get-child-schema get-child-schema))))
 
 (defmethod get-value-info :record
-  [{:keys [schema] :as arg}]
-  (let [get-child-schema #(l/schema-at-path schema [%])]
+  [{:keys [schema path] :as arg}]
+  (let [get-child-schema (fn [k]
+                           (or (l/schema-at-path schema [k])
+                               (throw (ex-info (str "Bad record key `" k
+                                                    "` in path `"
+                                                    path "`.")
+                                               (u/sym-map path k)))))]
     (associative-get-value-info (assoc arg :get-child-schema get-child-schema))))
 
 (defn edn-schema->pred [edn-schema]

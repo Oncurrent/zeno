@@ -16,7 +16,8 @@
   [:title l/string-schema])
 
 (l/def-record-schema info-schema
-  [:books (l/map-schema book-schema)])
+  [:books (l/map-schema book-schema)]
+  [:num l/int-schema])
 
 (deftest test-bad-path-root-in-update-state!
   (au/test-async
@@ -391,6 +392,27 @@
                        title [:zeno/client :books num :title]}
              update-fn (constantly nil)
              ret (au/<? (zc/<set-state! zc [:zeno/client :books] books))
+             _ (is (= true ret))
+             expected {'num nil
+                       'title nil}]
+         (is (= expected (zc/subscribe-to-state! zc "test" sub-map update-fn)))
+         (zc/shutdown! zc))
+       (catch #?(:clj Exception :cljs js/Error) e
+         (is (= :unexpected e)))))))
+
+(deftest test-crdt-nil-in-path-1
+  (au/test-async
+   1000
+   (ca/go
+     (try
+       (let [zc (zc/zeno-client {:crdt-schema info-schema})
+             books {"123" {:title "Treasure Island"}
+                    "456" {:title "Kidnapped"}
+                    "789" {:title "Dr Jekyll and Mr Hyde"}}
+             sub-map '{num [:zeno/crdt :num]
+                       title [:zeno/crdt :books num :title]}
+             update-fn (constantly nil)
+             ret (au/<? (zc/<set-state! zc [:zeno/crdt :books] books))
              _ (is (= true ret))
              expected {'num nil
                        'title nil}]
