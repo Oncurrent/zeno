@@ -4,11 +4,26 @@
    [clojure.set :as set]
    [clojure.string :as str]
    [deercreeklabs.async-utils :as au]
-   [oncurrent.zeno.client.client-commands :as commands]
+   [oncurrent.zeno.client.client-commands :as client-commands]
    [oncurrent.zeno.client.react :as react]
+   [oncurrent.zeno.crdt :as crdt]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]
    [weavejester.dependency :as dep]))
+
+(defmulti get-in-state :prefix)
+
+(defmethod get-in-state :zeno/client
+  [{:keys [state path prefix]}]
+  (client-commands/get-in-state state path prefix))
+
+(defmethod get-in-state :zeno/crdt
+  [{:keys [path zc] :as arg}]
+  (let [{:keys [crdt-schema *crdt-state]} zc]
+    (crdt/get-value-info (assoc arg
+                                :crdt @*crdt-state
+                                :path (rest path)
+                                :schema crdt-schema))))
 
 (defn get-non-numeric-part [path]
   (take-while #(not (number? %)) path))
@@ -72,8 +87,7 @@
    false
    sub-paths))
 
-(defn get-state-sub-names-to-update
-  [update-infos *state-sub-name->info]
+(defn get-state-sub-names-to-update [update-infos *state-sub-name->info]
   (reduce-kv (fn [acc state-sub-name info]
                (let [{:keys [expanded-paths]} info]
                  (if (update-sub? update-infos expanded-paths)
@@ -100,17 +114,8 @@
     (->> (dep/topo-sort g)
          (filter #(not= :zeno/root %)))))
 
-(defn resolve-symbols-in-path [state path]
-  (let [reducer (fn [acc element]
-                  (conj acc (if-not (symbol? element)
-                              element
-                              (get state element))))]
-    (if(symbol? path)
-      (get state path)
-      (reduce reducer [] path))))
-
-(defn ks-at-path [kw state path prefix full-path]
-  (let [coll (:val (commands/get-in-state state path prefix))]
+(defn ks-at-path [{:keys [full-path kw state path prefix zc]}]
+  (let [coll (:value (get-in-state (u/sym-map state path prefix zc)))]
     (cond
       (map? coll)
       (keys coll)
@@ -130,8 +135,8 @@
          :missing-collection-path path
          :value coll})))))
 
-(defn count-at-path [state path prefix]
-  (let [coll (:val (commands/get-in-state state path prefix))]
+(defn count-at-path [{:keys [path prefix state zc]}]
+  (let [coll (:value (get-in-state (u/sym-map state path prefix zc)))]
     (cond
       (or (map? coll) (sequential? coll))
       (count coll)
@@ -147,8 +152,8 @@
         {:path path
          :value coll})))))
 
-(defn do-concat [state path prefix]
-  (let [seqs (:val (commands/get-in-state state path prefix))]
+(defn do-concat [{:keys [state path prefix zc]}]
+  (let [seqs (:value (get-in-state (u/sym-map state path prefix zc)))]
     (when (and (not (nil? seqs))
                (or (not (sequential? seqs))
                    (not (sequential? (first seqs)))))
@@ -168,7 +173,12 @@
                             (first))
         wildcard? (not= path wildcard-parent)
         terminal-kw? (u/terminal-kw-ops last-path-k)
-        ks-at-path* #(ks-at-path :zeno/* state % prefix path)]
+        ks-at-path* #(ks-at-path {:full-path path
+                                  :kw :zeno/*
+                                  :state state
+                                  :path %
+                                  :prefix prefix
+                                  :zc zc})]
     (cond
       (u/empty-sequence-in-path? path)
       [nil [path]]
@@ -177,16 +187,32 @@
       [state [path]]
 
       (and (not terminal-kw?) (not join?))
-      (let [{:keys [norm-path val]} (commands/get-in-state state path prefix)]
-        [val [norm-path]])
+      (let [{:keys [norm-path value]} (get-in-state
+                                       (u/sym-map state path prefix zc))]
+        [value [norm-path]])
 
       (and terminal-kw? (not join?))
       (let [path* (butlast path)
-            val (case last-path-k
-                  :zeno/keys (ks-at-path :zeno/keys state path* prefix path)
-                  :zeno/count (count-at-path state path* prefix)
-                  :zeno/concat (do-concat state path* prefix))]
-        [val [path*]])
+            value (case last-path-k
+                    :zeno/keys
+                    (ks-at-path {:full-path path
+                                 :kw :zeno/keys
+                                 :state state
+                                 :path path*
+                                 :prefix prefix
+                                 :zc zc})
+
+                    :zeno/count
+                    (count-at-path {:path path*
+                                    :prefix prefix
+                                    :state state
+                                    :zc zc})
+
+                    :zeno/concat {:path path*
+                                  :prefix prefix
+                                  :state state
+                                  :zc zc})]
+        [value [path*]])
 
       (and (not terminal-kw?) join?)
       (let [xpaths (u/expand-path ks-at-path* path)
@@ -232,9 +258,27 @@
                     :zeno/concat (apply concat results))]
             [v xpaths*]))))))
 
+(defmulti resolve-symbols-in-path (fn [{:keys [path]}]
+                                    (first path)))
+
+(defmethod resolve-symbols-in-path :zeno/client
+  [{:keys [path state]}]
+  (let [reducer (fn [acc element]
+                  (conj acc (if-not (symbol? element)
+                              element
+                              (get state element))))]
+    (if(symbol? path)
+      (get state path)
+      (reduce reducer [] path))))
+
+(defmethod resolve-symbols-in-path :zeno/crdt
+  [{:keys [path state] :as arg}]
+  (throw (ex-info "Implement me!!" {})))
+
 (defn get-path-info [zc acc-state path resolve-path?]
   (let [resolved-path (if resolve-path?
-                        (resolve-symbols-in-path acc-state path)
+                        (resolve-symbols-in-path {:path path
+                                                  :state acc-state})
                         path)
         [head & tail] resolved-path
         state-src (case head

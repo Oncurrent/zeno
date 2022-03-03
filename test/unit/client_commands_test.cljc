@@ -14,7 +14,7 @@
         get-path [:zeno/client :some-stuff -1 :name]
         get-ret (commands/get-in-state state get-path :zeno/client)
         expected-get-ret {:norm-path [:zeno/client :some-stuff 1 :name]
-                          :val "b"}
+                          :value "b"}
         _ (is (= expected-get-ret get-ret))
         set-path [:zeno/client :some-stuff -1]
         set-ret (commands/eval-cmd state {:zeno/path set-path

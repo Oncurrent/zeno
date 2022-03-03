@@ -25,7 +25,7 @@
 
 (defn get-in-state
   "Custom get-in fn that checks types and normalizes negative keys.
-   Returns a map with :norm-path and :val keys."
+   Returns a map with :norm-path and :value keys."
   ([state path]
    (get-in-state state path nil))
   ([state path prefixes*]
@@ -39,14 +39,14 @@
        (throw (ex-info (str "Illegal path. Path must start with one of "
                             prefixes ". Got `" path "`.")
                        (u/sym-map path prefixes path-head))))
-     (reduce (fn [{:keys [val] :as acc} k]
-               (let [[k* val*] (cond
+     (reduce (fn [{:keys [value] :as acc} k]
+               (let [[k* value*] (cond
                                  (or (keyword? k) (nat-int? k) (string? k))
-                                 [k (when val
-                                      (get val k))]
+                                 [k (when value
+                                      (get value k))]
 
                                  (and (int? k) (neg? k))
-                                 (normalize-neg-k k val)
+                                 (normalize-neg-k k value)
 
                                  (nil? k)
                                  [nil nil]
@@ -55,11 +55,11 @@
                                  (throw-bad-path-key path k))]
                  (-> acc
                      (update :norm-path conj k*)
-                     (assoc :val val*))))
+                     (assoc :value value*))))
              {:norm-path (if (seq prefixes)
                            [path-head]
                            [])
-              :val state}
+              :value state}
              (if (seq prefixes)
                path-tail
                path)))))
@@ -85,19 +85,19 @@
   [state {:zeno/keys [path op]} prefix]
   (let [parent-path (butlast path)
         k (last path)
-        {:keys [norm-path val]} (get-in-state state parent-path prefix)
+        {:keys [norm-path value]} (get-in-state state parent-path prefix)
         [new-parent path-k] (cond
-                              (nil? val)
+                              (nil? value)
                               [nil k]
 
-                              (map? val)
-                              [(dissoc val k) k]
+                              (map? value)
+                              [(dissoc value k) k]
 
                               :else
                               (let [norm-i (if (nat-int? k)
                                              k
-                                             (+ (count val) k))
-                                    [h t] (split-at norm-i val)]
+                                             (+ (count value) k))
+                                    [h t] (split-at norm-i value)]
                                 (if (nat-int? norm-i)
                                   [(vec (concat h (rest t))) norm-i]
                                   (throw (ex-info "Path index out of range."
@@ -129,19 +129,19 @@
                          "of the path must be an integer, e.g. [:x :y -1] "
                          " or [:a :b :c 12]. Got: `" i "`.")
                     (u/sym-map parent-path i path op arg))))
-        {:keys [norm-path val]} (get-in-state state parent-path prefix)
-        _ (when-not (or (sequential? val) (nil? val))
+        {:keys [norm-path value]} (get-in-state state parent-path prefix)
+        _ (when-not (or (sequential? value) (nil? value))
             (throw (ex-info (str "Bad path in " op ". Path `" path "` does not "
-                                 "point to a sequence. Got: `" val "`.")
-                            (u/sym-map op path val norm-path))))
+                                 "point to a sequence. Got: `" value "`.")
+                            (u/sym-map op path value norm-path))))
         norm-i (if (nat-int? i)
                  i
-                 (+ (count val) i))
+                 (+ (count value) i))
         ;; TODO: Check for out of range norm-i
         split-i (if (= :insert-before op)
                   norm-i
                   (inc norm-i))
-        [h t] (split-at split-i val)
+        [h t] (split-at split-i value)
         new-t (cons arg t)
         new-parent (vec (concat h new-t))
         state-path (if prefix
@@ -165,25 +165,25 @@
 
 (defn eval-math-cmd [state cmd prefix op-fn]
   (let [{:zeno/keys [path op arg]} cmd
-        {:keys [norm-path val]} (get-in-state state path prefix)
-        _ (when-not (number? val)
+        {:keys [norm-path value]} (get-in-state state path prefix)
+        _ (when-not (number? value)
             (throw (ex-info (str "Can't do math on non-numeric type. "
                                  "Value in state at path `"
-                                 path "` is not a number. Got: " val ".")
+                                 path "` is not a number. Got: " value ".")
                             (u/sym-map path cmd))))
         _ (when-not (number? arg)
             (throw (ex-info (str "Can't do math on non-numeric type. "
                                  "Arg `" arg "` in update command `"
                                  cmd "` is not a number.")
                             (u/sym-map path cmd op))))
-        new-val (op-fn val arg)
+        new-value (op-fn value arg)
         state-path (if prefix
                      (rest norm-path)
                      norm-path)]
-    {:state (assoc-in state state-path new-val)
+    {:state (assoc-in state state-path new-value)
      :update-info {:norm-path norm-path
                    :op op
-                   :value new-val}}))
+                   :value new-value}}))
 
 (defmethod eval-cmd :+
   [state cmd prefix]

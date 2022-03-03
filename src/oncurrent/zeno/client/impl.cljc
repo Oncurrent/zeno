@@ -6,6 +6,8 @@
    [deercreeklabs.lancaster :as l]
    [oncurrent.zeno.client.state-subscriptions :as state-subscriptions]
    [oncurrent.zeno.client.client-commands :as client-commands]
+   [oncurrent.zeno.crdt :as crdt]
+   [oncurrent.zeno.crdt.commands :as crdt-commands]
    [oncurrent.zeno.commands :as commands]
    [oncurrent.zeno.schemas :as schemas]
    [oncurrent.zeno.storage :as storage]
@@ -66,11 +68,13 @@
   ;; all commit or none commit. A transaction may include  many kinds of
   ;; updates.
   (au/go
-    (let [{:keys [*client-state]} zc
+    (let [{:keys [crdt-schema *client-state *crdt-state]} zc
           root->cmds (split-cmds cmds)
           ;; When we support :zeno/online, do those cmds first and fail the txn
           ;; if the online cmds fail.
-          crdt-ret {}
+          crdt-ret (crdt-commands/process-cmds {:cmds (:zeno/crdt root->cmds)
+                                                :crdt @*crdt-state
+                                                :crdt-schema crdt-schema})
           ;; TODO: Log the crdt update infos and ops
           cur-client-state @*client-state
           client-ret (client-commands/eval-cmds cur-client-state
@@ -81,6 +85,7 @@
       ;; We can use reset! here because we know this is called seriallly
       ;; with no concurrent updates.
       (reset! *client-state (:state client-ret))
+      (reset! *crdt-state (:crdt crdt-ret))
       (state-subscriptions/do-subscription-updates! zc update-infos)
       true)))
 

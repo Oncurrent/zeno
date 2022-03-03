@@ -1,4 +1,4 @@
-(ns unit.commands-test
+(ns unit.crdt-commands-test
   (:require
    [clojure.set :as set]
    [clojure.test :as t :refer [deftest is]]
@@ -426,13 +426,13 @@
                        {:add-id "I6"
                         :op-type :delete-array-edge
                         :path []}
-                       {:add-id "I11"
+                       {:add-id "I10"
                         :op-type :add-array-edge
                         :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "-START-"
                                 :tail-node-id "I8"}}
-                       {:add-id "I10"
+                       {:add-id "I11"
                         :op-type :add-array-edge
                         :path []
                         :sys-time-ms sys-time-ms,
@@ -505,13 +505,13 @@
                          (str "I" n))
              :sys-time-ms sys-time-ms}
         {:keys [crdt ops]} (commands/process-cmds arg)
-        expected-ops #{{:add-id "I4"
+        expected-ops #{{:add-id "I3"
                         :op-type :add-array-edge
                         :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "-START-"
                                 :tail-node-id "I1"}}
-                       {:add-id "I3"
+                       {:add-id "I4"
                         :op-type :add-array-edge
                         :path []
                         :sys-time-ms sys-time-ms
@@ -539,7 +539,12 @@
                          (str "I" n))
              :sys-time-ms sys-time-ms}
         {:keys [crdt ops]} (commands/process-cmds arg)
-        expected-ops #{{:add-id "I3"
+        expected-ops #{{:add-id "I2"
+                        :op-type :add-value
+                        :path ["I1"]
+                        :sys-time-ms sys-time-ms
+                        :value "Hello!"}
+                       {:add-id "I3"
                         :op-type :add-array-edge
                         :path []
                         :sys-time-ms sys-time-ms
@@ -550,17 +555,19 @@
                         :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "I1"
-                                :tail-node-id "-END-"}}
-                       {:add-id "I2"
-                        :op-type :add-value
-                        :path ["I1"]
-                        :sys-time-ms sys-time-ms
-                        :value "Hello!"}}
-        expected-value ["Hello!"]]
+                                :tail-node-id "-END-"}}}
+        ret (crdt/get-value-info {:crdt crdt
+                                  :path [-1]
+                                  :schema (:crdt-schema arg)})
+        _ (is (= {:norm-path [0]
+                  :value "Hello!"}
+                 ret))
+        expected-value ["Hello!"]
+        value (crdt/get-value {:crdt crdt
+                               :path []
+                               :schema (:crdt-schema arg)})]
     (is (= expected-ops ops))
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:crdt-schema arg)})))))
+    (is (= expected-value value))))
 
 (deftest test-crdt-array-insert-range-after-into-empty
   (let [*next-id-num (atom 0)
@@ -579,13 +586,13 @@
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "I3"
                                 :tail-node-id "I5"}}
-                       {:add-id "I7"
+                       {:add-id "I8"
                         :op-type :add-array-edge
                         :path []
                         :sys-time-ms sys-time-ms
                         :value {:head-node-id "I5"
                                 :tail-node-id "-END-"}}
-                       {:add-id "I8"
+                       {:add-id "I7"
                         :op-type :add-array-edge
                         :path []
                         :sys-time-ms sys-time-ms
@@ -732,10 +739,10 @@
 
 (deftest test-nested-set
   (let [arg {:cmds [{:zeno/arg {:name "Bill"
-                           :pets [{:name "Pinky"
-                                   :species "Felis catus"}
-                                  {:name "Fishy"
-                                   :species "Carassius auratus"}]}
+                                :pets [{:name "Pinky"
+                                        :species "Felis catus"}
+                                       {:name "Fishy"
+                                        :species "Carassius auratus"}]}
                      :zeno/op :set
                      :zeno/path [:zeno/crdt]}
                     {:zeno/arg "Goldy"

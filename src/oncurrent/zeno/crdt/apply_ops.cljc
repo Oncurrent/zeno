@@ -138,8 +138,8 @@
 (defmethod apply-op [:record :add-value]
   [{:keys [add-id path schema value] :as arg}]
   (when (empty? path)
-    (throw (ex-info (str "Path indicates a record, but no record key is given "
-                         "in the path.")
+    (throw (ex-info (str "Schema indicates a record, but no record key is "
+                         "given in the path.")
                     (u/sym-map add-id path value))))
   (associative-apply-op (assoc arg :get-child-schema
                                #(l/schema-at-path schema [%]))))
@@ -162,7 +162,7 @@
 (defmethod apply-op [:array :add-value]
   [{:keys [add-id path schema value] :as arg}]
   (when (empty? path)
-    (throw (ex-info (str "Path indicates an array, but no array key is given "
+    (throw (ex-info (str "Schema indicates an array, but no array key is given "
                          "in the path.")
                     (u/sym-map add-id path value))))
   (associative-apply-op (assoc arg :get-child-schema

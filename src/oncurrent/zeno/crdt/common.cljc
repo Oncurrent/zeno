@@ -15,8 +15,8 @@
 (defmulti check-key (fn [{:keys [schema]}]
                       (schema->dispatch-type schema)))
 
-(defmulti get-value (fn [{:keys [schema]}]
-                      (schema->dispatch-type schema)))
+(defmulti get-value-info (fn [{:keys [schema]}]
+                           (schema->dispatch-type schema)))
 
 (defmethod check-key :array
   [{:keys [add-id key op-type string-array-keys? path]}]
@@ -45,24 +45,28 @@
                  "Got: `" (or key "nil") "`.")
             (u/sym-map key path op-type add-id)))))
 
-(defn associative-get-value
-  [{:keys [get-child-schema crdt path] :as arg}]
+(defn associative-get-value-info
+  [{:keys [get-child-schema crdt norm-path path] :as arg}]
   (if (empty? path)
-    (reduce-kv (fn [acc k _]
-                 (let [v (get-value (assoc arg
-                                           :path [k]))]
-                   (if (or (nil? v)
-                           (and (coll? v) (empty? v)))
-                     acc
-                     (assoc acc k v))))
-               {}
-               (:children crdt))
+    (let [value (reduce-kv
+                 (fn [acc k _]
+                   (let [v (-> (assoc arg :path [k])
+                               (get-value-info)
+                               (:value))]
+                     (if (or (nil? v)
+                             (and (coll? v) (empty? v)))
+                       acc
+                       (assoc acc k v))))
+                 {}
+                 (:children crdt))]
+      (u/sym-map value norm-path))
     (let [[k & ks] path]
       (check-key (assoc arg :key k))
-      (get-value (assoc arg
-                        :crdt (get-in crdt [:children k])
-                        :schema (get-child-schema k)
-                        :path ks)))))
+      (get-value-info (assoc arg
+                             :crdt (get-in crdt [:children k])
+                             :norm-path (conj norm-path k)
+                             :path (or ks [])
+                             :schema (get-child-schema k))))))
 
 ;; TODO: Replace this with conflict resolution?
 (defn get-most-recent [current-add-id-to-value-info]
@@ -76,21 +80,22 @@
       (-> (get-most-recent current-add-id-to-value-info)
           (:value)))))
 
-(defmethod get-value :single-value
-  [{:keys [path] :as arg}]
+(defmethod get-value-info :single-value
+  [{:keys [norm-path path] :as arg}]
   (if (seq path)
     (throw (ex-info "Can't index into a single-value CRDT." arg))
-    (get-single-value arg)))
+    {:value (get-single-value arg)
+     :norm-path norm-path}))
 
-(defmethod get-value :map
+(defmethod get-value-info :map
   [{:keys [schema] :as arg}]
   (let [get-child-schema #(l/schema-at-path schema [%])]
-    (associative-get-value (assoc arg :get-child-schema get-child-schema))))
+    (associative-get-value-info (assoc arg :get-child-schema get-child-schema))))
 
-(defmethod get-value :record
+(defmethod get-value-info :record
   [{:keys [schema] :as arg}]
   (let [get-child-schema #(l/schema-at-path schema [%])]
-    (associative-get-value (assoc arg :get-child-schema get-child-schema))))
+    (associative-get-value-info (assoc arg :get-child-schema get-child-schema))))
 
 (defn edn-schema->pred [edn-schema]
   (-> (lu/get-avro-type edn-schema)
@@ -154,7 +159,7 @@
     (:member-schema (get-union-branch-and-schema-for-key {:k (first path)
                                                           :schema schema}))))
 
-(defmethod get-value :union
+(defmethod get-value-info :union
   [{:keys [crdt path schema] :as arg}]
   (let [member-schema (get-member-schema arg)]
-    (get-value (assoc arg :schema member-schema))))
+    (get-value-info (assoc arg :schema member-schema))))
