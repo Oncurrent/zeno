@@ -24,7 +24,8 @@
   [:books (l/map-schema book-schema)]
   [:my-book-ids (l/array-schema l/string-schema)]
   [:msgs (l/array-schema msg-schema)]
-  [:num l/int-schema])
+  [:num l/int-schema]
+  [:the-id l/string-schema])
 
 (deftest test-bad-path-root-in-update-state!
   (au/test-async
@@ -52,38 +53,87 @@
                                            :zeno/arg 1}]))))
        (zc/shutdown! zc)))))
 
+(deftest test-crdt-bad-command-op
+  (au/test-async
+   1000
+   (ca/go
+     (let [zc (zc/zeno-client)]
+       (is (thrown-with-msg?
+            #?(:clj ExceptionInfo :cljs js/Error)
+            #"Invalid"
+            (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/crdt :x]
+                                           :zeno/op :not-an-op
+                                           :zeno/arg 1}]))))
+       (zc/shutdown! zc)))))
+
 (deftest test-ordered-update-maps
   (au/test-async
    1000
    (ca/go
      (try
        (let [zc (zc/zeno-client)
-             sub-map '{title [:zeno/client :msgs 0 :title]}
+             sub-map '{text [:zeno/client :msgs 0 :text]}
              ch (ca/chan 1)
-             update-fn #(ca/put! ch (% 'title))
-             orig-title "Plato"
-             new-title "Socrates"]
+             update-fn #(ca/put! ch (% 'text))
+             orig-text "Plato"
+             new-text "Socrates"]
          (is (= true (au/<? (zc/<update-state!
                              zc [{:zeno/path [:zeno/client]
                                   :zeno/op :zeno/set
-                                  :zeno/arg {:msgs [{:title orig-title}]}}]))))
-         (is (= {'title orig-title}
+                                  :zeno/arg {:msgs [{:text orig-text}]}}]))))
+         (is (= {'text orig-text}
                 (zc/subscribe-to-state! zc "test" sub-map update-fn)))
          (au/<? (zc/<update-state! zc
                                    [{:zeno/path [:zeno/client :msgs 0]
                                      :zeno/op :zeno/insert-before
-                                     :zeno/arg {:title orig-title}}
-                                    {:zeno/path [:zeno/client :msgs 0 :title]
+                                     :zeno/arg {:text orig-text}}
+                                    {:zeno/path [:zeno/client :msgs 0 :text]
                                      :zeno/op :zeno/set
-                                     :zeno/arg new-title}]))
-         (is (= new-title (au/<? ch)))
-         (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/client :msgs 0 :title]
+                                     :zeno/arg new-text}]))
+         (is (= new-text (au/<? ch)))
+         (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/client :msgs 0 :text]
                                         :zeno/op :zeno/set
-                                        :zeno/arg new-title}
+                                        :zeno/arg new-text}
                                        {:zeno/path [:zeno/client :msgs 0]
                                         :zeno/op :zeno/insert-before
-                                        :zeno/arg {:title orig-title}}]))
-         (is (= orig-title (au/<? ch)))
+                                        :zeno/arg {:text orig-text}}]))
+         (is (= orig-text (au/<? ch)))
+         (zc/shutdown! zc))
+       (catch #?(:clj Exception :cljs js/Error) e
+         (is (= :unexpected e)))))))
+
+(deftest test-crdt-ordered-update-maps
+  (au/test-async
+   1000
+   (ca/go
+     (try
+       (let [zc (zc/zeno-client {:crdt-schema info-schema})
+             sub-map '{text [:zeno/crdt :msgs 0 :text]}
+             ch (ca/chan 1)
+             update-fn #(ca/put! ch (% 'text))
+             orig-text "Plato"
+             new-text "Socrates"]
+         (is (= true (au/<? (zc/<update-state!
+                             zc [{:zeno/path [:zeno/crdt]
+                                  :zeno/op :zeno/set
+                                  :zeno/arg {:msgs [{:text orig-text}]}}]))))
+         (is (= {'text orig-text}
+                (zc/subscribe-to-state! zc "test" sub-map update-fn)))
+         (au/<? (zc/<update-state! zc
+                                   [{:zeno/path [:zeno/crdt :msgs 0]
+                                     :zeno/op :zeno/insert-before
+                                     :zeno/arg {:text orig-text}}
+                                    {:zeno/path [:zeno/crdt :msgs 0 :text]
+                                     :zeno/op :zeno/set
+                                     :zeno/arg new-text}]))
+         (is (= new-text (au/<? ch)))
+         (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/crdt :msgs 0 :text]
+                                        :zeno/op :zeno/set
+                                        :zeno/arg new-text}
+                                       {:zeno/path [:zeno/crdt :msgs 0]
+                                        :zeno/op :zeno/insert-before
+                                        :zeno/arg {:text orig-text}}]))
+         (is (= orig-text (au/<? ch)))
          (zc/shutdown! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
@@ -93,23 +143,49 @@
    1000
    (ca/go
      (try
-       (let [orig-title "Foo"
+       (let [orig-text "Foo"
              zc (zc/zeno-client)
              ch (ca/chan 1)
-             sub-map '{last-title [:zeno/client :msgs -1 :title]}
-             update-fn #(ca/put! ch (% 'last-title))
-             new-title "Bar"
+             sub-map '{last-text [:zeno/client :msgs -1 :text]}
+             update-fn #(ca/put! ch (% 'last-text))
+             new-text "Bar"
              ret (au/<? (zc/<update-state!
                          zc [{:zeno/path [:zeno/client]
                               :zeno/op :zeno/set
-                              :zeno/arg {:msgs [{:title orig-title}]}}]))]
+                              :zeno/arg {:msgs [{:text orig-text}]}}]))]
          (is (= true ret))
-         (is (= {'last-title orig-title}
+         (is (= {'last-text orig-text}
                 (zc/subscribe-to-state! zc "test" sub-map update-fn)))
          (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/client :msgs -1]
                                         :zeno/op :zeno/insert-after
-                                        :zeno/arg {:title new-title}}]))
-         (is (= new-title (au/<? ch)))
+                                        :zeno/arg {:text new-text}}]))
+         (is (= new-text (au/<? ch)))
+         (zc/shutdown! zc))
+       (catch #?(:clj Exception :cljs js/Error) e
+         (is (= :unexpected e)))))))
+
+(deftest test-crdt-end-relative-sub-map
+  (au/test-async
+   1000
+   (ca/go
+     (try
+       (let [orig-text "Foo"
+             zc (zc/zeno-client {:crdt-schema info-schema})
+             ch (ca/chan 1)
+             sub-map '{last-text [:zeno/crdt :msgs -1 :text]}
+             update-fn #(ca/put! ch (% 'last-text))
+             new-text "Bar"
+             ret (au/<? (zc/<update-state!
+                         zc [{:zeno/path [:zeno/crdt]
+                              :zeno/op :zeno/set
+                              :zeno/arg {:msgs [{:text orig-text}]}}]))]
+         (is (= true ret))
+         (is (= {'last-text orig-text}
+                (zc/subscribe-to-state! zc "test" sub-map update-fn)))
+         (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/crdt :msgs -1]
+                                        :zeno/op :zeno/insert-after
+                                        :zeno/arg {:text new-text}}]))
+         (is (= new-text (au/<? ch)))
          (zc/shutdown! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
@@ -127,6 +203,28 @@
              update-fn (constantly nil)]
          (is (= true
                 (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/client :books book-id]
+                                               :zeno/op :zeno/set
+                                               :zeno/arg {:title book-title}}]))))
+         (is (= {'title book-title}
+                (zc/subscribe-to-state! zc "test" sub-map update-fn
+                                        (u/sym-map resolution-map))))
+         (zc/shutdown! zc))
+       (catch #?(:clj Exception :cljs js/Error) e
+         (is (= :unexpected e)))))))
+
+(deftest test-crdt-resolution-map
+  (au/test-async
+   1000
+   (ca/go
+     (try
+       (let [zc (zc/zeno-client {:crdt-schema info-schema})
+             book-id "123"
+             book-title "Treasure Island"
+             resolution-map {'book-id book-id}
+             sub-map '{title [:zeno/crdt :books book-id :title]}
+             update-fn (constantly nil)]
+         (is (= true
+                (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/crdt :books book-id]
                                                :zeno/op :zeno/set
                                                :zeno/arg {:title book-title}}]))))
          (is (= {'title book-title}
@@ -163,6 +261,33 @@
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
+(deftest test-crdt-symbolic-path
+  (au/test-async
+   1000
+   (ca/go
+     (try
+       (let [zc (zc/zeno-client {:crdt-schema info-schema})
+             book-id "123"
+             book-title "Treasure Island"
+             resolution-map {'d-path [:zeno/crdt :books 'the-id :title]}
+             sub-map '{the-id [:zeno/crdt :the-id]
+                       title d-path}
+             update-fn (constantly nil)]
+         (is (= true
+                (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/crdt :the-id]
+                                               :zeno/op :zeno/set
+                                               :zeno/arg book-id}
+                                              {:zeno/path [:zeno/crdt :books book-id]
+                                               :zeno/op :zeno/set
+                                               :zeno/arg {:title book-title}}]))))
+         (is (= '{the-id "123"
+                  title "Treasure Island"}
+                (zc/subscribe-to-state! zc "test" sub-map update-fn
+                                        (u/sym-map resolution-map))))
+         (zc/shutdown! zc))
+       (catch #?(:clj Exception :cljs js/Error) e
+         (is (= :unexpected e)))))))
+
 (deftest test-sequence-join
   (au/test-async
    1000
@@ -178,6 +303,30 @@
              update-fn (constantly nil)
              expected {'my-books (vals (select-keys books my-book-ids))}]
          (is (= true (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/client :books]
+                                                    :zeno/op :zeno/set
+                                                    :zeno/arg books}]))))
+         (is (= expected (zc/subscribe-to-state!
+                          zc "test" sub-map update-fn
+                          (u/sym-map resolution-map))))
+         (zc/shutdown! zc))
+       (catch #?(:clj Exception :cljs js/Error) e
+         (is (= :unexpected e)))))))
+
+(deftest test-crdt-sequence-join
+  (au/test-async
+   1000
+   (ca/go
+     (try
+       (let [zc (zc/zeno-client {:crdt-schema info-schema})
+             my-book-ids ["123" "456"]
+             books {"123" {:title "Treasure Island"}
+                    "456" {:title "Kidnapped"}
+                    "789" {:title "Dr Jekyll and Mr Hyde"}}
+             sub-map '{my-books [:zeno/crdt :books my-book-ids]}
+             resolution-map {'my-book-ids my-book-ids}
+             update-fn (constantly nil)
+             expected {'my-books (vals (select-keys books my-book-ids))}]
+         (is (= true (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/crdt :books]
                                                     :zeno/op :zeno/set
                                                     :zeno/arg books}]))))
          (is (= expected (zc/subscribe-to-state!
@@ -221,6 +370,40 @@
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
+(deftest test-crdt-sequence-join-in-sub-map
+  (au/test-async
+   1000
+   (ca/go
+     (try
+       (let [zc (zc/zeno-client {:crdt-schema info-schema})
+             update-ch (ca/chan 1)
+             my-book-ids ["123" "456"]
+             books {"123" {:title "Treasure Island"}
+                    "456" {:title "Kidnapped"}
+                    "789" {:title "Dr Jekyll and Mr Hyde"}}
+             sub-map '{my-book-ids [:zeno/crdt :my-book-ids]
+                       my-books [:zeno/crdt :books my-book-ids]}
+             update-fn #(ca/put! update-ch %)
+             expected {'my-book-ids my-book-ids
+                       'my-books (vals (select-keys books my-book-ids))}]
+         (is (= true (au/<? (zc/<update-state!
+                             zc [{:zeno/path [:zeno/crdt :books]
+                                  :zeno/op :zeno/set
+                                  :zeno/arg books}
+                                 {:zeno/path [:zeno/crdt :my-book-ids]
+                                  :zeno/op :zeno/set
+                                  :zeno/arg my-book-ids}]))))
+         (is (= expected (zc/subscribe-to-state! zc "test"
+                                                 sub-map update-fn)))
+         (is (= true (au/<? (zc/<update-state!
+                             zc [{:zeno/path [:zeno/crdt :my-book-ids 0]
+                                  :zeno/op :zeno/remove}]))))
+         (is (= {'my-book-ids ["456"]
+                 'my-books [{:title "Kidnapped"}]} (au/<? update-ch)))
+         (zc/shutdown! zc))
+       (catch #?(:clj Exception :cljs js/Error) e
+         (is (= :unexpected e)))))))
+
 (deftest test-sequence-join-in-sub-map-2
   ;; Tests changing state whose path depends on a different path in sub-map
   (au/test-async
@@ -254,6 +437,46 @@
                                                   update-fn)))
          (is (= true (au/<? (zc/<update-state!
                              zc [{:zeno/path [:zeno/client :books "789" :title]
+                                  :zeno/op :zeno/set
+                                  :zeno/arg new-title}]))))
+         (is (= expected2 (au/<? update-ch)))
+         (zc/shutdown! zc))
+       (catch #?(:clj Exception :cljs js/Error) e
+         (is (= :unexpected e)))))))
+
+(deftest test-crdt-sequence-join-in-sub-map-2
+  ;; Tests changing state whose path depends on a different path in sub-map
+  (au/test-async
+   1000
+   (ca/go
+     (try
+       (let [zc (zc/zeno-client {:crdt-schema info-schema})
+             update-ch (ca/chan 1)
+             my-book-ids ["123" "789"]
+             books {"123" {:title "Treasure Island"}
+                    "456" {:title "Kidnapped"}
+                    "789" {:title "Dr Jekyll and Mr Hyde"}}
+             sub-map '{my-book-ids [:zeno/crdt :my-book-ids]
+                       my-books [:zeno/crdt :books my-book-ids]}
+             update-fn #(ca/put! update-ch %)
+             new-title "Strange Case of Dr Jekyll and Mr Hyde"
+             expected1 {'my-book-ids my-book-ids
+                        'my-books [{:title "Treasure Island"}
+                                   {:title "Dr Jekyll and Mr Hyde"}]}
+             expected2 {'my-book-ids my-book-ids
+                        'my-books [{:title "Treasure Island"}
+                                   {:title new-title}]}]
+         (is (= true (au/<? (zc/<update-state!
+                             zc [{:zeno/path [:zeno/crdt :books]
+                                  :zeno/op :zeno/set
+                                  :zeno/arg books}
+                                 {:zeno/path [:zeno/crdt :my-book-ids]
+                                  :zeno/op :zeno/set
+                                  :zeno/arg my-book-ids}]))))
+         (is (= expected1 (zc/subscribe-to-state! zc "test" sub-map
+                                                  update-fn)))
+         (is (= true (au/<? (zc/<update-state!
+                             zc [{:zeno/path [:zeno/crdt :books "789" :title]
                                   :zeno/op :zeno/set
                                   :zeno/arg new-title}]))))
          (is (= expected2 (au/<? update-ch)))
