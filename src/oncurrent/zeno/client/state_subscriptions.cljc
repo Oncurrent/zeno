@@ -5,7 +5,7 @@
    [clojure.string :as str]
    [deercreeklabs.async-utils :as au]
    [oncurrent.zeno.client.client-commands :as client-commands]
-   [oncurrent.zeno.client.react :as react]
+   [oncurrent.zeno.client.react.impl :as react-impl]
    [oncurrent.zeno.crdt :as crdt]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]
@@ -335,7 +335,7 @@
         {:keys [react-update-fns non-react-update-fns]} update-fn-info]
     (doseq [f non-react-update-fns]
       (f))
-    (react/batch-updates
+    (react-impl/batch-updates
      #(doseq [rf react-update-fns]
         (rf)))))
 

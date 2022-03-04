@@ -44,7 +44,8 @@
                        :clj (UUID/randomUUID))))
 
 (defn pprint [x]
-  #?(:clj (.write *out* ^String (puget/with-color (puget/pprint-str x)))
+  #?(:clj (let [^String s (puget/with-color (puget/pprint-str x))]
+            (.write *out* s))
      :cljs (pprint/pprint x)))
 
 (defn pprint-str [x]

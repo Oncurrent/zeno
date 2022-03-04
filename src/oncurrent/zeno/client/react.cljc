@@ -6,6 +6,7 @@
    [clojure.core.async :as ca]
    [clojure.string :as str]
    [deercreeklabs.async-utils :as au]
+   [oncurrent.zeno.client.impl :as client]
    [oncurrent.zeno.client.macro-impl :as macro-impl]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]
@@ -90,9 +91,9 @@
   #?(:cljs
      (ocall React :cloneElement element #js {"key" k})))
 
-(defn batch-updates [f]
-  #?(:cljs
-     (ocall ReactDOM :unstable_batchedUpdates f)))
+;; We redirect to impl to avoid a cyclic ns dependency.
+(defn batch-updates [&args]
+  (apply impl/batch-updates args))
 
 ;;;; Macros
 
@@ -132,28 +133,29 @@
                                      :resolution-map resolution-map}
                                update-fn (fn [new-state]
                                            (render! (u/current-time-ms)))]
-                           (u/subscribe-to-state! zc component-name sub-map
-                                                  update-fn opts))
+                           (client/subscribe-to-state!
+                             zc component-name sub-map update-fn opts))
             cleanup-effect (fn []
-                             #(u/unsubscribe-from-state! zc component-name))
-            sub-info (u/get-subscription-info zc component-name)]
+                             #(client/unsubscribe-from-state!
+                                zc component-name))
+            sub-info (client/get-subscription-info zc component-name)]
         (use-effect cleanup-effect #js [])
         (if (not sub-info)
           (subscribe*!)
           (if (= resolution-map (:resolution-map sub-info))
             (:state sub-info)
             (do
-              (u/unsubscribe-from-state! zc component-name)
+              (client/unsubscribe-from-state! zc component-name)
               (subscribe*!))))))))
 
 (defn use-topic-subscription
   "React hook for Zeno topic subscriptions."
-  ([zc scope topic-name cb]
+  ([zc topic-name cb]
    #?(:cljs
-      (use-effect #(u/subscribe-to-topic! zc scope topic-name cb))))
-  ([zc scope topic-name cb dependencies]
+      (use-effect #(client/subscribe-to-topic! zc topic-name cb))))
+  ([zc topic-name cb dependencies]
    #?(:cljs
-      (use-effect #(u/subscribe-to-topic! zc scope topic-name cb)
+      (use-effect #(client/subscribe-to-topic! zc topic-name cb)
                   dependencies))))
 
 ;;;;;;;;;;;;;;;;;;;; Macro runtime helpers ;;;;;;;;;;;;;;;;;;;;

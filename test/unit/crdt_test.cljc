@@ -295,7 +295,6 @@
                       :tail-node-id "NodeX"}}
              {:add-id "a10"
               :op-type :add-array-edge
-              :path []
               :value {:head-node-id "NodeX"
                       :tail-node-id "NodeB"}}
              ;; While offline, client 2 deletes B, then adds Y in its place
