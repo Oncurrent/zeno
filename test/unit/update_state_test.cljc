@@ -1036,3 +1036,68 @@
        (catch #?(:clj Exception :cljs js/Error) e
          (log/error (u/ex-msg-and-stacktrace e))
          (is (= :unexpected e)))))))
+
+(deftest test-insert-range
+  (au/test-async
+   3000
+   (ca/go
+     (try
+       (let [zc (zc/zeno-client)
+             ch (ca/chan 1)
+             id-to-fav-nums {"1" [7 8 9]
+                             "2" [2 3 4]}
+             ret1 (au/<? (zc/<set-state! zc [:zeno/client] id-to-fav-nums))
+             _ (is (= true ret1))
+             sub-map '{my-nums [:zeno/client "2"]}
+             update-fn #(ca/put! ch %)
+             ret2 (zc/subscribe-to-state! zc "test" sub-map update-fn)
+             _ (is (= {'my-nums [2 3 4]} ret2))
+             ret3 (au/<? (zc/<update-state!
+                          zc [{:zeno/arg [301 302 303]
+                               :zeno/op :zeno/insert-range-after
+                               :zeno/path [:zeno/client "2" 1]}]))
+             _ (is (= true ret3))
+             _ (is (= {'my-nums [2 3 301 302 303 4]} (au/<? ch)))
+             ret4 (au/<? (zc/<update-state!
+                          zc [{:zeno/arg [304 305]
+                               :zeno/op :zeno/insert-range-before
+                               :zeno/path [:zeno/client "2" -1]}]))]
+         (is (= true ret4))
+         (is (= {'my-nums [2 3 301 302 303 304 305 4]} (au/<? ch)))
+         (zc/shutdown! zc))
+       (catch #?(:clj Exception :cljs js/Error) e
+         (log/error (u/ex-msg-and-stacktrace e))
+         (is (= :unexpected e)))))))
+
+(deftest test-crdt-insert-range
+  (au/test-async
+   3000
+   (ca/go
+     (try
+       (let [crdt-schema (l/map-schema (l/array-schema l/int-schema))
+             zc (zc/zeno-client (u/sym-map crdt-schema))
+             ch (ca/chan 1)
+             id-to-fav-nums {"1" [7 8 9]
+                             "2" [2 3 4]}
+             ret1 (au/<? (zc/<set-state! zc [:zeno/crdt] id-to-fav-nums))
+             _ (is (= true ret1))
+             sub-map '{my-nums [:zeno/crdt "2"]}
+             update-fn #(ca/put! ch %)
+             ret2 (zc/subscribe-to-state! zc "test" sub-map update-fn)
+             _ (is (= {'my-nums [2 3 4]} ret2))
+             ret3 (au/<? (zc/<update-state!
+                          zc [{:zeno/arg [301 302 303]
+                               :zeno/op :zeno/insert-range-after
+                               :zeno/path [:zeno/crdt "2" 1]}]))
+             _ (is (= true ret3))
+             _ (is (= {'my-nums [2 3 301 302 303 4]} (au/<? ch)))
+             ret4 (au/<? (zc/<update-state!
+                          zc [{:zeno/arg [304 305]
+                               :zeno/op :zeno/insert-range-before
+                               :zeno/path [:zeno/crdt "2" -1]}]))]
+         (is (= true ret4))
+         (is (= {'my-nums [2 3 301 302 303 304 305 4]} (au/<? ch)))
+         (zc/shutdown! zc))
+       (catch #?(:clj Exception :cljs js/Error) e
+         (log/error (u/ex-msg-and-stacktrace e))
+         (is (= :unexpected e)))))))

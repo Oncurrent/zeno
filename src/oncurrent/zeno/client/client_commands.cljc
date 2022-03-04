@@ -5,6 +5,11 @@
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
+(def insert-ops #{:zeno/insert-after
+                  :zeno/insert-before
+                  :zeno/insert-range-after
+                  :zeno/insert-range-before})
+
 (defn throw-bad-path-key [path k]
   (let [disp-k (or k "nil")]
     (throw (ex-info
@@ -70,7 +75,9 @@
                path)))))
 
 (defmulti eval-cmd (fn [state {:zeno/keys [op]} prefix]
-                     op))
+                     (if (insert-ops op)
+                       :zeno/insert*
+                       op)))
 
 (defmethod eval-cmd :zeno/set
   [state {:zeno/keys [path op arg]} prefix]
@@ -125,7 +132,8 @@
                    :op op
                    :value nil}}))
 
-(defn insert* [state path prefix op arg]
+(defmethod eval-cmd :zeno/insert*
+  [state {:zeno/keys [arg op path]} prefix]
   (let [parent-path (butlast path)
         i (last path)
         _ (when-not (int? i)
@@ -139,16 +147,21 @@
             (throw (ex-info (str "Bad path in " op ". Path `" path "` does not "
                                  "point to a sequence. Got: `" value "`.")
                             (u/sym-map op path value norm-path))))
+        range? (#{:zeno/insert-range-before :zeno/insert-range-after} op)
+        _ (when (and range?
+                     (not (sequential? arg)))
+            (throw (ex-info (str "In `" op "` operations, the `:zeno/arg` "
+                                 "value must be sequential. Got `" arg "`.")
+                            (u/sym-map op path value norm-path))))
         norm-i (if (nat-int? i)
                  i
                  (+ (count value) i))
         ;; TODO: Check for out of range norm-i
-        split-i (if (= :zeno/insert-before op)
+        split-i (if (#{:zeno/insert-before :zeno/insert-range-before} op)
                   norm-i
                   (inc norm-i))
         [h t] (split-at split-i value)
-        new-t (cons arg t)
-        new-parent (vec (concat h new-t))
+        new-parent (vec (concat h (if range? arg [arg]) t))
         state-path (if prefix
                      (rest norm-path)
                      norm-path)
@@ -159,14 +172,6 @@
      :update-info {:norm-path (conj norm-path split-i)
                    :op op
                    :value arg}}))
-
-(defmethod eval-cmd :zeno/insert-before
-  [state {:zeno/keys [path op arg]} prefix]
-  (insert* state path prefix op arg))
-
-(defmethod eval-cmd :zeno/insert-after
-  [state {:zeno/keys [path op arg]} prefix]
-  (insert* state path prefix op arg))
 
 (defn eval-cmds [initial-state cmds prefix]
   (reduce (fn [{:keys [state] :as acc} cmd]

@@ -30,9 +30,10 @@
 
 (deftest test-insert-after
   (let [state [:a :b]
-        path [:zeno/client -1]
-        arg :new
-        ret (commands/insert* state path :zeno/client :zeno/insert-after arg)
+        cmd {:zeno/arg :new
+             :zeno/op :zeno/insert-after
+             :zeno/path [:zeno/client -1]}
+        ret (commands/eval-cmd state cmd :zeno/client)
         expected {:state [:a :b :new],
                   :update-info {:norm-path [:zeno/client 2]
                                 :op :zeno/insert-after
@@ -41,9 +42,10 @@
 
 (deftest test-insert-before
   (let [state [:a :b]
-        path [:zeno/client -1]
-        arg :new
-        ret (commands/insert* state path :zeno/client :zeno/insert-before arg)
+        cmd {:zeno/arg :new
+             :zeno/op :zeno/insert-before
+             :zeno/path [:zeno/client -1]}
+        ret (commands/eval-cmd state cmd :zeno/client)
         expected {:state [:a :new :b],
                   :update-info {:norm-path [:zeno/client 1]
                                 :op :zeno/insert-before
@@ -52,10 +54,9 @@
 
 (deftest test-simple-remove-prefix
   (let [state [:a :b :c]
-        path [:zeno/client -1]
-        ret (commands/eval-cmd state
-                               {:zeno/path path :zeno/op :zeno/remove}
-                               :zeno/client)
+        cmd {:zeno/op :zeno/remove
+             :zeno/path [:zeno/client -1]}
+        ret (commands/eval-cmd state cmd :zeno/client)
         expected {:state [:a :b],
                   :update-info {:norm-path [:zeno/client 2]
                                 :op :zeno/remove
@@ -110,8 +111,8 @@
                               :zeno/op :zeno/insert-before
                               :zeno/arg :new}]]]
     (doseq [case cases]
-      (let [[expected {:zeno/keys [path op arg] :as cmd}] case
-            ret (:state (commands/insert* state path :zeno/client op arg))]
+      (let [[expected cmd] case
+            ret (:state (commands/eval-cmd state cmd :zeno/client))]
         (is (= case [ret cmd]))))))
 
 (deftest test-deep-insert*
@@ -150,25 +151,29 @@
                                    :zeno/op :zeno/insert-before
                                    :zeno/arg :new}]]]
     (doseq [case cases]
-      (let [[expected {:zeno/keys [path op arg] :as cmd}] case
-            ret (:state (commands/insert* state path nil op arg))]
+      (let [[expected cmd] case
+            ret (:state (commands/eval-cmd state cmd nil))]
         (is (= case [ret cmd]))))))
 
 (deftest test-bad-insert*-on-map
   (is (thrown-with-msg?
        #?(:clj ExceptionInfo :cljs js/Error)
        #"does not point to a sequence"
-       (commands/insert* {:zeno/client {}}
-                         [:zeno/client 0]
-                         :zeno/client
-                         :zeno/insert-before
-                         :new))))
+       (commands/eval-cmd {:zeno/client {}}
+                          {:zeno/path [:zeno/client 0]
+                           :zeno/op :zeno/insert-after
+                           :zeno/arg :new}
+                          :zeno/client))))
 
 (deftest test-bad-insert*-path
   (is (thrown-with-msg?
        #?(:clj ExceptionInfo :cljs js/Error)
        #"the last element of the path must be an integer"
-       (commands/insert* [] [] :zeno/client :zeno/insert-before :new))))
+       (commands/eval-cmd {:zeno/client {}}
+                          {:zeno/path [:zeno/client]
+                           :zeno/op :zeno/insert-after
+                           :zeno/arg :new}
+                          :zeno/client))))
 
 (deftest test-remove
   (let [state {:x [:a :b :c]}
@@ -185,4 +190,3 @@
                                            {:zeno/path path :zeno/op :zeno/remove}
                                            :zeno/client))]
         (is (= case [ret state* path]))))))
-
