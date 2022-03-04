@@ -228,7 +228,7 @@
                                :schema (:crdt-schema arg)})]
     (is (= expected-value value))))
 
-(deftest ^:this test-crdt-array-insert-range-after-into-empty
+(deftest test-crdt-array-insert-range-after-into-empty
   (let [sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg ["1" "2" "3"]
                      :zeno/op :zeno/insert-range-after
