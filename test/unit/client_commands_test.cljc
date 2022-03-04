@@ -101,10 +101,10 @@
                [[:a :b :new] {:zeno/path [:zeno/client 10]
                               :zeno/op :zeno/insert-after
                               :zeno/arg :new}]
-               [[:new :a :b] {:zeno/path [:zeno/client -10]
+               [[:a :new :b] {:zeno/path [:zeno/client -10]
                               :zeno/op :zeno/insert-after
                               :zeno/arg :new}]
-               [[:a :b :new] {:zeno/path [:zeno/client 10]
+               [[:a :new :b] {:zeno/path [:zeno/client 10]
                               :zeno/op :zeno/insert-before
                               :zeno/arg :new}]
                [[:new :a :b] {:zeno/path [:zeno/client -10]
@@ -141,10 +141,10 @@
                [{:x [:a :b :new]} {:zeno/path [:x 10]
                                    :zeno/op :zeno/insert-after
                                    :zeno/arg :new}]
-               [{:x [:new :a :b]} {:zeno/path [:x -10]
+               [{:x [:a :new :b]} {:zeno/path [:x -10]
                                    :zeno/op :zeno/insert-after
                                    :zeno/arg :new}]
-               [{:x [:a :b :new]} {:zeno/path [:x 10]
+               [{:x [:a :new :b]} {:zeno/path [:x 10]
                                    :zeno/op :zeno/insert-before
                                    :zeno/arg :new}]
                [{:x [:new :a :b]} {:zeno/path [:x -10]

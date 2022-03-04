@@ -1,6 +1,7 @@
 (ns oncurrent.zeno.client.client-commands
   (:require
    [deercreeklabs.lancaster :as l]
+   [oncurrent.zeno.crdt.array :as array]
    [oncurrent.zeno.schemas :as schemas]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
@@ -153,10 +154,8 @@
             (throw (ex-info (str "In `" op "` operations, the `:zeno/arg` "
                                  "value must be sequential. Got `" arg "`.")
                             (u/sym-map op path value norm-path))))
-        norm-i (if (nat-int? i)
-                 i
-                 (+ (count value) i))
-        ;; TODO: Check for out of range norm-i
+        norm-i (array/get-clamped-array-index {:array-len (count value)
+                                               :i i})
         split-i (if (#{:zeno/insert-before :zeno/insert-range-before} op)
                   norm-i
                   (inc norm-i))
