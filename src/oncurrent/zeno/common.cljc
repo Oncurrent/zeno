@@ -52,6 +52,5 @@
       (let [{:keys [fp bytes]} serialized-value
             writer-schema (or (au/<? (storage/<fp->schema storage fp))
                               (au/<? (<get-schema-from-peer
-
                                       (assoc arg :fp fp))))]
         (l/deserialize reader-schema writer-schema bytes)))))

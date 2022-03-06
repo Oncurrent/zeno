@@ -177,8 +177,7 @@
                           :op-type :add-array-edge
                           :path '()
                           :sys-time-ms (or sys-time-ms (u/current-time-ms))
-                          :value {:add-id add-id
-                                  :head-node-id (last path)
+                          :value {:head-node-id (last path)
                                   :tail-node-id (first next-path)}}]
               (-> acc
                   (conj del-op-1)

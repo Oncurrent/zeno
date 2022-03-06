@@ -336,19 +336,3 @@
                                  fp-str "`.")
                             (u/sym-map fp fp-str)))))
         (l/deserialize reader-schema writer-schema bytes)))))
-
-(defn <command->serializable-command [storage sys-schema cmd]
-  (au/go
-    (when cmd
-      (let [{:keys [arg path]} cmd
-            value-schema (l/schema-at-path sys-schema path)
-            s-val (au/<? (<value->serialized-value storage value-schema arg))]
-        (assoc cmd :arg s-val)))))
-
-(defn <serializable-command->command [storage sys-schema s-cmd]
-  (au/go
-    (when s-cmd
-      (let [{:keys [arg path]} s-cmd
-            reader-schema (l/schema-at-path sys-schema path)
-            val (au/<? (<serialized-value->value storage reader-schema arg))]
-        (assoc s-cmd :arg val)))))

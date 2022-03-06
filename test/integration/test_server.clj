@@ -1,11 +1,15 @@
 (ns integration.test-server
   (:require
    [clojure.string :as str]
+   [deercreeklabs.lancaster :as l]
    [oncurrent.zeno.authenticators.identifier-secret.server :as is-auth]
    [oncurrent.zeno.server :as server]
    [oncurrent.zeno.storage :as storage]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
+
+(l/def-record-schema data-schema
+  [:numbers (l/array-schema l/int-schema)])
 
 (defn get-tls-configs []
   (let [certificate-str (some-> (System/getenv "ZENO_SERVER_CERTIFICATE_FILE")
@@ -25,6 +29,7 @@
         authenticators [identity-secret-auth]
         port (u/str->int port-str)
         config {:branch->authenticators {branch authenticators}
+                :crdt-schema data-schema
                 :port port
                 :storage (storage/make-storage)}]
     (log/info (str "Starting Zeno integration test server on port " port "."))

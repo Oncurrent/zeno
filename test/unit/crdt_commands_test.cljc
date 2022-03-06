@@ -20,57 +20,35 @@
   [:pets (l/array-schema pet-schema)])
 
 (deftest test-crdt-set
-  (let [*next-id-num (atom 0)
-        sys-time-ms (u/str->long "1643061294782")
+  (let [sys-time-ms (u/str->long "1643061294782")
         arg {:cmds [{:zeno/arg "Hi"
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}]
              :crdt-schema l/string-schema
-             :make-id #(let [n (swap! *next-id-num inc)]
-                         (str "I" n))
              :sys-time-ms sys-time-ms}
         {:keys [crdt ops]} (commands/process-cmds arg)
-        expected-ops #{{:add-id "I1"
-                        :op-type :add-value
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value "Hi"}}
         expected-value "Hi"]
-    (is (= expected-ops ops))
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-set-and-remove
-  (let [*next-id-num (atom 0)
-        sys-time-ms (u/str->long "1643061294782")
+  (let [sys-time-ms (u/str->long "1643061294782")
         arg {:cmds [{:zeno/arg "Hello"
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
                     {:zeno/op :zeno/remove
                      :zeno/path [:zeno/crdt]}]
              :crdt-schema l/string-schema
-             :make-id #(let [n (swap! *next-id-num inc)]
-                         (str "I" n))
              :sys-time-ms sys-time-ms}
         {:keys [crdt ops]} (commands/process-cmds arg)
-        expected-ops #{{:add-id "I1"
-                        :op-type :add-value
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value "Hello"}
-                       {:add-id "I1"
-                        :op-type :delete-value
-                        :path []}}
         expected-value nil]
-    (is (= expected-ops ops))
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-set-and-reset
-  (let [*next-id-num (atom 0)
-        sys-time-ms (u/str->long "1643061294782")
+  (let [sys-time-ms (u/str->long "1643061294782")
         arg {:cmds [{:zeno/arg "Hello"
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
@@ -78,32 +56,15 @@
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}]
              :crdt-schema l/string-schema
-             :make-id #(let [n (swap! *next-id-num inc)]
-                         (str "I" n))
              :sys-time-ms sys-time-ms}
         {:keys [crdt ops]} (commands/process-cmds arg)
-        expected-ops #{{:add-id "I1"
-                        :op-type :add-value
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value "Hello"}
-                       {:add-id "I1"
-                        :op-type :delete-value
-                        :path []}
-                       {:add-id "I2"
-                        :op-type :add-value
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value "Goodbye"}}
         expected-value "Goodbye"]
-    (is (= expected-ops ops))
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-map-set-and-reset
-  (let [*next-id-num (atom 0)
-        sys-time-ms (u/str->long "1643061294782")
+  (let [sys-time-ms (u/str->long "1643061294782")
         arg {:cmds [{:zeno/arg 31
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt "Alice"]}
@@ -114,38 +75,16 @@
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt "Bob"]}]
              :crdt-schema (l/map-schema l/int-schema)
-             :make-id #(let [n (swap! *next-id-num inc)]
-                         (str "I" n))
              :sys-time-ms sys-time-ms}
         {:keys [crdt ops]} (commands/process-cmds arg)
-        expected-ops #{{:add-id "I2"
-                        :op-type :delete-value
-                        :path ["Bob"]}
-                       {:add-id "I1"
-                        :op-type :add-value
-                        :path ["Alice"]
-                        :sys-time-ms sys-time-ms
-                        :value 31}
-                       {:add-id "I2"
-                        :op-type :add-value
-                        :path ["Bob"]
-                        :sys-time-ms sys-time-ms
-                        :value 8}
-                       {:add-id "I3"
-                        :op-type :add-value
-                        :path ["Bob"]
-                        :sys-time-ms sys-time-ms
-                        :value 12}}
         expected-value {"Alice" 31
                         "Bob" 12}]
-    (is (= expected-ops ops))
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-record-set-and-reset
-  (let [*next-id-num (atom 0)
-        sys-time-ms (u/str->long "1643061294782")
+  (let [sys-time-ms (u/str->long "1643061294782")
         arg {:cmds [{:zeno/arg "Lamby"
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt :name]}
@@ -156,38 +95,16 @@
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt :name]}]
              :crdt-schema pet-schema
-             :make-id #(let [n (swap! *next-id-num inc)]
-                         (str "I" n))
              :sys-time-ms sys-time-ms}
         {:keys [crdt ops]} (commands/process-cmds arg)
-        expected-ops #{{:add-id "I1"
-                        :op-type :delete-value
-                        :path [:name 1]}
-                       {:add-id "I1"
-                        :op-type :add-value
-                        :path [:name 1]
-                        :sys-time-ms sys-time-ms
-                        :value "Lamby"}
-                       {:add-id "I2"
-                        :op-type :add-value
-                        :path [:species 1]
-                        :sys-time-ms sys-time-ms
-                        :value "Ovis aries"}
-                       {:add-id "I3"
-                        :op-type :add-value,
-                        :path [:name 1]
-                        :sys-time-ms sys-time-ms
-                        :value "Sheepy"}}
         expected-value {:name "Sheepy"
                         :species "Ovis aries"}]
-    (is (= expected-ops ops))
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-union-set-and-reset
-  (let [*next-id-num (atom 0)
-        sys-time-ms (u/str->long "1643061294782")
+  (let [sys-time-ms (u/str->long "1643061294782")
         arg {:cmds [{:zeno/arg 3.14
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
@@ -195,139 +112,43 @@
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}]
              :crdt-schema (l/union-schema [l/string-schema l/float-schema])
-             :make-id #(let [n (swap! *next-id-num inc)]
-                         (str "I" n))
              :sys-time-ms sys-time-ms}
         {:keys [crdt ops]} (commands/process-cmds arg)
-        expected-ops #{{:add-id "I1"
-                        :op-type :delete-value
-                        :path [1]}
-                       {:add-id "I1"
-                        :op-type :add-value
-                        :path [1]
-                        :sys-time-ms sys-time-ms
-                        :value 3.14}
-                       {:add-id "I2"
-                        :op-type :add-value
-                        :path [0]
-                        :sys-time-ms sys-time-ms
-                        :value "pi"}}
         expected-value "pi"]
-    (is (= expected-ops ops))
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:crdt-schema arg)})))))
 
-(deftest  test-crdt-array-set
-  (let [*next-id-num (atom 0)
-        sys-time-ms (u/str->long "1643061294999")
+(deftest test-crdt-array-set
+  (let [sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg ["Hi" "There"]
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}]
              :crdt-schema (l/array-schema l/string-schema)
-             :make-id #(let [n (swap! *next-id-num inc)]
-                         (str "I" n))
              :sys-time-ms sys-time-ms}
         {:keys [crdt ops]} (commands/process-cmds arg)
-        expected-ops #{{:add-id "I5"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "I3"
-                                :tail-node-id "-END-"}}
-                       {:add-id "I6"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "-START-"
-                                :tail-node-id "I1"}}
-                       {:add-id "I7"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "I1"
-                                :tail-node-id "I3"}}
-                       {:add-id "I2"
-                        :op-type :add-value
-                        :path ["I1"]
-                        :sys-time-ms sys-time-ms
-                        :value "Hi"}
-                       {:add-id "I4"
-                        :op-type :add-value
-                        :path ["I3"]
-                        :sys-time-ms sys-time-ms
-                        :value "There"}}
         expected-value ["Hi" "There"]]
-    (is (= expected-ops ops))
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-array-set-and-remove
-  (let [*next-id-num (atom 0)
-        sys-time-ms (u/str->long "1643061294999")
+  (let [sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg ["Hi" "There"]
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
                     {:zeno/op :zeno/remove
                      :zeno/path [:zeno/crdt 0]}]
              :crdt-schema (l/array-schema l/string-schema)
-             :make-id #(let [n (swap! *next-id-num inc)]
-                         (str "I" n))
              :sys-time-ms sys-time-ms}
         {:keys [crdt ops]} (commands/process-cmds arg)
-        expected-ops #{{:add-id "I6"
-                        :op-type :delete-array-edge
-                        :path []}
-                       {:add-id "I7"
-                        :op-type :delete-array-edge
-                        :path []}
-                       {:add-id "I2"
-                        :op-type :delete-value
-                        :path ["I1"]}
-                       {:add-id "I5"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "I3"
-                                :tail-node-id "-END-"}}
-                       {:add-id "I6"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "-START-"
-                                :tail-node-id "I1"}}
-                       {:add-id "I7"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "I1"
-                                :tail-node-id "I3"}}
-                       {:add-id "I8"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "-START-"
-                                :tail-node-id "I3"}}
-                       {:add-id "I2"
-                        :op-type :add-value
-                        :path ["I1"]
-                        :sys-time-ms sys-time-ms
-                        :value "Hi"}
-                       {:add-id "I4"
-                        :op-type :add-value
-                        :path ["I3"]
-                        :sys-time-ms sys-time-ms
-                        :value "There"}}
         expected-value ["There"]]
-    (is (= expected-ops ops))
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-array-of-maps-set-and-remove
-  (let [*next-id-num (atom 0)
-        sys-time-ms (u/str->long "1643061294999")
+  (let [sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg [{"a" 1 "b" 2}
                                 {"y" 10 "z" 20}
                                 {"c" 3}]
@@ -336,8 +157,6 @@
                     {:zeno/op :zeno/remove
                      :zeno/path [:zeno/crdt 1 "y"]}]
              :crdt-schema (l/array-schema (l/map-schema l/int-schema))
-             :make-id #(let [n (swap! *next-id-num inc)]
-                         (str "I" n))
              :sys-time-ms sys-time-ms}
         {:keys [crdt ops]} (commands/process-cmds arg)
         expected-value [{"a" 1 "b" 2}
@@ -348,65 +167,21 @@
                                            :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-array-set-and-reset
-  (let [*next-id-num (atom 0)
-        sys-time-ms (u/str->long "1643061294999")
-        arg {:cmds [{:zeno/arg ["Hi" "There"]
+  (let [arg {:cmds [{:zeno/arg ["Hi" "There"]
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
                     {:zeno/arg "Go"
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt 0]}]
-             :crdt-schema (l/array-schema l/string-schema)
-             :make-id #(let [n (swap! *next-id-num inc)]
-                         (str "I" n))
-             :sys-time-ms sys-time-ms}
+             :crdt-schema (l/array-schema l/string-schema)}
         {:keys [crdt ops]} (commands/process-cmds arg)
-        expected-ops #{{:add-id "I2"
-                        :op-type :delete-value
-                        :path ["I1"]}
-                       {:add-id "I5"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "I3"
-                                :tail-node-id "-END-"}}
-                       {:add-id "I6"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "-START-"
-                                :tail-node-id "I1"}}
-                       {:add-id "I7"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "I1"
-                                :tail-node-id "I3"}}
-                       {:add-id "I2"
-                        :op-type :add-value
-                        :path ["I1"]
-                        :sys-time-ms sys-time-ms
-                        :value "Hi"}
-                       {:add-id "I4"
-                        :op-type :add-value
-                        :path ["I3"]
-                        :sys-time-ms sys-time-ms
-                        :value "There"}
-                       {:add-id "I8"
-                        :op-type :add-value
-                        :path ["I1"]
-                        :sys-time-ms sys-time-ms
-                        :value "Go"}}
         expected-value ["Go" "There"]]
-    (is (= expected-ops ops))
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-array-simple-inserts
-  (let [*next-id-num (atom 0)
-        sys-time-ms (u/str->long "1643061294999")
-        arg {:cmds [{:zeno/arg ["Hi" "There"]
+  (let [arg {:cmds [{:zeno/arg ["Hi" "There"]
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
                     {:zeno/arg "Hello!"
@@ -415,147 +190,32 @@
                     {:zeno/arg "Bob"
                      :zeno/op :zeno/insert-after
                      :zeno/path [:zeno/crdt -1]}]
-             :crdt-schema (l/array-schema l/string-schema)
-             :make-id #(let [n (swap! *next-id-num inc)]
-                         (str "I" n))
-             :sys-time-ms sys-time-ms}
+             :crdt-schema (l/array-schema l/string-schema)}
         {:keys [crdt ops]} (commands/process-cmds arg)
-        expected-ops #{{:add-id "I5"
-                        :op-type :delete-array-edge
-                        :path []}
-                       {:add-id "I6"
-                        :op-type :delete-array-edge
-                        :path []}
-                       {:add-id "I10"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "-START-"
-                                :tail-node-id "I8"}}
-                       {:add-id "I11"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms,
-                        :value {:head-node-id "I8"
-                                :tail-node-id "I1"}}
-                       {:add-id "I14"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "I3"
-                                :tail-node-id "I12"}}
-                       {:add-id "I15"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "I12"
-                                :tail-node-id "-END-"}}
-                       {:add-id "I5"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "I3"
-                                :tail-node-id "-END-"}}
-                       {:add-id "I6"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "-START-"
-                                :tail-node-id "I1"}}
-                       {:add-id "I7"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "I1"
-                                :tail-node-id "I3"}}
-                       {:add-id "I13"
-                        :op-type :add-value
-                        :path ["I12"]
-                        :sys-time-ms sys-time-ms
-                        :value "Bob"}
-                       {:add-id "I2"
-                        :op-type :add-value
-                        :path ["I1"]
-                        :sys-time-ms sys-time-ms
-                        :value "Hi"}
-                       {:add-id "I4"
-                        :op-type :add-value
-                        :path ["I3"]
-                        :sys-time-ms sys-time-ms
-                        :value "There"}
-                       {:add-id "I9"
-                        :op-type :add-value
-                        :path ["I8"]
-                        :sys-time-ms sys-time-ms
-                        :value "Hello!"}}
         expected-value ["Hello!" "Hi" "There" "Bob"]]
-    (is (= expected-ops ops))
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-array-insert-before-into-empty
-  (let [*next-id-num (atom 0)
-        sys-time-ms (u/str->long "1643061294999")
-        arg {:cmds [{:zeno/arg "Hello!"
+  (let [arg {:cmds [{:zeno/arg "Hello!"
                      :zeno/op :zeno/insert-before
                      :zeno/path [:zeno/crdt 0]}]
-             :crdt-schema (l/array-schema l/string-schema)
-             :make-id #(let [n (swap! *next-id-num inc)]
-                         (str "I" n))
-             :sys-time-ms sys-time-ms}
+             :crdt-schema (l/array-schema l/string-schema)}
         {:keys [crdt ops]} (commands/process-cmds arg)
-        expected-ops #{{:add-id "I3"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "-START-"
-                                :tail-node-id "I1"}}
-                       {:add-id "I4"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "I1"
-                                :tail-node-id "-END-"}}
-                       {:add-id "I2"
-                        :op-type :add-value
-                        :path ["I1"]
-                        :sys-time-ms sys-time-ms
-                        :value "Hello!"}}
         expected-value ["Hello!"]]
-    (is (= expected-ops ops))
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-array-insert-after-into-empty
-  (let [*next-id-num (atom 0)
-        sys-time-ms (u/str->long "1643061294999")
+  (let [sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg "Hello!"
                      :zeno/op :zeno/insert-after
                      :zeno/path [:zeno/crdt -1]}]
              :crdt-schema (l/array-schema l/string-schema)
-             :make-id #(let [n (swap! *next-id-num inc)]
-                         (str "I" n))
              :sys-time-ms sys-time-ms}
         {:keys [crdt ops]} (commands/process-cmds arg)
-        expected-ops #{{:add-id "I2"
-                        :op-type :add-value
-                        :path ["I1"]
-                        :sys-time-ms sys-time-ms
-                        :value "Hello!"}
-                       {:add-id "I3"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "-START-"
-                                :tail-node-id "I1"}}
-                       {:add-id "I4"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "I1"
-                                :tail-node-id "-END-"}}}
         ret (crdt/get-value-info {:crdt crdt
                                   :path [-1]
                                   :schema (:crdt-schema arg)})
@@ -566,117 +226,30 @@
         value (crdt/get-value {:crdt crdt
                                :path []
                                :schema (:crdt-schema arg)})]
-    (is (= expected-ops ops))
     (is (= expected-value value))))
 
-(deftest test-crdt-array-insert-range-after-into-empty
-  (let [*next-id-num (atom 0)
-        sys-time-ms (u/str->long "1643061294999")
+(deftest ^:this test-crdt-array-insert-range-after-into-empty
+  (let [sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg ["1" "2" "3"]
                      :zeno/op :zeno/insert-range-after
                      :zeno/path [:zeno/crdt -1]}]
              :crdt-schema (l/array-schema l/string-schema)
-             :make-id #(let [n (swap! *next-id-num inc)]
-                         (str "I" n))
              :sys-time-ms sys-time-ms}
         {:keys [crdt ops]} (commands/process-cmds arg)
-        expected-ops #{{:add-id "I10"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "I3"
-                                :tail-node-id "I5"}}
-                       {:add-id "I8"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "I5"
-                                :tail-node-id "-END-"}}
-                       {:add-id "I7"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "-START-"
-                                :tail-node-id "I1"}}
-                       {:add-id "I9"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "I1"
-                                :tail-node-id "I3"}}
-                       {:add-id "I2"
-                        :op-type :add-value
-                        :path ["I1"]
-                        :sys-time-ms sys-time-ms
-                        :value "1"}
-                       {:add-id "I4"
-                        :op-type :add-value
-                        :path ["I3"]
-                        :sys-time-ms sys-time-ms
-                        :value "2"}
-                       {:add-id "I6"
-                        :op-type :add-value
-                        :path ["I5"]
-                        :sys-time-ms sys-time-ms
-                        :value "3"}}
         expected-value ["1" "2" "3"]]
-    (is (= expected-ops ops))
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:crdt-schema arg)})))))
 
 (deftest test-crdt-array-insert-range-before-into-empty
-  (let [*next-id-num (atom 0)
-        sys-time-ms (u/str->long "1643061294999")
+  (let [sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg ["1" "2" "3"]
                      :zeno/op :zeno/insert-range-before
                      :zeno/path [:zeno/crdt 0]}]
              :crdt-schema (l/array-schema l/string-schema)
-             :make-id #(let [n (swap! *next-id-num inc)]
-                         (str "I" n))
              :sys-time-ms sys-time-ms}
         {:keys [crdt ops]} (commands/process-cmds arg)
-        expected-ops #{{:add-id "I10"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "I3"
-                                :tail-node-id "I5"}}
-                       {:add-id "I7"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "I5"
-                                :tail-node-id "-END-"}}
-                       {:add-id "I8"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "-START-"
-                                :tail-node-id "I1"}}
-                       {:add-id "I9"
-                        :op-type :add-array-edge
-                        :path []
-                        :sys-time-ms sys-time-ms
-                        :value {:head-node-id "I1"
-                                :tail-node-id "I3"}}
-                       {:add-id "I2"
-                        :op-type :add-value
-                        :path ["I1"]
-                        :sys-time-ms sys-time-ms
-                        :value "1"}
-                       {:add-id "I4"
-                        :op-type :add-value
-                        :path ["I3"]
-                        :sys-time-ms sys-time-ms
-                        :value "2"}
-                       {:add-id "I6"
-                        :op-type :add-value
-                        :path ["I5"]
-                        :sys-time-ms sys-time-ms
-                        :value "3"}}
         expected-value ["1" "2" "3"]]
-    (is (= expected-ops ops))
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:crdt-schema arg)})))))

@@ -31,10 +31,22 @@
 (defmulti get-add-ops-info (fn [{:keys [schema]}]
                              (c/schema->dispatch-type schema)))
 
-(defn xf-op-paths [prefix ops]
-  (reduce (fn [acc op]
+(defn xf-op-paths [{:keys [prefix ops union? array?]}]
+  (reduce (fn [acc {:keys [norm-path] :as op}]
             (conj acc
-                  (update op :path #(cons prefix %))))
+                  (cond-> op
+                    true
+                    (update :path #(cons prefix %))
+
+                    (and norm-path
+                         (not array?)
+                         (not union?))
+                    (update :norm-path #(cons prefix %))
+
+                    (and norm-path
+                         array?
+                         (not union?))
+                    (update :norm-path #(cons 0 %)))))
           #{}
           ops))
 
@@ -58,7 +70,10 @@
                                          :crdt (get-in crdt [:children k])
                                          :path sub-path
                                          :schema (get-child-schema k)))
-                                 (update :ops #(xf-op-paths k %))))]
+                                 (update :ops
+                                         (fn [ops]
+                                           (xf-op-paths {:prefix k
+                                                         :ops ops})))))]
     (if (empty? path)
       (reduce-kv (fn [acc k _]
                    (let [ret (get-child-ops-info {:k k
@@ -179,13 +194,17 @@
       (-> (get-delete-ops-info (assoc arg
                                       :path path
                                       :schema member-schema))
-          (update :ops #(xf-op-paths union-branch %)))
+          (update :ops (fn [ops]
+                         (xf-op-paths {:prefix union-branch
+                                       :ops ops
+                                       :union? true}))))
       {:norm-path norm-path
        :ops #{}})))
 
 (defmethod get-add-ops-info :single-value
   [{:keys [cmd-arg make-id norm-path sys-time-ms]}]
   (let [ops #{{:add-id (make-id)
+               :norm-path '()
                :op-type :add-value
                :path '()
                :sys-time-ms (or sys-time-ms (u/current-time-ms))
@@ -202,7 +221,9 @@
                                      :norm-path (conj norm-path k)
                                      :path ks
                                      :schema values-schema))
-            (update :ops #(xf-op-paths k %))))
+            (update :ops (fn [ops]
+                           (xf-op-paths {:prefix k
+                                         :ops ops})))))
       (let [edn-schema (l/edn schema)
             pred (c/edn-schema->pred edn-schema)
             _ (when-not (pred cmd-arg)
@@ -219,7 +240,8 @@
                                        :path []
                                        :schema values-schema))]
                        {:ops (set/union (:ops acc)
-                                        (xf-op-paths k (:ops ret)))
+                                        (xf-op-paths {:prefix k
+                                                      :ops (:ops ret)}))
                         :norm-path (:norm-path ret)}))
                    {:ops #{}
                     :norm-path nil}
@@ -234,7 +256,9 @@
                                    :norm-path (conj norm-path k)
                                    :path ks
                                    :schema (l/schema-at-path schema [k])))
-          (update :ops #(xf-op-paths k %))))
+          (update :ops (fn [ops]
+                         (xf-op-paths {:prefix k
+                                       :ops ops})))))
     (do
       (when-not (associative? cmd-arg)
         (throw (ex-info
@@ -253,7 +277,8 @@
                                   :path []
                                   :schema child-schema))]
                   {:ops (set/union (:ops acc)
-                                   (xf-op-paths k (:ops ret)))
+                                   (xf-op-paths {:prefix k
+                                                 :ops (:ops ret)}))
                    :norm-path (:norm-path ret)}))
               {:ops #{}
                :norm-path nil}
@@ -272,7 +297,10 @@
     (-> (get-add-ops-info (assoc arg
                                  :path path
                                  :schema member-schema))
-        (update :ops #(xf-op-paths union-branch %)))))
+        (update :ops (fn [ops]
+                       (xf-op-paths {:prefix union-branch
+                                     :ops ops
+                                     :union? true}))))))
 
 (defmethod get-add-ops-info :array
   [{:keys [cmd-arg cmd-path crdt make-id norm-path path
@@ -290,7 +318,10 @@
                                          :crdt (get-in crdt [:children k])
                                          :path sub-path
                                          :schema items-schema))]
-        (update ret :ops #(xf-op-paths k %)))
+        (update ret :ops (fn [ops]
+                           (xf-op-paths {:array? true
+                                         :prefix k
+                                         :ops ops}))))
       (let [_ (when-not (sequential? cmd-arg)
                 (throw (ex-info
                         (str "Command path indicates an array, but arg is "
@@ -308,11 +339,13 @@
                                            :path []
                                            :schema items-schema))]
                       (-> acc
-                          (update :node-ops (fn [node-ops]
-                                              (set/union
-                                               node-ops
-                                               (xf-op-paths node-id
-                                                            (:ops node-ret)))))
+                          (update :node-ops
+                                  (fn [node-ops]
+                                    (set/union
+                                     node-ops
+                                     (xf-op-paths {:array? true
+                                                   :prefix node-id
+                                                   :ops (:ops node-ret)}))))
                           (update :node-ids conj node-id))))
                   {:node-ids []
                    :node-ops #{}}
@@ -389,7 +422,10 @@
                          :i clamped-i
                          :new-node-id node-id
                          :ordered-node-ids ordered-node-ids))
-        ops (set/union edge-ops (xf-op-paths node-id (:ops node-ret)))
+        ops (set/union edge-ops (xf-op-paths
+                                 {:array? true
+                                  :prefix node-id
+                                  :ops (:ops node-ret)}))
         final-crdt (apply-ops/apply-ops
                     (assoc arg
                            :crdt repaired-crdt
@@ -428,8 +464,10 @@
                       (update :node-ops (fn [node-ops]
                                           (set/union
                                            node-ops
-                                           (xf-op-paths node-id
-                                                        (:ops node-ret)))))
+                                           (xf-op-paths
+                                            {:array? true
+                                             :prefix node-id
+                                             :ops (:ops node-ret)}))))
                       (update :new-node-ids conj node-id))))
               {:new-node-ids []
                :node-ops #{}}
@@ -482,7 +520,8 @@
                               :schema child-schema))
         new-crdt (assoc-in crdt [:children k] (:crdt ret))]
     {:crdt new-crdt
-     :ops (xf-op-paths k (:ops ret))
+     :ops (xf-op-paths {:prefix k
+                        :ops (:ops ret)})
      :update-info {:norm-path norm-path
                    :op cmd-type
                    :value cmd-arg}}))
@@ -502,7 +541,10 @@
         {:keys [member-schema union-branch]} ret]
     (-> (assoc arg :schema member-schema)
         (do-insert)
-        (update :ops #(xf-op-paths union-branch %)))))
+        (update :ops (fn [ops]
+                       (xf-op-paths {:prefix union-branch
+                                     :ops ops
+                                     :union? true}))))))
 
 (defmethod do-insert :single-value
   [{:keys [cmd-arg cmd-type schema path] :as arg}]

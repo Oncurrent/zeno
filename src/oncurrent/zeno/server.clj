@@ -9,6 +9,7 @@
    [oncurrent.zeno.server.authentication :as authentication]
    [oncurrent.zeno.distributed-mutex :as dm]
    [oncurrent.zeno.schemas :as schemas]
+   [oncurrent.zeno.server.log-sync :as log-sync]
    [oncurrent.zeno.storage :as storage]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
@@ -211,21 +212,32 @@
               (dm/make-distributed-mutex-client mutex-name storage opts)))
           roles)))
 
-
 (defn make-client-ep-info
   [{:keys [storage] :as arg}]
-  {:handlers {:get-schema-pcf-for-fingerprint
+  {:handlers {:get-consumer-log-tx-i
+              #(log-sync/<handle-get-consumer-log-tx-i (merge % arg))
+
+              :get-consumer-log-range
+              #(log-sync/<handle-get-consumer-log-range (merge % arg))
+
+              :get-schema-pcf-for-fingerprint
               (fn [{:keys [arg]}]
                 (au/go
                   (-> (storage/<fp->schema storage arg)
                       (au/<?)
                       (l/json))))
 
+              :get-tx-info
+              #(log-sync/<handle-get-tx-info (merge % arg))
+
               :log-in
               #(authentication/<handle-log-in (merge % arg))
 
               :log-out
               #(authentication/<handle-log-out (merge % arg))
+
+              :publish-producer-log-status
+              #(log-sync/<handle-publish-producer-log-status (merge % arg))
 
               :resume-session
               #(authentication/<handle-resume-session (merge % arg))
@@ -291,6 +303,7 @@
                 <publish-member-urls
                 branch->authenticators
                 certificate-str
+                crdt-schema
                 port
                 private-key-str
                 storage
@@ -300,6 +313,7 @@
         talk2-server (make-talk2-server
                       (u/sym-map *connection-info
                                  branch->authenticator-name->info
+                                 crdt-schema
                                  certificate-str
                                  port
                                  private-key-str
@@ -312,7 +326,8 @@
                                             ws-url
                                             <get-published-member-urls
                                             <publish-member-urls))]
-    (u/sym-map member-id
+    (u/sym-map crdt-schema
+               member-id
                mutex-clients
                storage
                talk2-server

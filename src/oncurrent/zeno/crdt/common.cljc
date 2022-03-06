@@ -1,7 +1,12 @@
 (ns oncurrent.zeno.crdt.common
   (:require
+   [clojure.core.async :as ca]
+   [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
    [deercreeklabs.lancaster.utils :as lu]
+   [oncurrent.zeno.common :as common]
+   [oncurrent.zeno.schemas :as schemas]
+   [oncurrent.zeno.storage :as storage]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
@@ -177,3 +182,138 @@
      :value nil}
     (let [member-schema (get-member-schema arg)]
       (get-value-info (assoc arg :schema member-schema)))))
+
+(defn get-op-value-schema [{:keys [op-type norm-path crdt-schema]}]
+  (case op-type
+    :add-array-edge schemas/crdt-array-edge-schema
+    :add-value (l/schema-at-path crdt-schema norm-path)
+    :delete-array-edge nil
+    :delete-value nil))
+
+(defn <crdt-op->serializable-crdt-op
+  [{:keys [storage crdt-schema op]}]
+  (au/go
+    (when op
+      (let [{:keys [norm-path op-type path value]} op
+            schema (get-op-value-schema
+                    (u/sym-map op-type norm-path crdt-schema))]
+        (cond-> op
+          true (dissoc :path)
+          true (assoc :op-path path)
+          true (dissoc :value)
+          schema (assoc :serialized-value
+                        (au/<? (storage/<value->serialized-value
+                                storage schema value))))))))
+
+(defn <serializable-crdt-op->crdt-op
+  [{:keys [storage crdt-schema op] :as arg}]
+  (au/go
+    (when op
+      (let [{:keys [norm-path op-type op-path serialized-value]} op
+            schema (get-op-value-schema
+                    (u/sym-map op-type norm-path crdt-schema))]
+        (cond-> op
+          true (dissoc :op-path)
+          true (assoc :path op-path)
+          true (dissoc :serialized-value)
+          schema (assoc :value
+                        (au/<? (common/<serialized-value->value
+                                (assoc arg
+                                       :reader-schema schema
+                                       :serialized-value serialized-value)))))))))
+
+(defn <crdt-ops->serializable-crdt-ops [arg]
+  (au/go
+    (let [ops (seq (:ops arg))
+          last-i (count ops)]
+      (if (zero? last-i)
+        []
+        (loop [i 0
+               out []]
+          (let [op (nth ops i)
+                s-op (au/<? (<crdt-op->serializable-crdt-op
+                             (assoc arg :op op)))
+                new-i (inc i)
+                new-out (conj out s-op)]
+            (if (= last-i new-i)
+              new-out
+              (recur new-i new-out))))))))
+
+(defn <serializable-crdt-ops->crdt-ops [arg]
+  (au/go
+    (let [ops (seq (:ops arg))
+          last-i (count ops)]
+      (if (zero? last-i)
+        []
+        (loop [i 0
+               out []]
+          (let [s-op (nth ops i)
+                op (au/<? (<serializable-crdt-op->crdt-op
+                           (assoc arg :op s-op)))
+                new-i (inc i)
+                new-out (conj out op)]
+            (if (= last-i new-i)
+              new-out
+              (recur new-i new-out))))))))
+
+(defn <update-info->serializable-update-info
+  [{:keys [storage crdt-schema update-info]}]
+  (au/go
+    (when update-info
+      (let [{:keys [norm-path value]} update-info
+            value-schema (l/schema-at-path crdt-schema
+                                           ;; Chop off the :zeno/crdt part
+                                           (rest norm-path))]
+        (-> update-info
+            (dissoc :value)
+            (assoc :serialized-value
+                   (au/<? (storage/<value->serialized-value
+                           storage value-schema value))))))))
+
+(defn <serializable-update-info->update-info
+  [{:keys [crdt-schema update-info] :as arg}]
+  (au/go
+    (when update-info
+      (let [{:keys [norm-path serialized-value]} update-info
+            value-schema (l/schema-at-path crdt-schema (rest norm-path))]
+        (-> update-info
+            (dissoc :serialized-value)
+            (assoc :value
+                   (au/<? (common/<serialized-value->value
+                           (assoc arg
+                                  :reader-schema value-schema
+                                  :serialized-value serialized-value)))))))))
+
+(defn <update-infos->serializable-update-infos [arg]
+  (au/go
+    (let [infos (seq (:update-infos arg))
+          last-i (count infos)]
+      (if (zero? last-i)
+        []
+        (loop [i 0
+               out []]
+          (let [info (nth infos i)
+                s-info (au/<? (<update-info->serializable-update-info
+                               (assoc arg :update-info info)))
+                new-i (inc i)
+                new-out (conj out s-info)]
+            (if (= last-i new-i)
+              new-out
+              (recur new-i new-out))))))))
+
+(defn <serializable-update-infos->update-infos [arg]
+  (au/go
+    (let [infos (seq (:update-infos arg))
+          last-i (count infos)]
+      (if (zero? last-i)
+        []
+        (loop [i 0
+               out []]
+          (let [s-info (nth infos i)
+                info (au/<? (<serializable-update-info->update-info
+                             (assoc arg :update-info s-info)))
+                new-i (inc i)
+                new-out (conj out info)]
+            (if (= last-i new-i)
+              new-out
+              (recur new-i new-out))))))))

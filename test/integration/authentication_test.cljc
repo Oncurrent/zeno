@@ -15,7 +15,7 @@
 (defn make-identifier []
   (str "user-" (u/compact-random-uuid) "@email.com"))
 
-(deftest ^:this test-identity-secret-authenticator
+(deftest test-identity-secret-authenticator
   (au/test-async
    10000
    (ca/go

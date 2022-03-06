@@ -9,7 +9,9 @@
    [oncurrent.zeno.client.state-subscriptions :as state-subscriptions]
    [oncurrent.zeno.client.client-commands :as client-commands]
    [oncurrent.zeno.crdt :as crdt]
+   [oncurrent.zeno.crdt.apply-ops-impl :as apply-ops]
    [oncurrent.zeno.crdt.commands :as crdt-commands]
+   [oncurrent.zeno.crdt.common :as crdt-common]
    [oncurrent.zeno.common :as common]
    [oncurrent.zeno.schemas :as schemas]
    [oncurrent.zeno.storage :as storage]
@@ -19,8 +21,7 @@
 (def default-config
   {:crdt-authorizer (client-authz/make-affirmative-authorizer)
    :crdt-branch "prod"
-   :initial-client-state {}
-   :storage (storage/make-storage (storage/make-mem-raw-storage))})
+   :initial-client-state {}})
 
 (def client-config-rules
   {:crdt-authorizer {:required? false
@@ -43,6 +44,14 @@
              :checks [{:pred #(satisfies? storage/IStorage %)
                        :msg "must satisfy the IStorage protocol"}]}})
 
+(def consumer-log-key "_CONSUMER-LOG")
+(def tx-id->tx-info-key-prefix "TX-ID-TO-TX-INFO-")
+(def producer-log-key "_PRODUCER-LOG")
+
+(defn make-schema-requester [talk2-client]
+  (fn [fp]
+    (t2c/<send-msg! talk2-client :get-schema-pcf-for-fingerprint fp)))
+
 (defn split-cmds [cmds]
   (reduce
    (fn [acc cmd]
@@ -53,6 +62,107 @@
    {}
    cmds))
 
+(defn <log-tx! [{:keys [zc] :as arg}]
+  (au/go
+    (let [{:keys [*actor-id client-name storage]} zc
+          actor-id @*actor-id
+          crdt-ops (au/<? (crdt-common/<crdt-ops->serializable-crdt-ops
+                           (assoc zc
+                                  :ops (:ops arg))))
+          sys-time-ms (u/current-time-ms)
+          update-infos (au/<?
+                        (crdt-common/<update-infos->serializable-update-infos
+                         (assoc zc :update-infos (:update-infos arg))))
+          tx-info (u/sym-map actor-id crdt-ops sys-time-ms update-infos)
+          tx-id (u/compact-random-uuid)]
+      (au/<? (storage/<add! storage
+                            (str tx-id->tx-info-key-prefix tx-id)
+                            schemas/tx-info-schema
+                            tx-info))
+      (au/<? (storage/<swap! storage
+                             producer-log-key
+                             schemas/tx-log-schema
+                             (fn [old-log]
+                               (conj (or old-log []) tx-id)))))))
+
+(defn <apply-tx [{:keys [*crdt-state crdt-schema tx-info talk2-client] :as arg}]
+  (au/go
+    (let [<request-schema (make-schema-requester talk2-client)
+          ops (au/<? (crdt-common/<serializable-crdt-ops->crdt-ops
+                      (assoc arg
+                             :<request-schema <request-schema
+                             :ops (:crdt-ops tx-info))))
+          update-infos (au/<?
+                        (crdt-common/<serializable-update-infos->update-infos
+                         (assoc arg
+                                :<request-schema <request-schema
+                                :update-infos (:update-infos tx-info))))]
+      (swap! *crdt-state (fn [old-crdt]
+                           (apply-ops/apply-ops
+                            (assoc arg
+                                   :crdt old-crdt
+                                   :schema crdt-schema
+                                   :ops ops))))
+      (state-subscriptions/do-subscription-updates! arg update-infos))))
+
+(defn start-log-sync-loop! [zc]
+  (ca/go
+    (let [{:keys [*shutdown? client-name storage talk2-client]} zc]
+      (when talk2-client
+        (loop []
+          (try
+            (let [producer-log (au/<? (storage/<get storage
+                                                    producer-log-key
+                                                    schemas/tx-log-schema))
+                  pub-ret (au/<? (t2c/<send-msg! talk2-client
+                                                 :publish-producer-log-status
+                                                 {:tx-i (count producer-log)}))
+                  server-consumer-tx-i (au/<? (t2c/<send-msg!
+                                               talk2-client
+                                               :get-consumer-log-tx-i
+                                               nil))
+                  consumer-log (au/<? (storage/<get storage
+                                                    consumer-log-key
+                                                    schemas/tx-log-schema))
+                  consumer-tx-i (count consumer-log)]
+              (when (> server-consumer-tx-i consumer-tx-i)
+                (let [index-range {:start-i consumer-tx-i
+                                   :end-i server-consumer-tx-i}
+                      new-log-entries (au/<? (t2c/<send-msg!
+                                              talk2-client
+                                              :get-consumer-log-range
+                                              index-range))]
+                  (doseq [tx-id new-log-entries]
+                    ;; TODO: Parallelize this?
+                    (when-not (au/<? (storage/<get
+                                      storage
+                                      (str tx-id->tx-info-key-prefix tx-id)
+                                      schemas/tx-info-schema))
+                      ;; TODO: Don't fetch tx-infos that we already have
+                      (let [tx-info (au/<? (t2c/<send-msg!
+                                            talk2-client
+                                            :get-tx-info
+                                            tx-id))]
+                        ;; TODO: Make overwriting a tx-info work (idempotent)
+                        (au/<? (storage/<add! storage
+                                              (str tx-id->tx-info-key-prefix tx-id)
+                                              schemas/tx-info-schema
+                                              tx-info))
+                        (au/<? (<apply-tx (assoc zc :tx-info tx-info))))))
+                  (au/<? (storage/<swap! storage
+                                         consumer-log-key
+                                         schemas/tx-log-schema
+                                         (fn [old-log]
+                                           (concat old-log
+                                                   new-log-entries)))))))
+            (catch #?(:clj Exception :cljs js/Error) e
+              (log/error "Error in log sync loop:\n"
+                         (u/ex-msg-and-stacktrace e))))
+          (when-not @*shutdown?
+            ;; TODO: Consider this timeout value
+            (ca/<! (ca/timeout 1000))
+            (recur)))))))
+
 (defn <do-update-state! [zc cmds]
   ;; This is called serially from the update-state loop.
   ;; We can rely on there being no concurrent updates.
@@ -60,7 +170,7 @@
   ;; all commit or none commit. A transaction may include  many kinds of
   ;; updates.
   (au/go
-    (let [{:keys [crdt-schema *client-state *crdt-state]} zc
+    (let [{:keys [crdt-schema talk2-client *client-state *crdt-state]} zc
           root->cmds (split-cmds cmds)
           ;; When we support :zeno/online, do those cmds first and fail the txn
           ;; if the online cmds fail.
@@ -79,6 +189,10 @@
       (reset! *client-state (:state client-ret))
       (reset! *crdt-state (:crdt crdt-ret))
       (state-subscriptions/do-subscription-updates! zc update-infos)
+      (when talk2-client
+        (au/<? (<log-tx! {:ops (:ops crdt-ret)
+                          :update-infos (:update-infos crdt-ret)
+                          :zc zc})))
       true)))
 
 (defn start-update-state-loop! [zc]
@@ -99,16 +213,31 @@
           (catch #?(:clj Exception :cljs js/Error) e
             (log/error "Error updating state:\n"
                        (u/ex-msg-and-stacktrace e))))
-        (when-not @(:*shutdown? zc)
+        (when-not @*shutdown?
           (recur))))))
 
 (defn make-talk2-client [{:keys [get-server-url storage]}]
-  (let [handlers {:get-schema-pcf-for-fingerprint
+  (let [handlers {:get-producer-log-range
+                  (fn [{:keys [arg]}]
+                    (au/go
+                      (let [plog (au/<? (storage/<get storage
+                                                      producer-log-key
+                                                      schemas/tx-log-schema))
+                            {:keys [start-i end-i]} arg]
+                        (subvec plog start-i end-i))))
+
+                  :get-schema-pcf-for-fingerprint
                   (fn [{:keys [arg]}]
                     (au/go
                       (-> (storage/<fp->schema storage arg)
                           (au/<?)
                           (l/json))))
+
+                  :get-tx-info
+                  (fn [{:keys [arg]}]
+                    (storage/<get storage
+                                  (str tx-id->tx-info-key-prefix arg)
+                                  schemas/tx-info-schema))
 
                   :rpc
                   ;; TODO: Implement
@@ -123,9 +252,12 @@
                            :config-type :client
                            :config-rules client-config-rules})
         {:keys [branch
+                client-name
                 crdt-schema
                 initial-client-state
-                storage]} config*
+                storage]
+         :or {storage (storage/make-storage
+                       (storage/make-mem-raw-storage))}} config*
         *next-instance-num (atom 0)
         *next-topic-sub-id (atom 0)
         *topic-name->sub-id->cb (atom {})
@@ -136,7 +268,8 @@
         *state-sub-name->info (atom {})
         *actor-id (atom nil)
         talk2-client (when (:get-server-url config*)
-                       (make-talk2-client config*))
+                       (make-talk2-client (assoc config*
+                                                 :storage storage)))
         update-state-ch (ca/chan (ca/sliding-buffer 1000))
         zc (u/sym-map *actor-id
                       *client-state
@@ -147,10 +280,12 @@
                       *state-sub-name->info
                       *topic-name->sub-id->cb
                       branch
+                      client-name
                       crdt-schema
                       storage
                       talk2-client
                       update-state-ch)]
+    (start-log-sync-loop! zc)
     (start-update-state-loop! zc)
     zc))
 

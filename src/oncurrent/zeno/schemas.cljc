@@ -64,11 +64,6 @@
 (l/def-array-schema path-schema
   path-item-schema)
 
-(l/def-record-schema serializable-command-schema
-  [:zeno/arg serialized-value-schema]
-  [:zeno/op command-op-schema]
-  [:zeno/path path-schema])
-
 ;;;;;;;;;;;;;;;;; CRDT Schemas ;;;;;;;;;;;;;;;;;;;;;;;
 
 (l/def-enum-schema crdt-op-type-schema
@@ -77,21 +72,41 @@
   :delete-array-edge
   :delete-value)
 
+(l/def-record-schema crdt-array-edge-schema
+  [:head-node-id id-schema]
+  [:tail-node-id id-schema])
+
 (l/def-record-schema crdt-op-schema
   "Depending on the op-type, different fields will be used."
   [:add-id id-schema]
+  [:norm-path path-schema]
+  [:op-path path-schema]
   [:op-type crdt-op-type-schema]
-  [:path path-schema]
   [:serialized-value serialized-value-schema]
   [:sys-time-ms timestamp-ms-schema])
 
 ;;;;;;;;;;;;;;;; Transaction & Log Schemas ;;;;;;;;;;;;;;;;;
 
+(l/def-array-schema tx-log-schema
+  id-schema)
+
+(l/def-record-schema log-status-schema
+  [:tx-i l/long-schema])
+
+(l/def-record-schema index-range-schema
+  [:end-i l/long-schema]
+  [:start-i l/long-schema])
+
+(l/def-record-schema update-info-schema
+  [:norm-path path-schema]
+  [:op command-op-schema]
+  [:serialized-value serialized-value-schema])
+
 (l/def-record-schema tx-info-schema
-  [:crdt-ops (l/array-schema crdt-op-schema)]
   [:actor-id actor-id-schema]
+  [:crdt-ops (l/array-schema crdt-op-schema)]
   [:sys-time-ms timestamp-ms-schema]
-  [:update-cmds (l/array-schema serializable-command-schema)])
+  [:update-infos (l/array-schema update-info-schema)])
 
 (l/def-record-schema tx-log-block-schema
   [:prev-log-block-id id-schema]
@@ -143,12 +158,22 @@
 ;;;;;;;;;;;;;;; Talk2 Protocols ;;;;;;;;;;;;;;;;;;;;;
 
 (def client-server-protocol
-  {:get-schema-pcf-for-fingerprint {:arg-schema fingerprint-schema
+  {:get-consumer-log-range {:arg-schema index-range-schema
+                            :ret-schema tx-log-schema}
+   :get-consumer-log-tx-i {:arg-schema l/null-schema
+                           :ret-schema l/long-schema}
+   :get-producer-log-range {:arg-schema index-range-schema
+                            :ret-schema tx-log-schema}
+   :get-schema-pcf-for-fingerprint {:arg-schema fingerprint-schema
                                     :ret-schema (l/maybe l/string-schema)}
+   :get-tx-info {:arg-schema id-schema
+                 :ret-schema tx-info-schema}
    :log-in {:arg-schema log-in-arg-schema
             :ret-schema (l/maybe log-in-ret-schema)}
    :log-out {:arg-schema l/null-schema
              :ret-schema l/boolean-schema}
+   :publish-producer-log-status {:arg-schema log-status-schema
+                                 :ret-schema l/keyword-schema}
    :resume-session {:arg-schema session-token-schema
                     :ret-schema (l/maybe session-info-schema)}
    :rpc {:arg-schema rpc-arg-schema

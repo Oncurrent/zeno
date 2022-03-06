@@ -8,6 +8,7 @@
    [deercreeklabs.async-utils :as au]
    [oncurrent.zeno.client.impl :as client]
    [oncurrent.zeno.client.macro-impl :as macro-impl]
+   [oncurrent.zeno.client.react.impl :as react-impl]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]
    #?(:cljs [goog.object])
@@ -92,8 +93,8 @@
      (ocall React :cloneElement element #js {"key" k})))
 
 ;; We redirect to impl to avoid a cyclic ns dependency.
-(defn batch-updates [&args]
-  (apply impl/batch-updates args))
+(defn batch-updates [f]
+  (apply react-impl/batch-updates f))
 
 ;;;; Macros
 
