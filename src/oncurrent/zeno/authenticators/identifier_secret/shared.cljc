@@ -19,7 +19,6 @@
   [:secret secret-schema])
 
 (l/def-record-schema set-secret-info-schema
-  [:identifier identifier-schema]
   [:old-secret secret-schema]
   [:new-secret secret-schema])
 

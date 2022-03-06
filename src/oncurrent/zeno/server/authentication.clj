@@ -1,9 +1,12 @@
 (ns oncurrent.zeno.server.authentication
   (:require
+   [com.deercreeklabs.talk2.server :as t2s]
    [clojure.core.async :as ca]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.baracus :as ba]
+   [oncurrent.zeno.common :as common]
    [oncurrent.zeno.schemas :as schemas]
+   [oncurrent.zeno.server.utils :as su]
    [oncurrent.zeno.storage :as storage]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log])
@@ -17,6 +20,7 @@
   (<update-authenticator-state! [this arg])
   (get-login-info-schema [this])
   (get-login-ret-extra-info-schema [this])
+  (get-name [this])
   (get-update-state-info-schema [this update-type])
   (get-update-state-ret-schema [this update-type]))
 
@@ -27,25 +31,25 @@
     (ba/byte-array->b64 bytes)))
 
 (defn <handle-log-in
-  [{:keys [*connection-info
-           branch-id->authenticator-name->authenticator-info
-           msg-arg
-           storage]}]
+  [{:keys [*connection-info branch->authenticator-name->info storage] :as arg}]
   (au/go
-    (let [{:keys [authenticator-name branch-id]} msg-arg
-          auth-info (some-> branch-id->authenticator-name->authenticator-info
-                            (get branch-id)
+    (let [{:keys [authenticator-name branch serialized-login-info]} (:arg arg)
+          auth-info (some-> branch->authenticator-name->info
+                            (get branch)
                             (get authenticator-name))
           _ (when-not auth-info
               (throw (ex-info
                       (str "No authenticator with name `" authenticator-name
-                           "` was found for branch id `" branch-id "`.")
-                      (u/sym-map authenticator-name branch-id))))
+                           "` was found for branch id `" branch "`.")
+                      (u/sym-map authenticator-name branch))))
           {:keys [authenticator authenticator-storage]} auth-info
-          login-info (au/<? (storage/<serialized-value->value
-                             storage
-                             (get-login-info-schema authenticator)
-                             (:serialized-login-info msg-arg)))
+          <request-schema (su/make-schema-requester arg)
+          reader-schema (get-login-info-schema authenticator)
+          login-info (au/<? (common/<serialized-value->value
+                             {:<request-schema <request-schema
+                              :reader-schema reader-schema
+                              :serialized-value serialized-login-info
+                              :storage storage}))
           login-ret (au/<? (<log-in! authenticator
                                      (u/sym-map authenticator-storage
                                                 login-info)))]
@@ -87,39 +91,39 @@
                  #(-> %
                       (assoc ::authenticator authenticator)
                       (assoc ::authenticator-storage authenticator-storage)
-                      (assoc ::branch-id (:branch-id msg-arg))
+                      (assoc ::branch (:branch arg))
                       (assoc ::session-token session-token)
                       (assoc ::actor-id actor-id)))
           (u/sym-map serialized-extra-info session-info))))))
 
 (defn <handle-log-out
-  [{:keys [*connection-info storage talk2server]}]
+  [{:keys [*connection-info storage]}]
   (au/go
     (let [conn-info @*connection-info
           token-k (str storage/session-token-to-token-info-key-prefix
-                       (::session-token conn-info))
-          _ (au/<? (storage/<delete! storage token-k))
-          ret (au/<? (<log-out! (::authenticator conn-info)
-                                {:authenticator-storage
-                                 (::authenticator-storage conn-info)}))]
-      ;; TODO: Implement w/ talk2 API
-      #_(t2s/close-connection! talk2server (:zeno/connection-id conn-info))
-      ret)))
+                       (::session-token conn-info))]
+      (au/<? (storage/<delete! storage token-k))
+      (au/<? (<log-out! (::authenticator conn-info)
+                        {:authenticator-storage
+                         (::authenticator-storage conn-info)})))))
 
 (defn <handle-resume-session
   [{:keys [*connection-info storage] :as arg}]
   (au/go
-    (let [session-token (:msg-arg arg)
+    (let [session-token (:arg arg)
           token-k (str storage/session-token-to-token-info-key-prefix
                        session-token)
           info (au/<? (storage/<get storage
                                     token-k
                                     schemas/session-token-info-schema))
           {:keys [session-token-expiration-time-ms actor-id]} info
-          remaining-ms (- session-token-expiration-time-ms (u/current-time-ms))
-          session-token-minutes-remaining (u/floor-int
-                                           (/ remaining-ms 1000 60))]
-      (if (pos? remaining-ms)
+          remaining-ms (when session-token-expiration-time-ms
+                         (- session-token-expiration-time-ms
+                            (u/current-time-ms)))
+          session-token-minutes-remaining (when remaining-ms
+                                            (u/floor-int
+                                             (/ remaining-ms 1000 60)))]
+      (if (and remaining-ms (pos? remaining-ms))
         (do
           (swap! *connection-info #(-> %
                                        (assoc ::session-token session-token)
@@ -130,30 +134,29 @@
           nil)))))
 
 (defn <handle-update-authenticator-state
-  [{:keys [*connection-info
-           branch-id->authenticator-name->authenticator-info
-           msg-arg
-           storage] :as arg}]
-  ;; We may or may not be logged in when this is called
+  [{:keys [*connection-info branch->authenticator-name->info storage] :as arg}]
+  ;; Client may or may not be logged in when this is called
   (au/go
     (let [{:keys [authenticator-name
-                  branch-id
+                  branch
                   serialized-update-info
-                  update-type]} msg-arg
-          auth-info (some-> branch-id->authenticator-name->authenticator-info
-                            (get branch-id)
+                  update-type]} (:arg arg)
+          auth-info (some-> branch->authenticator-name->info
+                            (get branch)
                             (get authenticator-name))
           _ (when-not auth-info
               (throw (ex-info
                       (str "No authenticator with name `" authenticator-name
-                           "` was found for branch id `" branch-id "`.")
-                      (u/sym-map authenticator-name branch-id))))
+                           "` was found for branch id `" branch "`.")
+                      (u/sym-map authenticator-name branch))))
           {:keys [authenticator authenticator-storage]} auth-info
-          update-info (au/<? (storage/<serialized-value->value
-                              storage
-                              (get-update-state-info-schema authenticator
-                                                            update-type)
-                              serialized-update-info))
+          reader-schema (get-update-state-info-schema authenticator update-type)
+          <request-schema (su/make-schema-requester arg)
+          update-info (au/<? (common/<serialized-value->value
+                              {:<request-schema <request-schema
+                               :reader-schema reader-schema
+                               :serialized-value serialized-update-info
+                               :storage storage}))
           actor-id (::actor-id @*connection-info)
           ret (au/<? (<update-authenticator-state!
                       authenticator

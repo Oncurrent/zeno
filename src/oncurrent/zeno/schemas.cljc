@@ -7,7 +7,7 @@
 ;; Keeping schemas in a single cljc namespace simplifies Avro namespace mgmt
 
 (def authenticator-name-schema l/keyword-schema)
-(def branch-id-schema l/string-schema)
+(def branch-schema l/string-schema)
 (def client-id-schema l/string-schema)
 (def cluster-member-id-schema l/string-schema)
 (def fingerprint-schema l/bytes-schema)
@@ -101,7 +101,6 @@
   [:tx-id id-schema]
   [:tx-info tx-info-schema])
 
-
 ;;;;;;;;;;;;;;; Authentication ;;;;;;;;;;;;;;;;
 
 (l/def-record-schema session-info-schema
@@ -115,7 +114,7 @@
 
 (l/def-record-schema log-in-arg-schema
   [:authenticator-name authenticator-name-schema]
-  [:branch-id branch-id-schema]
+  [:branch branch-schema]
   [:serialized-login-info serialized-value-schema])
 
 (l/def-record-schema log-in-ret-schema
@@ -124,7 +123,7 @@
 
 (l/def-record-schema update-authenticator-state-arg-schema
   [:authenticator-name authenticator-name-schema]
-  [:branch-id branch-id-schema]
+  [:branch branch-schema]
   [:serialized-update-info serialized-value-schema]
   [:update-type l/keyword-schema])
 
@@ -144,15 +143,15 @@
 ;;;;;;;;;;;;;;; Talk2 Protocols ;;;;;;;;;;;;;;;;;;;;;
 
 (def client-server-protocol
-  {:get-schema-pcf-for-fingerprint {:arg fingerprint-schema
-                                    :ret (l/maybe l/string-schema)}
-   :log-in {:arg log-in-arg-schema
-            :ret (l/maybe log-in-ret-schema)}
-   :log-out {:arg l/null-schema
-             :ret l/boolean-schema}
-   :resume-session {:arg session-token-schema
-                    :ret (l/maybe session-info-schema)}
-   :rpc {:arg rpc-arg-schema
-         :ret rpc-ret-schema}
-   :update-authenticator-state {:arg update-authenticator-state-arg-schema
-                                :ret serialized-value-schema}})
+  {:get-schema-pcf-for-fingerprint {:arg-schema fingerprint-schema
+                                    :ret-schema (l/maybe l/string-schema)}
+   :log-in {:arg-schema log-in-arg-schema
+            :ret-schema (l/maybe log-in-ret-schema)}
+   :log-out {:arg-schema l/null-schema
+             :ret-schema l/boolean-schema}
+   :resume-session {:arg-schema session-token-schema
+                    :ret-schema (l/maybe session-info-schema)}
+   :rpc {:arg-schema rpc-arg-schema
+         :ret-schema rpc-ret-schema}
+   :update-authenticator-state {:arg-schema update-authenticator-state-arg-schema
+                                :ret-schema serialized-value-schema}})

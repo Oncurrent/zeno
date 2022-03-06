@@ -1,9 +1,12 @@
 (ns oncurrent.zeno.server
   (:require
+   [com.deercreeklabs.talk2.server :as t2s]
    [clojure.core.async :as ca]
    [clojure.set :as set]
    [clojure.string :as str]
    [deercreeklabs.async-utils :as au]
+   [deercreeklabs.lancaster :as l]
+   [oncurrent.zeno.server.authentication :as authentication]
    [oncurrent.zeno.distributed-mutex :as dm]
    [oncurrent.zeno.schemas :as schemas]
    [oncurrent.zeno.storage :as storage]
@@ -13,14 +16,36 @@
 (def default-config
   {})
 
-(def config-rules
-  {:storage
+(def server-config-rules
+  ;; TODO: Check that authenticators satisfy protocol
+  {:branch->authenticators
+   {:required? true
+    :checks [{:pred associative?
+              :msg "must be associative"}]}
+
+   :certificate-str
+   {:required? false
+    :checks [{:pred string?
+              :msg "must be a string"}]}
+
+   :port
+   {:required? true
+    :checks [{:pred #(and (pos-int? %)
+                          (<= % 65536))
+              :msg "must be a positive integer less than or equal to 65536"}]}
+
+   :private-key-str
+   {:required? false
+    :checks [{:pred string?
+              :msg "must be a string"}]}
+
+   :storage
    {:required? true
     :checks [{:pred #(satisfies? storage/IStorage %)
               :msg "must satisfy the IStorage protocol"}]}
 
    :ws-url
-   {:required? true
+   {:required? false
     :checks [{:pred string?
               :msg "must be a string"}
              {:pred #(or (str/starts-with? % "ws://")
@@ -28,31 +53,14 @@
               :msg "must be start with `ws://` or `wss://`"}]}
 
    :<get-published-member-urls
-   {:required? true
+   {:required? false
     :checks [{:pred fn?
               :msg "must be a function that returns a channel"}]}
 
    :<publish-member-urls
-   {:required? true
+   {:required? false
     :checks [{:pred fn?
               :msg "must be a function that returns a channel"}]}})
-
-(defn check-config [config]
-  (doseq [[k info] config-rules]
-    (let [{:keys [required? checks]} info
-          v (get config k)]
-      (when (and required? (not v))
-        (throw
-         (ex-info
-          (str "`" k "` is required but is missing from the server config map.")
-          (u/sym-map k config))))
-      (doseq [{:keys [pred msg]} checks]
-        (when (and v pred (not (pred v)))
-          (throw
-           (ex-info
-            (str "The value of `" k "` in the server config map is invalid. It "
-                 msg ". Got `" (or v "nil") "`.")
-            (u/sym-map k v config))))))))
 
 (defn member-id->member-mutex-name [member-id]
   (str "role-cluster-member-" member-id))
@@ -203,24 +211,112 @@
               (dm/make-distributed-mutex-client mutex-name storage opts)))
           roles)))
 
+
+(defn make-client-ep-info
+  [{:keys [storage] :as arg}]
+  {:handlers {:get-schema-pcf-for-fingerprint
+              (fn [{:keys [arg]}]
+                (au/go
+                  (-> (storage/<fp->schema storage arg)
+                      (au/<?)
+                      (l/json))))
+
+              :log-in
+              #(authentication/<handle-log-in (merge % arg))
+
+              :log-out
+              #(authentication/<handle-log-out (merge % arg))
+
+              :resume-session
+              #(authentication/<handle-resume-session (merge % arg))
+
+              :rpc
+              ;; TODO: Implement
+              (constantly nil)
+
+              :update-authenticator-state
+              #(authentication/<handle-update-authenticator-state
+                (merge % arg))}
+   :on-connect (fn [conn]
+                 (log/info
+                  (str "Client connection opened:\n"
+                       (u/pprint-str
+                        (select-keys conn [:conn-id :remote-address])))))
+   :on-disconnect (fn [conn]
+                    (log/info
+                     (str "Client connection closed:\n"
+                          (u/pprint-str (select-keys conn [:conn-id])))))
+   :protocol schemas/client-server-protocol})
+
+(defn make-talk2-server [{:keys [port] :as arg}]
+  (let [client-ep-info (make-client-ep-info arg)
+        config (merge arg
+                      {:path->endpoint-info {"/client" client-ep-info}
+                       :port port})]
+    (t2s/server config)))
+
+(defn make-authenticator-storage [authenticator-name storage]
+  (let [str-ns (namespace authenticator-name)
+        str-name (name authenticator-name)
+        prefix (if str-ns
+                 (str str-ns "_" str-name)
+                 str-name)]
+    (storage/make-prefixed-storage prefix storage)))
+
+(defn xf-authenticator-info [{:keys [branch->authenticators storage]}]
+  (reduce-kv
+   (fn [acc branch authenticators]
+     (let [name->info (reduce
+                       (fn [acc* authenticator]
+                         (let [authenticator-name (authentication/get-name
+                                                   authenticator)
+                               authenticator-storage (make-authenticator-storage
+                                                      authenticator-name
+                                                      storage)
+                               info (u/sym-map authenticator
+                                               authenticator-storage)]
+                           (assoc acc* authenticator-name info)))
+                       {}
+                       authenticators)]
+       (assoc acc branch name->info)))
+   {}
+   branch->authenticators))
+
 (defn zeno-server [config]
   (let [config* (merge default-config config)
-        _ (check-config config*)
+        _ (u/check-config {:config config*
+                           :config-type :server
+                           :config-rules server-config-rules})
         {:keys [<get-published-member-urls
                 <publish-member-urls
+                branch->authenticators
+                certificate-str
+                port
+                private-key-str
                 storage
                 ws-url]} config*
+        *connection-info (atom {})
+        branch->authenticator-name->info (xf-authenticator-info config)
+        talk2-server (make-talk2-server
+                      (u/sym-map *connection-info
+                                 branch->authenticator-name->info
+                                 certificate-str
+                                 port
+                                 private-key-str
+                                 storage))
         member-id (u/compact-random-uuid)
-        mutex-clients (make-mutex-clients storage
-                                          member-id
-                                          ws-url
-                                          <get-published-member-urls
-                                          <publish-member-urls)
-        zeno-server (u/sym-map member-id
-                               mutex-clients
-                               storage
-                               ws-url)]
-    zeno-server))
+        mutex-clients (when (and <get-published-member-urls
+                                 <publish-member-urls)
+                        (make-mutex-clients storage
+                                            member-id
+                                            ws-url
+                                            <get-published-member-urls
+                                            <publish-member-urls))]
+    (u/sym-map member-id
+               mutex-clients
+               storage
+               talk2-server
+               ws-url)))
 
 (defn stop! [zeno-server]
   (doseq [mutex-client (:mutex-clients zeno-server)]

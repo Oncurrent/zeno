@@ -1,60 +1,52 @@
 (ns oncurrent.zeno.client.impl
   (:require
    [clojure.core.async :as ca]
-   [com.deercreeklabs.talk2.client :as talk2-client]
+   [com.deercreeklabs.talk2.client :as t2c]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
+   [oncurrent.zeno.authorization :as authz]
+   [oncurrent.zeno.client.authorization :as client-authz]
    [oncurrent.zeno.client.state-subscriptions :as state-subscriptions]
    [oncurrent.zeno.client.client-commands :as client-commands]
    [oncurrent.zeno.crdt :as crdt]
    [oncurrent.zeno.crdt.commands :as crdt-commands]
-   [oncurrent.zeno.commands :as commands]
+   [oncurrent.zeno.common :as common]
    [oncurrent.zeno.schemas :as schemas]
    [oncurrent.zeno.storage :as storage]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
 (def default-config
-  {:branch-id "prod"
+  {:crdt-authorizer (client-authz/make-affirmative-authorizer)
+   :crdt-branch "prod"
    :initial-client-state {}
    :storage (storage/make-storage (storage/make-mem-raw-storage))})
 
-(def config-rules
-  {:branch-id {:required? true
-               :checks [{:pred string?
-                         :msg "must be a string"}]}
+(def client-config-rules
+  {:crdt-authorizer {:required? false
+                     :checks [{:pred #(satisfies? authz/IClientAuthorizer %)
+                               :msg (str "must satisfy the IClientAuthorizer "
+                                         "protocol")}]}
+   :crdt-branch {:required? false
+                 :checks [{:pred string?
+                           :msg "must be a string"}]}
+   :crdt-schema {:required? false
+                 :checks [{:pred l/schema?
+                           :msg "must be a valid Lancaster schema"}]}
+   :get-server-url {:required? false
+                    :checks [{:pred ifn?
+                              :msg "must be a function"}]}
    :initial-client-state {:required? false
                           :checks [{:pred associative?
                                     :msg "must be associative"}]}
-   :storage {:required? true
+   :storage {:required? false
              :checks [{:pred #(satisfies? storage/IStorage %)
-                       :msg "must satisfy the IStorage protocol"}]}
-   :crdt-schema {:required? false
-                 :checks [{:pred l/schema?
-                           :msg "must be a valid Lancaster schema"}]}})
-
-(defn check-config [{:keys [config config-type config-rules]}]
-  (doseq [[k info] config-rules]
-    (let [{:keys [required? checks]} info
-          v (get config k)]
-      (when (and required? (not v))
-        (throw
-         (ex-info
-          (str "`" k "` is required but is missing from the client config map.")
-          (u/sym-map k config))))
-      (doseq [{:keys [pred msg]} checks]
-        (when (and v pred (not (pred v)))
-          (throw
-           (ex-info
-            (str "The value of `" k "` in the client config map is invalid. It "
-                 msg ". Got `" (or v "nil") "`.")
-            (u/sym-map k v config))))))))
-
+                       :msg "must satisfy the IStorage protocol"}]}})
 
 (defn split-cmds [cmds]
   (reduce
    (fn [acc cmd]
-     (commands/check-cmd cmd)
+     (common/check-cmd cmd)
      (let [{:zeno/keys [path]} cmd
            [head & tail] path]
        (update acc head #(conj (or % []) cmd))))
@@ -110,19 +102,30 @@
         (when-not @(:*shutdown? zc)
           (recur))))))
 
-(defn make-talk2-client []
-  ;; TODO: Implement
-  )
+(defn make-talk2-client [{:keys [get-server-url storage]}]
+  (let [handlers {:get-schema-pcf-for-fingerprint
+                  (fn [{:keys [arg]}]
+                    (au/go
+                      (-> (storage/<fp->schema storage arg)
+                          (au/<?)
+                          (l/json))))
+
+                  :rpc
+                  ;; TODO: Implement
+                  (constantly nil)}]
+    (t2c/client {:get-url get-server-url
+                 :handlers handlers
+                 :protocol schemas/client-server-protocol})))
 
 (defn zeno-client [config]
   (let [config* (merge default-config config)
-        _ (check-config {:config config*
-                         :config-type :client
-                         :config-rules config-rules})
-        {:keys [branch-id
+        _ (u/check-config {:config config*
+                           :config-type :client
+                           :config-rules client-config-rules})
+        {:keys [branch
+                crdt-schema
                 initial-client-state
-                log-storage
-                crdt-schema]} config*
+                storage]} config*
         *next-instance-num (atom 0)
         *next-topic-sub-id (atom 0)
         *topic-name->sub-id->cb (atom {})
@@ -132,24 +135,29 @@
         *crdt-state (atom nil)
         *state-sub-name->info (atom {})
         *actor-id (atom nil)
-        talk2-client (make-talk2-client)
+        talk2-client (when (:get-server-url config*)
+                       (make-talk2-client config*))
         update-state-ch (ca/chan (ca/sliding-buffer 1000))
-        zc (u/sym-map *client-state
+        zc (u/sym-map *actor-id
+                      *client-state
                       *crdt-state
                       *next-instance-num
                       *next-topic-sub-id
                       *shutdown?
                       *state-sub-name->info
-                      *actor-id
                       *topic-name->sub-id->cb
-                      log-storage
+                      branch
                       crdt-schema
+                      storage
+                      talk2-client
                       update-state-ch)]
     (start-update-state-loop! zc)
     zc))
 
-(defn shutdown! [zc]
-  (reset! (:*shutdown? zc) true))
+(defn shutdown! [{:keys [*shutdown? talk2-client] :as zc}]
+  (reset! *shutdown? true)
+  (when talk2-client
+    (t2c/shutdown! talk2-client)))
 
 (defn update-state! [zc cmds cb]
   ;; We put the updates on a channel to guarantee serial update order
@@ -175,7 +183,7 @@
 (defn publish-to-topic! [zc topic-name msg]
   (when-not (string? topic-name)
     (throw (ex-info (str "`topic-name` argument to `publish-to-topic!` must "
-                         "be a string. Got `" topic-name "`.")
+                         "be a string. Got `" (or topic-name "nil") "`.")
                     (u/sym-map topic-name msg))))
   (let [{:keys [*topic-name->sub-id->cb]} zc]
     (ca/go

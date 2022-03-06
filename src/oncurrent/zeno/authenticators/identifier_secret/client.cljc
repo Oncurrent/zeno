@@ -11,10 +11,10 @@
    [taoensso.timbre :as log]))
 
 (defn <create-actor!
+  "Returns the actor-id of the created actor."
   ([zc identifier secret]
    (<create-actor! zc identifier secret nil))
   ([zc identifier secret actor-id]
-   "Returns the actor-id of the created actor."
    (let [arg {:authenticator-name shared/authenticator-name
               :return-value-schema schemas/actor-id-schema
               :update-info-schema shared/create-actor-info-schema
@@ -23,8 +23,9 @@
               :zc zc}]
      (za/<client-update-authenticator-state arg))))
 
-(defn <add-identifier! [zc identifier]
+(defn <add-identifier!
   "Works on current actor. Must be logged in. Returns a boolean success value."
+  [zc identifier]
   (when-not (zc/logged-in? zc)
     (throw (ex-info "Must be logged in to call `<add-identifier!`"
                     (u/sym-map identifier))))
@@ -36,8 +37,9 @@
              :zc zc}]
     (za/<client-update-authenticator-state arg)))
 
-(defn <remove-identifier! [zc identifier]
+(defn <remove-identifier!
   "Works on current actor. Must be logged in. Returns a boolean success value."
+  [zc identifier]
   (when-not (string? identifier)
     (throw (ex-info (str "`identifier` must be a string. Got `"
                          (or identifier "nil") "`.")
@@ -53,27 +55,23 @@
              :zc zc}]
     (za/<client-update-authenticator-state arg)))
 
-(defn <set-secret! [zc identifier old-secret new-secret]
+(defn <set-secret!
   "Works on current actor. Must be logged in. Returns a boolean success value."
+  [zc old-secret new-secret]
   (when-not (zc/logged-in? zc)
-    (throw (ex-info "Must be logged in to call `<set-secret!`"
-                    (u/sym-map identifier))))
-  (when-not (string? identifier)
-    (throw (ex-info (str "`idenfifier` must be a string. Got `"
-                         (or identifier "nil") "`.")
-                    (u/sym-map identifier))))
+    (throw (ex-info "Must be logged in to call `<set-secret!`" {})))
   (when-not (string? old-secret)
     (throw (ex-info (str "`old-secret` must be a string. Got `"
                          (or old-secret "nil") "`.")
-                    (u/sym-map old-secret identifier))))
+                    (u/sym-map old-secret))))
   (when-not (string? new-secret)
     (throw (ex-info (str "`new-secret` must be a string. Got `"
                          (or new-secret "nil") "`.")
-                    (u/sym-map new-secret identifier))))
+                    (u/sym-map new-secret))))
   (let [arg {:authenticator-name shared/authenticator-name
              :return-value-schema l/boolean-schema
              :update-info-schema shared/set-secret-info-schema
-             :update-info (u/sym-map identifier old-secret new-secret)
+             :update-info (u/sym-map old-secret new-secret)
              :update-type :set-secret
              :zc zc}]
     (za/<client-update-authenticator-state arg)))
@@ -93,10 +91,13 @@
                :login-info-schema shared/login-info-schema
                :zc zc}
           ret (au/<? (za/<client-log-in arg))]
-      (:session-info ret))))
+      (or (:session-info ret)
+          false))))
 
 (defn <log-out! [zc]
   (za/<client-log-out zc))
 
 (defn <resume-session! [zc session-token]
-  (za/<client-resume-session zc session-token))
+  (au/go
+    (let [ret (au/<? (za/<client-resume-session zc session-token))]
+      (or ret false))))

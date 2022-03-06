@@ -52,10 +52,10 @@
 (defmethod <update-authenticator-state!* :create-actor
   [{:keys [authenticator-storage update-info]}]
   (au/go
-    (let [{:keys [identifier secret actor-id]} update-info
+    (let [{:keys [identifier secret actor-id]
+           :or {actor-id (u/compact-random-uuid)}} update-info
           ik (str identifier-to-actor-id-key-prefix identifier)
-          sk (str actor-id-to-hashed-secret-key-prefix actor-id)
-          hashed-secret (bcrypt/encrypt secret work-factor)]
+          sk (str actor-id-to-hashed-secret-key-prefix actor-id)]
       (try
         (au/<? (storage/<add! authenticator-storage ik schemas/actor-id-schema
                               actor-id))
@@ -66,15 +66,21 @@
                     (u/sym-map identifier actor-id)))
             (throw e))))
       (try
-        (au/<? (storage/<add! authenticator-storage sk l/string-schema
-                              hashed-secret))
+        (au/<? (storage/<swap! authenticator-storage sk l/string-schema
+                               (fn [old-hashed-secret]
+                                 (when old-hashed-secret
+                                   (throw (ex-info
+                                           "Actor `" actor-id "` already has "
+                                           "a secret set."
+                                           {})))
+                                 (bcrypt/encrypt secret work-factor))))
         (catch ExceptionInfo e
           (if (= :key-exists (some-> e ex-data :type))
             (throw (ex-info
                     (str "Actor `" actor-id "` already exists.")
                     (u/sym-map identifier actor-id)))
             (throw e))))
-      true)))
+      actor-id)))
 
 (defmethod <update-authenticator-state!* :add-identifier
   [{:keys [authenticator-storage actor-id] :as arg}]
@@ -109,7 +115,7 @@
   (au/go
     (when-not actor-id
       (throw (ex-info "Actor is not logged in." {})))
-    (let [{:keys [identifier old-secret new-secret]} update-info
+    (let [{:keys [old-secret new-secret]} update-info
           sk (str actor-id-to-hashed-secret-key-prefix actor-id)]
       (au/<? (storage/<swap! authenticator-storage sk l/string-schema
                              (fn [old-hashed-secret]
@@ -133,6 +139,8 @@
     shared/login-info-schema)
   (get-login-ret-extra-info-schema [this]
     l/null-schema)
+  (get-name [this]
+    shared/authenticator-name)
   (get-update-state-info-schema [this update-type]
     (case update-type
       :add-identifier shared/identifier-schema
@@ -147,6 +155,8 @@
       :set-secret l/boolean-schema)))
 
 (defn make-authenticator
-  [{:keys [login-lifetime-mins]
-    :or {login-lifetime-mins (* 14 24 60)}}]
-  (->IdentifierSecretAuthenticator login-lifetime-mins))
+  ([]
+   (make-authenticator {}))
+  ([{:keys [login-lifetime-mins]
+     :or {login-lifetime-mins (* 14 24 60)}}]
+   (->IdentifierSecretAuthenticator login-lifetime-mins)))

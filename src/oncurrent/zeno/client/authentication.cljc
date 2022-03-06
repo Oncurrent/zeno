@@ -1,11 +1,17 @@
 (ns oncurrent.zeno.client.authentication
   (:require
    [clojure.core.async :as ca]
+   [com.deercreeklabs.talk2.client :as t2c]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
+   [oncurrent.zeno.common :as common]
    [oncurrent.zeno.storage :as storage]
    [oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
+
+(defn make-schema-requester [talk2-client]
+  (fn [fp]
+    (t2c/<send-msg! talk2-client :get-schema-pcf-for-fingerprint fp)))
 
 (defn <client-log-in
   [{:keys [authenticator-name
@@ -13,27 +19,25 @@
            login-info-schema
            zc]}]
   (au/go
-    (let [{:keys [branch-id capsule-client storage]} zc
+    (let [{:keys [branch storage talk2-client]} zc
           ser-login-info (au/<? (storage/<value->serialized-value
                                  storage
                                  login-info-schema
                                  login-info))
           arg {:authenticator-name authenticator-name
-               :branch-id branch-id
+               :branch branch
                :serialized-login-info ser-login-info}
-          ;; TODO: Implement w/ talk2 API
-          ret nil #_(au/<? (cc/<send-msg capsule-client :log-in arg))
-          actor-id (some-> ret :session-info :actor-id)
-          _ (when actor-id
-              (reset! (:*actor-id zc) actor-id))]
+          ret (au/<? (t2c/<send-msg! talk2-client :log-in arg))
+          actor-id (some-> ret :session-info :actor-id)]
+      (when actor-id
+        (reset! (:*actor-id zc) actor-id))
       ret)))
 
-(defn <client-log-out [zc]
+(defn <client-log-out [{:keys [talk2-client *actor-id] :as zc}]
   ;; TODO: Delete stored transaction log data
-  (reset! (:*actor-id zc) nil)
-  ;; TODO: Implement w/ talk2 API
-  #_
-  (cc/<send-msg capsule-client :log-out nil))
+  ;; TODO: Update subscribers that actor-id has changed
+  (reset! *actor-id nil)
+  (t2c/<send-msg! talk2-client :log-out nil))
 
 (defn <client-update-authenticator-state
   [{:keys [authenticator-name
@@ -59,24 +63,24 @@
             (u/sym-map authenticator-name update-info-schema update-type
                        update-info))))
   (au/go
-    (let [{:keys [branch-id capsule-client storage]} zc
+    (let [{:keys [branch storage talk2-client]} zc
           ser-info (au/<? (storage/<value->serialized-value storage
                                                             update-info-schema
                                                             update-info))
           arg {:authenticator-name authenticator-name
-               :branch-id branch-id
+               :branch branch
                :serialized-update-info ser-info
                :update-type update-type}
-          ;; TODO: Implement w/ talk2 API
-          ret nil #_(au/<? (cc/<send-msg capsule-client
-                                         :update-authenticator-state arg))]
-      (au/<? (storage/<serialized-value->value storage
-                                               return-value-schema
-                                               ret)))))
+          s-val (au/<? (t2c/<send-msg! talk2-client
+                                       :update-authenticator-state
+                                       arg))
+          <request-schema (make-schema-requester talk2-client)]
+      (au/<? (common/<serialized-value->value
+              {:<request-schema <request-schema
+               :reader-schema return-value-schema
+               :serialized-value s-val
+               :storage storage})))))
 
 (defn <client-resume-session
   [zc session-token]
-  (let [{:keys [capsule-client]} zc]
-    ;; TODO: Implement w/ talk2 API
-    #_
-    (cc/<send-msg capsule-client :resume-session session-token)))
+  (t2c/<send-msg! (:talk2-client zc) :resume-session session-token))

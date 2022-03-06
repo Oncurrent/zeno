@@ -326,3 +326,21 @@
                                      (conj acc [sym (sym->path sym)])))
                                  [] (dep/topo-sort g))]
     (sym-map independent-pairs ordered-dependent-pairs)))
+
+(defn check-config [{:keys [config config-type config-rules]}]
+  (doseq [[k info] config-rules]
+    (let [{:keys [required? checks]} info
+          v (get config k)]
+      (when (and required? (not v))
+        (throw
+         (ex-info
+          (str "`" k "` is required, but is missing from the "
+               (name config-type) " config map.")
+          (sym-map k config))))
+      (doseq [{:keys [pred msg]} checks]
+        (when (and v pred (not (pred v)))
+          (throw
+           (ex-info
+            (str "The value of `" k "` in the " (name config-type) " config "
+                 "map is invalid. It " msg ". Got `" (or v "nil") "`.")
+            (sym-map k v config))))))))

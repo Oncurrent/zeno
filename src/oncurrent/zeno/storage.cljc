@@ -236,6 +236,34 @@
   (<swap! [this reference-k schema update-fn]
     (<swap!* this reference-k schema update-fn)))
 
+(defn prefix-k [prefix k]
+  (let [first-char (when (str/starts-with? k "_")
+                     "_")]
+    (str first-char prefix "-" k)))
+
+(defrecord PrefixedStorage [prefix storage]
+  IStorage
+  (<add! [this value-k schema value]
+    (<add! storage (prefix-k prefix value-k) schema value))
+
+  (<delete! [this k]
+    (<delete! storage (prefix-k prefix k)))
+
+  (<fp->schema [this fp]
+    (<fp->schema storage fp))
+
+  (<get [this k schema]
+    (<get storage (prefix-k prefix k) schema))
+
+  (<schema->fp [this schema]
+    (<schema->fp storage schema))
+
+  (<swap! [this reference-k schema update-fn]
+    (<swap! storage (prefix-k prefix reference-k) schema update-fn)))
+
+(defn make-prefixed-storage [prefix storage]
+  (->PrefixedStorage prefix storage))
+
 (defrecord MemRawStorage [*data max-value-bytes]
   IRawStorage
   (<compare-and-set-k! [this k old-ba new-ba]
@@ -297,11 +325,16 @@
           bytes (l/serialize schema value)]
       (u/sym-map fp bytes))))
 
-(defn <serialized-value->value [storage reader-schema s-val]
+(defn <serialized-value->value [storage reader-schema serialized-value]
   (au/go
-    (when s-val
-      (let [{:keys [fp bytes]} s-val
+    (when serialized-value
+      (let [{:keys [fp bytes]} serialized-value
             writer-schema (au/<? (<fp->schema storage fp))]
+        (when-not writer-schema
+          (let [fp-str (ba/byte-array->b64 fp)]
+            (throw (ex-info (str "Failed to retrieve schema for fp `"
+                                 fp-str "`.")
+                            (u/sym-map fp fp-str)))))
         (l/deserialize reader-schema writer-schema bytes)))))
 
 (defn <command->serializable-command [storage sys-schema cmd]
