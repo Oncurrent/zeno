@@ -4,9 +4,9 @@
    [clojure.test :as t :refer [deftest is]]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.baracus :as ba]
-   [oncurrent.zeno.server.aws :as aws]
-   [oncurrent.zeno.storage :as storage]
-   [oncurrent.zeno.utils :as u]
+   [com.oncurrent.zeno.server.aws :as aws]
+   [com.oncurrent.zeno.storage :as storage]
+   [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
 (deftest test-read-write-delete

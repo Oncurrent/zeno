@@ -5,9 +5,9 @@
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.baracus :as ba]
    [deercreeklabs.lancaster :as l]
-   [oncurrent.zeno.schemas :as schemas]
-   [oncurrent.zeno.storage :as storage]
-   [oncurrent.zeno.utils :as u]
+   [com.oncurrent.zeno.schemas :as schemas]
+   [com.oncurrent.zeno.storage :as storage]
+   [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log])
   #?(:clj
      (:import

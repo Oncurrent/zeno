@@ -3,10 +3,10 @@
    [clojure.math.combinatorics :as combo]
    [clojure.test :as t :refer [deftest is]]
    [deercreeklabs.lancaster :as l]
-   [oncurrent.zeno.crdt :as crdt]
-   [oncurrent.zeno.crdt.array :as array]
-   [oncurrent.zeno.crdt.common :as crdt-c]
-   [oncurrent.zeno.utils :as u]
+   [com.oncurrent.zeno.crdt :as crdt]
+   [com.oncurrent.zeno.crdt.array :as array]
+   [com.oncurrent.zeno.crdt.common :as crdt-c]
+   [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log])
   #?(:clj
      (:import

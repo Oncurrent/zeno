@@ -3,9 +3,9 @@
    [clojure.core.async :as ca]
    [clojure.test :as t :refer [deftest is]]
    [deercreeklabs.async-utils :as au]
-   [oncurrent.zeno.client :as zc]
-   [oncurrent.zeno.client.state-subscriptions :as state-subscriptions]
-   [oncurrent.zeno.utils :as u]
+   [com.oncurrent.zeno.client :as zc]
+   [com.oncurrent.zeno.client.state-subscriptions :as state-subscriptions]
+   [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log])
   #?(:clj
      (:import

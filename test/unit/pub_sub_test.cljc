@@ -4,8 +4,8 @@
    [clojure.string :as str]
    [clojure.test :refer [are deftest is]]
    [deercreeklabs.async-utils :as au]
-   [oncurrent.zeno.client :as zc]
-   [oncurrent.zeno.utils :as u]
+   [com.oncurrent.zeno.client :as zc]
+   [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log])
   #?(:clj
      (:import

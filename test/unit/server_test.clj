@@ -5,9 +5,9 @@
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.baracus :as ba]
    [deercreeklabs.lancaster :as l]
-   [oncurrent.zeno.server :as server]
-   [oncurrent.zeno.storage :as storage]
-   [oncurrent.zeno.utils :as u]
+   [com.oncurrent.zeno.server :as server]
+   [com.oncurrent.zeno.storage :as storage]
+   [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log])
   (:import
    (clojure.lang ExceptionInfo)))

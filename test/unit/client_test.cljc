@@ -5,8 +5,8 @@
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.baracus :as ba]
    [deercreeklabs.lancaster :as l]
-   [oncurrent.zeno.client :as zc]
-   [oncurrent.zeno.utils :as u]
+   [com.oncurrent.zeno.client :as zc]
+   [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
 (deftest test-subscribe-client-update

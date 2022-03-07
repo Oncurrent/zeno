@@ -3,9 +3,9 @@
    [clojure.set :as set]
    [clojure.test :as t :refer [deftest is]]
    [deercreeklabs.lancaster :as l]
-   [oncurrent.zeno.crdt.commands :as commands]
-   [oncurrent.zeno.crdt :as crdt]
-   [oncurrent.zeno.utils :as u]
+   [com.oncurrent.zeno.crdt.commands :as commands]
+   [com.oncurrent.zeno.crdt :as crdt]
+   [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log])
   #?(:clj
      (:import

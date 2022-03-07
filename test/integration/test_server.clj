@@ -2,10 +2,10 @@
   (:require
    [clojure.string :as str]
    [deercreeklabs.lancaster :as l]
-   [oncurrent.zeno.authenticators.identifier-secret.server :as is-auth]
-   [oncurrent.zeno.server :as server]
-   [oncurrent.zeno.storage :as storage]
-   [oncurrent.zeno.utils :as u]
+   [com.oncurrent.zeno.authenticators.identifier-secret.server :as is-auth]
+   [com.oncurrent.zeno.server :as server]
+   [com.oncurrent.zeno.storage :as storage]
+   [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
 (l/def-record-schema data-schema

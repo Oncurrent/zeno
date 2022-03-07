@@ -4,9 +4,9 @@
    [clojure.test :refer [deftest is]]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
-   [oncurrent.zeno.authenticators.identifier-secret.client :as isa]
-   [oncurrent.zeno.client :as zc]
-   [oncurrent.zeno.utils :as u]
+   [com.oncurrent.zeno.authenticators.identifier-secret.client :as isa]
+   [com.oncurrent.zeno.client :as zc]
+   [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
 ;;;; IMPORTANT!!!

@@ -20,7 +20,7 @@ risk.***
 # Installation
 In deps.edn:
 ```clojure
-{:deps {oncurrent/zeno {:git/url "https://github.com/Oncurrent/zeno.git"
+{:deps {com.oncurrent.zeno {:git/url "https://github.com/Oncurrent/zeno.git"
                         :sha "xxx"}}}
 ```
 
@@ -345,7 +345,7 @@ documentation.
 Zeno ships with one authentication plugin to support identifier/secret (e.g.
 username/password) authentication which you can use in your application. It's
 located at
-[src/oncurrent/zeno/authenticators/identifier_secret/](#src/oncurrent/zeno/authenticators/identifier_secret/)
+[src/com/oncurrent/zeno/authenticators/identifier_secret/](#src/com/oncurrent/zeno/authenticators/identifier_secret/)
 
 #### Writing a Custom Authenticator
 The general idea is that an application developer can implement a client side
@@ -369,7 +369,7 @@ client/server side authentication code facilitates communication between
 the two and storage for the server side implementation.
 
 The client side interface is specified in the
-`oncurrent.zeno.client.authentication` namespace. You'll see the following
+`com.oncurrent.zeno.client.authentication` namespace. You'll see the following
 functions available for an authentication plugin's client side to hook in to
 * `<client-log-in`
 * `<client-log-out`
@@ -387,7 +387,7 @@ and provide the schemas to Zeno for serializing/deserializing.
 Zeno ships with one authentication plugin to support identifier/secret (e.g.
 username/password) authentication which you can reference as an example. It's
 located at
-[src/oncurrent/zeno/authenticators/identifier_secret/](#src/oncurrent/zeno/authenticators/identifier_secret/)
+[src/com/oncurrent/zeno/authenticators/identifier_secret/](#src/com/oncurrent/zeno/authenticators/identifier_secret/)
 
 ### Authorization
 TODO
@@ -421,7 +421,36 @@ to uniquely identify something such as a user, a group, or something else.
 TODO
 
 ## Tests
-TODO
+
+### Clojure
+
+#### Unit Tests
+`bin/kaocha unit`
+
+#### Integration Tests
+* The integration tests will use AWS ... so you need to have that authentication
+setup.
+* In one shell: `bin/run-test-server`
+* In another: `bin/kaocha integration`
+
+#### All Tests
+Same as the integration tests above but use `bin/kaoach` without passing in
+`integration`.
+
+### Clojurescript
+
+#### Browser Tests
+* `bin/run-test-server`
+* `bin/watch-browser-test`
+* Navigate to `localhost:8021`
+
+#### Node Tests
+* `bin/run-test-server`
+* `bin/watch-node-test`
+* Note that if you are already running `bin/watch-browser-test` then it will
+have already started a shadow-cljs server and so the output of the node tests
+will appear in that terminal.
+
 
 # License
 Copyright Oncurrent, Inc.

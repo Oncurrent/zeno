@@ -1,8 +1,8 @@
 (ns unit.def-component-test
   (:require
    [clojure.test :as t :refer [deftest is]]
-   [oncurrent.zeno.client.macro-impl :as macro-impl]
-   [oncurrent.zeno.utils :as u]
+   [com.oncurrent.zeno.client.macro-impl :as macro-impl]
+   [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log])
   #?(:clj
      (:import

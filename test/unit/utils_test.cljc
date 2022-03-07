@@ -3,7 +3,7 @@
    [clojure.core.async :as ca]
    [clojure.test :as t :refer [deftest is are]]
    [deercreeklabs.async-utils :as au]
-   [oncurrent.zeno.utils :as u]
+   [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
 (deftest test-sub-map->map-info
