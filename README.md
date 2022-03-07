@@ -434,7 +434,7 @@ setup.
 * In another: `bin/kaocha integration`
 
 #### All Tests
-Same as the integration tests above but use `bin/kaoach` without passing in
+Same as the integration tests above but use `bin/kaocha` without passing in
 `integration`.
 
 ### Clojurescript
