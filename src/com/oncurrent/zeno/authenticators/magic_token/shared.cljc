@@ -18,7 +18,8 @@
   [:number-of-uses l/int-schema]
   [:serialized-extra-info serialized-value-schema])
 
-(l/def-record-schema token-info-schema
+(l/def-record-schema magic-token-info-schema
+  [:actor-id schemas/actor-id-schema]
   [:identifier identifier-schema]
   [:expiration-ms l/long-schema]
   [:remaining-uses l/int-schema]

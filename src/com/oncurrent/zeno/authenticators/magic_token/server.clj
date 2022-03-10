@@ -62,7 +62,7 @@
 (defn <dec-remaining-uses! [authenticator-storage hashed-token]
   (storage/<swap! authenticator-storage
                   (hashed-token-key hashed-token)
-                  shared/token-info-schema
+                  shared/magic-token-info-schema
                   (fn [old-token-info]
                     (update old-token-info :remaining-uses dec))))
 
@@ -91,21 +91,19 @@
     (let [hashed-token (encrypt-const-salt login-info)
           token-info (au/<? (storage/<get authenticator-storage
                                           (hashed-token-key hashed-token)
-                                          shared/token-info-schema))]
-      (when-let [{:keys [identifier expiration-ms remaining-uses
+                                          shared/magic-token-info-schema))]
+      (when-let [{:keys [actor-id identifier expiration-ms remaining-uses
                          serialized-extra-info]} token-info]
-        (let [actor-id (au/<? (storage/<get authenticator-storage
-                                            (identifier-key identifier)
-                                            schemas/actor-id-schema))
+        (let [actor-id* (au/<? (storage/<get authenticator-storage
+                                             (identifier-key identifier)
+                                             schemas/actor-id-schema))
+              same-actor? (= actor-id actor-id*)
               active? (nil-or-pred? expiration-ms #(> % (u/current-time-ms)))
               more-uses? (nil-or-pred? remaining-uses #(> % 0))]
-          (when (and active? more-uses? actor-id)
-            (if (or (<= remaining-uses 1) (not active?))
-              (au/<? (storage/<delete! authenticator-storage
-                                       (hashed-token-key hashed-token)))
-              (when remaining-uses
+          (when (and active? more-uses? same-actor?)
+            (when remaining-uses
                 (au/<? (<dec-remaining-uses! authenticator-storage
-                                             hashed-token))))
+                                             hashed-token)))
             (au/<? (<do-action! mtas (au/<? (<with-deserialized-extra-info
                                               token-info arg))))
             (assoc (u/sym-map login-lifetime-mins actor-id)
@@ -119,26 +117,32 @@
 
 (defmulti <update-authenticator-state!* :update-type)
 
-(defn send-magic-token-info->magic-token-info
-  [{:keys [mins-valid number-of-uses] :as info}
-   {:keys [default-mins-valid default-number-of-uses]}]
-  (-> info
-      (assoc :expiration-ms (number-of-mins->epoch-ms (or mins-valid
-                                                          default-mins-valid
-                                                          default-mins-valid*)))
-      (assoc :remaining-uses (or number-of-uses
-                                 default-number-of-uses
-                                 default-number-of-uses*))))
+(defn <send-magic-token-info->magic-token-info
+  [{{:keys [identifier mins-valid number-of-uses] :as info} :update-info
+    {:keys [default-mins-valid default-number-of-uses]} :mtas
+    :keys [authenticator-storage]}]
+  (au/go
+    (-> info
+        (assoc :actor-id (au/<? (storage/<get authenticator-storage
+                                              (identifier-key identifier)
+                                              schemas/actor-id-schema)))
+        (assoc :expiration-ms (number-of-mins->epoch-ms
+                                (or mins-valid
+                                    default-mins-valid
+                                    default-mins-valid*)))
+        (assoc :remaining-uses (or number-of-uses
+                                   default-number-of-uses
+                                   default-number-of-uses*)))))
 
 (defmethod <update-authenticator-state!* :send-magic-token
   [{:keys [authenticator-storage update-info mtas] :as arg}]
   (au/go
     (let [token (generate-token)
           hashed-token (encrypt-const-salt token)
-          token-info (send-magic-token-info->magic-token-info update-info mtas)]
+          token-info (au/<? (<send-magic-token-info->magic-token-info arg))]
       (au/<? (storage/<swap! authenticator-storage
                              (hashed-token-key hashed-token)
-                             shared/token-info-schema
+                             shared/magic-token-info-schema
                              (fn [old-token-info]
                                (when old-token-info
                                  (throw (ex-info "Token already in use." {})))
@@ -201,7 +205,7 @@
   (get-login-info-schema [this]
     shared/token-schema)
   (get-login-ret-extra-info-schema [this]
-    shared/token-info-schema)
+    shared/magic-token-info-schema)
   (get-name [this]
     shared/authenticator-name)
   (get-update-state-info-schema [this update-type]
