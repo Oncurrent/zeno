@@ -66,7 +66,7 @@
                     (u/sym-map identifier actor-id)))
             (throw e))))
       (try
-        (au/<? (storage/<swap! authenticator-storage sk l/string-schema
+        (au/<? (storage/<swap! authenticator-storage sk shared/secret-schema
                                (fn [old-hashed-secret]
                                  (when old-hashed-secret
                                    (throw (ex-info
@@ -127,7 +127,7 @@
       true)))
 
 (defrecord IdentifierSecretAuthenticator
-    [login-lifetime-mins]
+  [login-lifetime-mins]
   za/IAuthenticator
   (<log-in! [this arg]
     (<log-in!* (assoc arg :login-lifetime-mins login-lifetime-mins)))

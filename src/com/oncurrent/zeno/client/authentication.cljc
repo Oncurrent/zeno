@@ -4,14 +4,14 @@
    [com.deercreeklabs.talk2.client :as t2c]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
+   [com.oncurrent.zeno.client.impl :as cimpl]
    [com.oncurrent.zeno.common :as common]
    [com.oncurrent.zeno.storage :as storage]
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
 (defn make-schema-requester [talk2-client]
-  (fn [fp]
-    (t2c/<send-msg! talk2-client :get-schema-pcf-for-fingerprint fp)))
+  (cimpl/make-schema-requester talk2-client))
 
 (defn <client-log-in
   [{:keys [authenticator-name

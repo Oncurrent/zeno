@@ -407,14 +407,6 @@ channel, which will yield the function's return value.
 # API
 TODO
 
-## `make-id`
-```clojure
-(make-id)
-```
-Returns a UUID. This is simply a convenience so you don't have to think about
-ensuring that your generated ID's are good ones. Use this anytime you need
-to uniquely identify something such as a user, a group, or something else.
-
 # Development
 
 ## Dev Environment

@@ -19,7 +19,7 @@
 (l/def-record-schema data-schema
   [:numbers (l/array-schema l/int-schema)])
 
-(deftest ^:this test-log-sync
+(deftest test-log-sync
   (au/test-async
    15000
    (ca/go

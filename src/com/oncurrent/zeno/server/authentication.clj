@@ -11,8 +11,7 @@
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log])
   (:import
-   (clojure.lang ExceptionInfo)
-   (java.security SecureRandom)))
+   (clojure.lang ExceptionInfo)))
 
 (defprotocol IAuthenticator
   (<log-in! [this arg])
@@ -25,10 +24,7 @@
   (get-update-state-ret-schema [this update-type]))
 
 (defn generate-session-token []
-  (let [rng (SecureRandom.)
-        bytes (byte-array 32)]
-    (.nextBytes rng bytes)
-    (ba/byte-array->b64 bytes)))
+  (ba/byte-array->b64 (su/secure-random-bytes 32)))
 
 (defn <handle-log-in
   [{:keys [*connection-info branch->authenticator-name->info storage] :as arg}]
