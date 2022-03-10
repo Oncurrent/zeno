@@ -19,7 +19,7 @@
          #"The `sub-map` argument must contain at least one entry"
          (zc/subscribe-to-state! zc "test" bad-sub-map
                                  (constantly true))))
-    (zc/shutdown! zc)))
+    (zc/stop! zc)))
 
 (deftest test-nil-sub-map
   (let [zc (zc/zeno-client)
@@ -29,7 +29,7 @@
          #"The `sub-map` argument must be a map"
          (zc/subscribe-to-state! zc "test" bad-sub-map
                                  (constantly true))))
-    (zc/shutdown! zc)))
+    (zc/stop! zc)))
 
 (deftest test-non-sym-key-in-sub-map
   (let [zc (zc/zeno-client)
@@ -39,7 +39,7 @@
          #"Keys must be symbols"
          (zc/subscribe-to-state! zc "test" bad-sub-map
                                  (constantly true))))
-    (zc/shutdown! zc)))
+    (zc/stop! zc)))
 
 (deftest test-bad-path-in-sub-map
   (let [zc (zc/zeno-client)
@@ -49,7 +49,7 @@
          #"Only integers"
          (zc/subscribe-to-state! zc "test" bad-sub-map
                                  (constantly true))))
-    (zc/shutdown! zc)))
+    (zc/stop! zc)))
 
 (deftest test-subscribe!
   (au/test-async
@@ -73,7 +73,7 @@
                                              :zeno/arg user-id}]))))
        (is (= expected (zc/subscribe-to-state! zc "test" sub-map
                                                update-fn)))
-       (zc/shutdown! zc)))))
+       (zc/stop! zc)))))
 
 (deftest test-subscribe!-single-entry
   (au/test-async
@@ -89,7 +89,7 @@
                                       :zeno/arg user-id}]))
        (is (= {'id user-id} (zc/subscribe-to-state! zc "test" sub-map
                                                     update-fn)))
-       (zc/shutdown! zc)))))
+       (zc/stop! zc)))))
 
 (deftest test-bad-path-root-in-sub-map
   (let [zc (zc/zeno-client)
@@ -99,7 +99,7 @@
          #"Paths must begin with "
          (zc/subscribe-to-state! zc "test" sub-map
                                  (constantly nil))))
-    (zc/shutdown! zc)))
+    (zc/stop! zc)))
 
 (deftest test-bad-path-root-in-sub-map-not-a-sequence
   (let [zc (zc/zeno-client)
@@ -109,7 +109,7 @@
          #"Paths must be sequences"
          (zc/subscribe-to-state! zc "test" sub-map
                                  (constantly nil))))
-    (zc/shutdown! zc)))
+    (zc/stop! zc)))
 
 (deftest test-update-sub?-numeric
   (let [update-infos [{:norm-path [:sys 0]
@@ -171,4 +171,4 @@
                                   [:zeno/actor-id]]]
     (is (= expected-state2 (:state ret2)))
     (is (= expected-expanded-paths2 (:expanded-paths ret2)))
-    (zc/shutdown! zc)))
+    (zc/stop! zc)))

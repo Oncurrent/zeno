@@ -352,7 +352,7 @@
             (str "The `state-sub-name` argument to `subscribe!` "
                  " must be a string. Got `" state-sub-name "`.")
             (u/sym-map state-sub-name sub-map opts))))
-  (when-not @(:*shutdown? zc)
+  (when-not @(:*stop? zc)
     (let [{:keys [react? resolution-map]} opts
           map-info (u/sub-map->map-info sub-map resolution-map)
           {:keys [independent-pairs ordered-dependent-pairs]} map-info
