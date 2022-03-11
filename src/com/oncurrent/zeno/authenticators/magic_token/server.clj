@@ -53,11 +53,18 @@
   (String. (.hash (BCrypt/withDefaults)
                   work-factor salt (.getBytes ^String raw))))
 
+(def prefix
+  (let [str-ns (namespace shared/authenticator-name)
+        str-name (name shared/authenticator-name)
+        prefix (if str-ns
+                 (str str-ns "_" str-name)
+                 str-name)]))
+
 (defn identifier-key [identifier]
   (str identifier-to-actor-id-key-prefix identifier))
 
 (defn hashed-token-key [hashed-token]
-  (str hashed-token-to-info-key-prefix hashed-token))
+  (str (maybe prefix) hashed-token-to-info-key-prefix hashed-token))
 
 (defn <dec-remaining-uses! [authenticator-storage hashed-token]
   (storage/<swap! authenticator-storage
@@ -194,7 +201,7 @@
     true))
 
 (defrecord MagicTokenAuthenticator
-  [login-lifetime-mins mtas]
+  [login-lifetime-mins unified-storage? mtas]
   za/IAuthenticator
   (<log-in! [this arg]
     (<log-in!* (merge this arg)))
@@ -208,6 +215,8 @@
     shared/magic-token-info-schema)
   (get-name [this]
     shared/authenticator-name)
+  (unified-storage? [this]
+    (boolean (:unified-storage? this)))
   (get-update-state-info-schema [this update-type]
     (case update-type
       :add-identifier shared/identifier-schema

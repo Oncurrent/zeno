@@ -275,16 +275,21 @@
                  str-name)]
     (storage/make-prefixed-storage prefix storage)))
 
-(defn xf-authenticator-info [{:keys [branch->authenticators storage]}]
+(defn xf-authenticator-info [{:keys [branch->authenticators storage ]}]
   (reduce-kv
    (fn [acc branch authenticators]
      (let [name->info (reduce
                        (fn [acc* authenticator]
                          (let [authenticator-name (authentication/get-name
                                                    authenticator)
-                               authenticator-storage (make-authenticator-storage
-                                                      authenticator-name
-                                                      storage)
+                               unified-storage? (authentication/unified-storage?
+                                                  authenticator)
+                               authenticator-storage
+                               (make-authenticator-storage
+                                 (if unified-storage?
+                                   :com.oncurrent.zeno.authenticators/unified-storage
+                                   authenticator-name)
+                                 storage)
                                info (u/sym-map authenticator
                                                authenticator-storage)]
                            (assoc acc* authenticator-name info)))
