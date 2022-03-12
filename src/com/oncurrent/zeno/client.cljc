@@ -14,11 +14,11 @@
   ([config]
    (impl/zeno-client config)))
 
-(defn shutdown!
-  "Shutdown the zeno client and its connection to the server.
+(defn stop!
+  "Stop the zeno client and its connection to the server.
    Mostly useful in tests."
   [zc]
-  (impl/shutdown! zc))
+  (impl/stop! zc))
 
 (defn update-state! [zc update-cmds cb]
   (impl/update-state! zc update-cmds cb))

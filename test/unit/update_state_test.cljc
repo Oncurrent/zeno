@@ -38,7 +38,7 @@
             (au/<? (zc/<update-state! zc [{:zeno/path [:not-a-valid-root :x]
                                            :zeno/op :zeno/set
                                            :zeno/arg 1}]))))
-       (zc/shutdown! zc)))))
+       (zc/stop! zc)))))
 
 (deftest test-bad-command-op
   (au/test-async
@@ -51,7 +51,7 @@
             (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/client :x]
                                            :zeno/op :not-an-op
                                            :zeno/arg 1}]))))
-       (zc/shutdown! zc)))))
+       (zc/stop! zc)))))
 
 (deftest test-crdt-bad-command-op
   (au/test-async
@@ -64,7 +64,7 @@
             (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/crdt :x]
                                            :zeno/op :not-an-op
                                            :zeno/arg 1}]))))
-       (zc/shutdown! zc)))))
+       (zc/stop! zc)))))
 
 (deftest test-ordered-update-maps
   (au/test-async
@@ -98,7 +98,7 @@
                                         :zeno/op :zeno/insert-before
                                         :zeno/arg {:text orig-text}}]))
          (is (= orig-text (au/<? ch)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -134,7 +134,7 @@
                                         :zeno/op :zeno/insert-before
                                         :zeno/arg {:text orig-text}}]))
          (is (= orig-text (au/<? ch)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -160,7 +160,7 @@
                                         :zeno/op :zeno/insert-after
                                         :zeno/arg {:text new-text}}]))
          (is (= new-text (au/<? ch)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -186,7 +186,7 @@
                                         :zeno/op :zeno/insert-after
                                         :zeno/arg {:text new-text}}]))
          (is (= new-text (au/<? ch)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -208,7 +208,7 @@
          (is (= {'title book-title}
                 (zc/subscribe-to-state! zc "test" sub-map update-fn
                                         (u/sym-map resolution-map))))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -230,7 +230,7 @@
          (is (= {'title book-title}
                 (zc/subscribe-to-state! zc "test" sub-map update-fn
                                         (u/sym-map resolution-map))))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -257,7 +257,7 @@
                   title "Treasure Island"}
                 (zc/subscribe-to-state! zc "test" sub-map update-fn
                                         (u/sym-map resolution-map))))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -284,7 +284,7 @@
                   title "Treasure Island"}
                 (zc/subscribe-to-state! zc "test" sub-map update-fn
                                         (u/sym-map resolution-map))))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -308,7 +308,7 @@
          (is (= expected (zc/subscribe-to-state!
                           zc "test" sub-map update-fn
                           (u/sym-map resolution-map))))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -332,7 +332,7 @@
          (is (= expected (zc/subscribe-to-state!
                           zc "test" sub-map update-fn
                           (u/sym-map resolution-map))))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -366,7 +366,7 @@
                                   :zeno/op :zeno/remove}]))))
          (is (= {'my-book-ids ["456"]
                  'my-books [{:title "Kidnapped"}]} (au/<? update-ch)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -400,7 +400,7 @@
                                   :zeno/op :zeno/remove}]))))
          (is (= {'my-book-ids ["456"]
                  'my-books [{:title "Kidnapped"}]} (au/<? update-ch)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -440,7 +440,7 @@
                                   :zeno/op :zeno/set
                                   :zeno/arg new-title}]))))
          (is (= expected2 (au/<? update-ch)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -480,7 +480,7 @@
                                   :zeno/op :zeno/set
                                   :zeno/arg new-title}]))))
          (is (= expected2 (au/<? update-ch)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -506,7 +506,7 @@
                                                     :zeno/op :zeno/set
                                                     :zeno/arg books}]))))
          (is (= expected (au/<? ch)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -532,7 +532,7 @@
                                                     :zeno/op :zeno/set
                                                     :zeno/arg books}]))))
          (is (= expected (au/<? ch)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -586,7 +586,7 @@
                     (update 'book-nums set)
                     (update 'titles-1 set)
                     (update 'titles-2 set))))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e))
          (println (u/ex-msg-and-stacktrace e)))))))
@@ -641,7 +641,7 @@
                     (update 'book-nums set)
                     (update 'titles-1 set)
                     (update 'titles-2 set))))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e))
          (println (u/ex-msg-and-stacktrace e)))))))
@@ -668,7 +668,7 @@
                                         :zeno/arg books}]))
          (is (= expected (zc/subscribe-to-state! zc "test" sub-map
                                                  update-fn)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -694,7 +694,7 @@
                                         :zeno/arg books}]))
          (is (= expected (zc/subscribe-to-state! zc "test" sub-map
                                                  update-fn)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (log/error (u/ex-msg-and-stacktrace e))
          (is (= :unexpected e)))))))
@@ -713,7 +713,7 @@
              expected {'my-titles ["Treasure Island" "Dr Jekyll and Mr Hyde"]}]
          (au/<? (zc/<set-state! zc [:zeno/client :books] books))
          (is (= expected (zc/subscribe-to-state! zc "test" sub-map update-fn)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -731,7 +731,7 @@
              expected {'my-titles ["Treasure Island" "Dr Jekyll and Mr Hyde"]}]
          (au/<? (zc/<set-state! zc [:zeno/crdt :books] books))
          (is (= expected (zc/subscribe-to-state! zc "test" sub-map update-fn)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -752,7 +752,7 @@
              expected {'num nil
                        'title nil}]
          (is (= expected (zc/subscribe-to-state! zc "test" sub-map update-fn)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -773,7 +773,7 @@
              expected {'num nil
                        'title nil}]
          (is (= expected (zc/subscribe-to-state! zc "test" sub-map update-fn)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -795,7 +795,7 @@
              expected {'title nil}]
          (is (= expected (zc/subscribe-to-state! zc "test" sub-map update-fn
                                                  opts)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -817,7 +817,7 @@
              expected {'title nil}]
          (is (= expected (zc/subscribe-to-state! zc "test" sub-map update-fn
                                                  opts)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -836,7 +836,7 @@
          (is (= true ret))
          (is (= {'title-999 nil}
                 (zc/subscribe-to-state! zc "test" sub-map update-fn)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -855,7 +855,7 @@
          (is (= true ret))
          (is (= {'title-999 nil}
                 (zc/subscribe-to-state! zc "test" sub-map update-fn)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -873,7 +873,7 @@
              expected {'my-titles [nil]}]
          (au/<? (zc/<set-state! zc [:zeno/client :books] books))
          (is (= expected (zc/subscribe-to-state! zc "test" sub-map update-fn)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -891,7 +891,7 @@
              expected {'my-titles [nil]}]
          (au/<? (zc/<set-state! zc [:zeno/crdt :books] books))
          (is (= expected (zc/subscribe-to-state! zc "test" sub-map update-fn)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -925,7 +925,7 @@
              expected-titles (-> (conj titles-set "1984")
                                  (disj "Kidnapped"))]
          (is (= {'titles expected-titles} (au/<? ch)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (log/error (u/ex-msg-and-stacktrace e))
          (is (= :unexpected e)))))))
@@ -964,7 +964,7 @@
              expected-titles (-> (conj titles-set "1984")
                                  (disj "Kidnapped"))]
          (is (= {'titles expected-titles} (au/<? ch)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (log/error (u/ex-msg-and-stacktrace e))
          (is (= :unexpected e)))))))
@@ -999,7 +999,7 @@
                                :zeno/arg 5}]))]
          (is (= true ret4))
          (is (= {'my-nums [2 4 5]} (au/<? ch)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
@@ -1032,7 +1032,7 @@
                                :zeno/arg 5}]))]
          (is (= true ret4))
          (is (= {'my-nums [2 4 5]} (au/<? ch)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (log/error (u/ex-msg-and-stacktrace e))
          (is (= :unexpected e)))))))
@@ -1064,7 +1064,7 @@
                                :zeno/path [:zeno/client "2" -1]}]))]
          (is (= true ret4))
          (is (= {'my-nums [2 3 301 302 303 304 305 4]} (au/<? ch)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (log/error (u/ex-msg-and-stacktrace e))
          (is (= :unexpected e)))))))
@@ -1097,7 +1097,7 @@
                                :zeno/path [:zeno/crdt "2" -1]}]))]
          (is (= true ret4))
          (is (= {'my-nums [2 3 301 302 303 304 305 4]} (au/<? ch)))
-         (zc/shutdown! zc))
+         (zc/stop! zc))
        (catch #?(:clj Exception :cljs js/Error) e
          (log/error (u/ex-msg-and-stacktrace e))
          (is (= :unexpected e)))))))

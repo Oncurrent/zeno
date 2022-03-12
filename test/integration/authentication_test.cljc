@@ -59,12 +59,12 @@
            (is (= session-token (:session-token rs-ret)))
            (is (= created-actor-id (:actor-id rs-ret)))
            (is (= false (au/<? (isa/<resume-session! zc2 "an-invalid-token"))))
-           (zc/shutdown! zc2))
+           (zc/stop! zc2))
          (catch #?(:clj Exception :cljs js/Error) e
            (log/error (u/ex-msg-and-stacktrace e))
            (is (= :threw :but-should-not-have)))
          (finally
-           (zc/shutdown! zc)))))))
+           (zc/stop! zc)))))))
 
 ;; TODO: Test adding an identifier that already exists, etc.
 
@@ -240,10 +240,10 @@
             (is (= false (au/<? (mta/<resume-session! zc2 "an-invalid-token"))))
             (is (= true (au/<? (mta/<log-out! zc))))
             (is (= true (au/<? (mta/<log-out! zc2))))
-            (zc/shutdown! zc2))
+            (zc/stop! zc2))
           (catch #?(:clj Exception :cljs js/Error) e
             (log/error (u/ex-msg-and-stacktrace e))
             (is (= :threw :but-should-not-have)))
           (finally
             (.delete ^java.io.File extra-info*)
-            (zc/shutdown! zc)))))))
+            (zc/stop! zc)))))))

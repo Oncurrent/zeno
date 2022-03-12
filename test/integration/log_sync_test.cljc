@@ -48,5 +48,5 @@
            (log/error (u/ex-msg-and-stacktrace e))
            (is (= :threw :but-should-not-have)))
          (finally
-           (zc/shutdown! zc1)
-           (zc/shutdown! zc2)))))))
+           (zc/stop! zc1)
+           (zc/stop! zc2)))))))

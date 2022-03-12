@@ -107,7 +107,7 @@
 
 (defn start-log-sync-loop! [zc]
   (ca/go
-    (let [{:keys [*shutdown? client-name storage talk2-client]} zc]
+    (let [{:keys [*stop? client-name storage talk2-client]} zc]
       (when talk2-client
         (loop []
           (try
@@ -158,7 +158,7 @@
             (catch #?(:clj Exception :cljs js/Error) e
               (log/error "Error in log sync loop:\n"
                          (u/ex-msg-and-stacktrace e))))
-          (when-not @*shutdown?
+          (when-not @*stop?
             ;; TODO: Consider this timeout value
             (ca/<! (ca/timeout 1000))
             (recur)))))))
@@ -197,7 +197,7 @@
 
 (defn start-update-state-loop! [zc]
   (ca/go
-    (let [{:keys [*shutdown? update-state-ch]} zc]
+    (let [{:keys [*stop? update-state-ch]} zc]
       (loop []
         (try
           (let [[update-info ch] (ca/alts! [update-state-ch
@@ -213,7 +213,7 @@
           (catch #?(:clj Exception :cljs js/Error) e
             (log/error "Error updating state:\n"
                        (u/ex-msg-and-stacktrace e))))
-        (when-not @*shutdown?
+        (when-not @*stop?
           (recur))))))
 
 (defn make-talk2-client [{:keys [get-server-url storage]}]
@@ -261,7 +261,7 @@
         *next-instance-num (atom 0)
         *next-topic-sub-id (atom 0)
         *topic-name->sub-id->cb (atom {})
-        *shutdown? (atom false)
+        *stop? (atom false)
         *client-state (atom initial-client-state)
         ;; TODO: Load crdt-state from logs in IDB
         *crdt-state (atom nil)
@@ -276,7 +276,7 @@
                       *crdt-state
                       *next-instance-num
                       *next-topic-sub-id
-                      *shutdown?
+                      *stop?
                       *state-sub-name->info
                       *topic-name->sub-id->cb
                       branch
@@ -289,10 +289,10 @@
     (start-update-state-loop! zc)
     zc))
 
-(defn shutdown! [{:keys [*shutdown? talk2-client] :as zc}]
-  (reset! *shutdown? true)
+(defn stop! [{:keys [*stop? talk2-client] :as zc}]
+  (reset! *stop? true)
   (when talk2-client
-    (t2c/shutdown! talk2-client)))
+    (t2c/stop! talk2-client)))
 
 (defn update-state! [zc cmds cb]
   ;; We put the updates on a channel to guarantee serial update order
