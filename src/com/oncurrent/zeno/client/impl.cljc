@@ -3,6 +3,7 @@
    [clojure.core.async :as ca]
    [com.deercreeklabs.talk2.client :as t2c]
    [deercreeklabs.async-utils :as au]
+   [deercreeklabs.baracus :as ba]
    [deercreeklabs.lancaster :as l]
    [com.oncurrent.zeno.authorization :as authz]
    [com.oncurrent.zeno.client.authorization :as client-authz]
