@@ -39,8 +39,8 @@
   "Generate a secure random url-safe token."
   []
   (.encodeToString
-    ^Base64$Encoder url-safe-b64-encoder
-    (su/secure-random-bytes 32)))
+   ^Base64$Encoder url-safe-b64-encoder
+   (su/secure-random-bytes 32)))
 
 (defn encrypt-const-salt
   "Uses the same underlying BCrypt as weavejester/crypto-password (which we use
@@ -70,128 +70,130 @@
 ;; corresponding keys in the record that implements this protocol.
 (defprotocol IMagicTokenApplicationServer
   (get-extra-info-schema [this])
-  (<send-magic-token! [this token token-info])
-  (<do-action! [this token-info]))
+  (<handle-request-magic-token! [this token token-info])
+  (<handle-redeem-magic-token! [this token token-info]))
 
 (defn <with-deserialized-extra-info
   [{:keys [serialized-extra-info] :as token-info}
    {:keys [authenticator-storage mtas] :as arg}]
   (au/go
-    (assoc token-info :extra-info
-           (when serialized-extra-info
-             (au/<? (common/<serialized-value->value
-                      {:<request-schema (su/make-schema-requester arg)
-                       :reader-schema (get-extra-info-schema mtas)
-                       :serialized-value serialized-extra-info
-                       :storage authenticator-storage}))))))
+   (assoc token-info :extra-info
+          (when serialized-extra-info
+            (au/<? (common/<serialized-value->value
+                    {:<request-schema (su/make-schema-requester arg)
+                     :reader-schema (get-extra-info-schema mtas)
+                     :serialized-value serialized-extra-info
+                     :storage authenticator-storage}))))))
 
-(defn <log-in!* [{:keys [login-lifetime-mins authenticator-storage login-info
-                         mtas] :as arg}]
+(defn <log-in!* [{token :login-info
+                  :keys [login-lifetime-mins authenticator-storage mtas]
+                  :as arg}]
   (au/go
-    (let [hashed-token (encrypt-const-salt login-info)
-          token-info (au/<? (storage/<get authenticator-storage
-                                          (hashed-token-key hashed-token)
-                                          shared/magic-token-info-schema))]
-      (when-let [{:keys [actor-id identifier expiration-ms remaining-uses
-                         serialized-extra-info]} token-info]
-        (let [actor-id* (au/<? (storage/<get authenticator-storage
-                                             (identifier-key identifier)
-                                             schemas/actor-id-schema))
-              same-actor? (= actor-id actor-id*)
-              active? (nil-or-pred? expiration-ms #(> % (u/current-time-ms)))
-              more-uses? (nil-or-pred? remaining-uses #(> % 0))]
-          (when (and active? more-uses? same-actor?)
-            (when remaining-uses
-                (au/<? (<dec-remaining-uses! authenticator-storage
-                                             hashed-token)))
-            (au/<? (<do-action! mtas (au/<? (<with-deserialized-extra-info
-                                              token-info arg))))
-            (assoc (u/sym-map login-lifetime-mins actor-id)
-                   :extra-info token-info)))))))
+   (let [hashed-token (encrypt-const-salt token)
+         token-info (au/<? (storage/<get authenticator-storage
+                                         (hashed-token-key hashed-token)
+                                         shared/magic-token-info-schema))]
+     (when-let [{:keys [actor-id identifier expiration-ms remaining-uses
+                        serialized-extra-info]} token-info]
+       (let [actor-id* (au/<? (storage/<get authenticator-storage
+                                            (identifier-key identifier)
+                                            schemas/actor-id-schema))
+             same-actor? (= actor-id actor-id*)
+             active? (nil-or-pred? expiration-ms #(> % (u/current-time-ms)))
+             more-uses? (nil-or-pred? remaining-uses #(> % 0))]
+         (when (and active? more-uses? same-actor?)
+           (when remaining-uses
+             (au/<? (<dec-remaining-uses! authenticator-storage
+                                          hashed-token)))
+           (au/<? (<handle-redeem-magic-token!
+                   mtas token (au/<? (<with-deserialized-extra-info
+                                      token-info arg))))
+           (assoc (u/sym-map login-lifetime-mins actor-id)
+                  :extra-info token-info)))))))
 
 (defn <log-out!* [arg]
   (au/go
-    ;; Don't need to do anything on logout. Decrementing :remaining-uses and
-    ;; the deletion of expired or used up tokens happens on log-in.
-    true))
+   ;; Don't need to do anything on logout. Decrementing :remaining-uses and
+   ;; the deletion of expired or used up tokens happens on log-in.
+   true))
 
 (defmulti <update-authenticator-state!* :update-type)
 
-(defn <send-magic-token-info->magic-token-info
+(defn <request-magic-token-info->magic-token-info
   [{{:keys [identifier mins-valid number-of-uses] :as info} :update-info
     {:keys [default-mins-valid default-number-of-uses]} :mtas
     :keys [authenticator-storage]}]
   (au/go
-    (-> info
-        (assoc :actor-id (au/<? (storage/<get authenticator-storage
-                                              (identifier-key identifier)
-                                              schemas/actor-id-schema)))
-        (assoc :expiration-ms (number-of-mins->epoch-ms
-                                (or mins-valid
-                                    default-mins-valid
-                                    default-mins-valid*)))
-        (assoc :remaining-uses (or number-of-uses
-                                   default-number-of-uses
-                                   default-number-of-uses*)))))
+   (-> info
+       (assoc :actor-id (au/<? (storage/<get authenticator-storage
+                                             (identifier-key identifier)
+                                             schemas/actor-id-schema)))
+       (assoc :expiration-ms (number-of-mins->epoch-ms
+                              (or mins-valid
+                                  default-mins-valid
+                                  default-mins-valid*)))
+       (assoc :remaining-uses (or number-of-uses
+                                  default-number-of-uses
+                                  default-number-of-uses*)))))
 
-(defmethod <update-authenticator-state!* :send-magic-token
+(defmethod <update-authenticator-state!* :request-magic-token
   [{:keys [authenticator-storage update-info mtas] :as arg}]
   (au/go
-    (let [token (generate-token)
-          hashed-token (encrypt-const-salt token)
-          token-info (au/<? (<send-magic-token-info->magic-token-info arg))]
-      (au/<? (storage/<swap! authenticator-storage
-                             (hashed-token-key hashed-token)
-                             shared/magic-token-info-schema
-                             (fn [old-token-info]
-                               (when old-token-info
-                                 (throw (ex-info "Token already in use." {})))
-                               token-info)))
-      (au/<? (<send-magic-token! mtas token
-                                 (au/<? (<with-deserialized-extra-info
-                                          token-info arg))))
-      true)))
+   (let [token (generate-token)
+         hashed-token (encrypt-const-salt token)
+         token-info (au/<? (<request-magic-token-info->magic-token-info arg))]
+     (au/<? (storage/<swap! authenticator-storage
+                            (hashed-token-key hashed-token)
+                            shared/magic-token-info-schema
+                            (fn [old-token-info]
+                              (when old-token-info
+                                (throw (ex-info "Token already in use." {})))
+                              token-info)))
+     (au/<? (<handle-request-magic-token!
+             mtas token (au/<? (<with-deserialized-extra-info
+                                token-info arg))))
+     true)))
 
 (defn <add-identifier* [{:keys [authenticator-storage actor-id identifier]}]
   (au/go
-    (try
-      (au/<? (storage/<add! authenticator-storage
-                            (identifier-key identifier)
-                            schemas/actor-id-schema
-                            actor-id))
-      (catch ExceptionInfo e
-        (if (= :key-exists (some-> e ex-data :type))
-          (throw (ex-info
-                   (str "identifier `" identifier "` already exists.")
-                   (u/sym-map actor-id identifier)))
-          (throw e))))))
+   (try
+    (au/<? (storage/<add! authenticator-storage
+                          (identifier-key identifier)
+                          schemas/actor-id-schema
+                          actor-id))
+    (catch ExceptionInfo e
+      (if (= :key-exists (some-> e ex-data :type))
+        (throw (ex-info
+                (str "identifier `" identifier "` already exists.")
+                (u/sym-map actor-id identifier)))
+        (throw e))))))
 
 (defmethod <update-authenticator-state!* :create-actor
   [{:keys [authenticator-storage update-info]}]
   (au/go
-    (let [{:keys [actor-id identifier]
-           :or {actor-id (u/compact-random-uuid)}} update-info]
-      (au/<? (<add-identifier* (u/sym-map authenticator-storage actor-id
-                                          identifier)))
-      actor-id)))
+   (let [{:keys [actor-id identifier]
+          :or {actor-id (u/compact-random-uuid)}} update-info]
+     (au/<? (<add-identifier* (u/sym-map authenticator-storage actor-id
+                                         identifier)))
+     actor-id)))
 
 (defmethod <update-authenticator-state!* :add-identifier
   [{:keys [authenticator-storage actor-id update-info]}]
   (au/go
-    (when-not actor-id
-      (throw (ex-info "Actor is not logged in." {})))
-    (<add-identifier* (assoc (u/sym-map authenticator-storage actor-id)
-                             :identifier update-info))
-    true))
+   (when-not actor-id
+     (throw (ex-info "Actor is not logged in." {})))
+   (<add-identifier* (assoc (u/sym-map authenticator-storage actor-id)
+                            :identifier update-info))
+   true))
 
 (defmethod <update-authenticator-state!* :remove-identifier
   [{:keys [authenticator-storage actor-id update-info] :as arg}]
   (au/go
-    (when-not actor-id
-      (throw (ex-info "Actor is not logged in." {})))
-    (au/<? (storage/<delete! authenticator-storage
-                             (identifier-key update-info)))
-    true))
+   (when-not actor-id
+     (throw (ex-info "Actor is not logged in." {})))
+   (au/<? (storage/<delete! authenticator-storage
+                            (identifier-key update-info)))
+   true))
 
 (defrecord MagicTokenAuthenticator
   [login-lifetime-mins storage-name mtas]
@@ -213,13 +215,13 @@
       :add-identifier shared/identifier-schema
       :create-actor shared/create-actor-info-schema
       :remove-identifier shared/identifier-schema
-      :send-magic-token shared/send-magic-token-info-schema))
+      :request-magic-token shared/request-magic-token-info-schema))
   (get-update-state-ret-schema [this update-type]
     (case update-type
       :add-identifier l/boolean-schema
       :create-actor schemas/actor-id-schema
       :remove-identifier l/boolean-schema
-      :send-magic-token l/boolean-schema)))
+      :request-magic-token l/boolean-schema)))
 
 (defn make-authenticator
   [{:keys [login-lifetime-mins storage-name mtas]
@@ -232,4 +234,4 @@
                          "not satisfy the IMagicTokenApplicationServer protocol.")
                     (u/sym-map mtas))))
   (->MagicTokenAuthenticator
-    login-lifetime-mins storage-name mtas))
+   login-lifetime-mins storage-name mtas))

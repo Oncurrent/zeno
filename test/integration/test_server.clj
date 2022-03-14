@@ -29,10 +29,10 @@
   [mins-valid number-of-uses]
   mt-auth/IMagicTokenApplicationServer
   (get-extra-info-schema [this] l/string-schema)
-  (<send-magic-token! [this token token-info]
+  (<handle-request-magic-token! [this token token-info]
     (au/go
       (spit (:extra-info token-info) (str token "\n") :append true)))
-  (<do-action! [this token-info]
+  (<handle-redeem-magic-token! [this _token token-info]
     (au/go
       (spit (:extra-info token-info) "did-action!\n" :append true))))
 
