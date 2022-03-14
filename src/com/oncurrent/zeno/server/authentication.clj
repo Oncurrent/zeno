@@ -20,7 +20,6 @@
   (get-login-info-schema [this])
   (get-login-ret-extra-info-schema [this])
   (get-name [this])
-  (get-storage-name [this])
   (get-update-state-info-schema [this update-type])
   (get-update-state-ret-schema [this update-type]))
 

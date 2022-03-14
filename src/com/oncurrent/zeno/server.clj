@@ -275,13 +275,13 @@
                  str-name)]
     (storage/make-prefixed-storage prefix storage)))
 
-(defn xf-authenticator-info [{:keys [branch->authenticators storage ]}]
+(defn xf-authenticator-info [{:keys [branch->authenticators storage]}]
   (reduce-kv
    (fn [acc branch authenticators]
      (let [name->info (reduce
                        (fn [acc* authenticator]
                          (let [authenticator-name (authentication/get-name
-                                                    authenticator)
+                                                   authenticator)
                                storage-name (:storage-name authenticator)
                                authenticator-storage (make-authenticator-storage
                                                        (if storage-name
