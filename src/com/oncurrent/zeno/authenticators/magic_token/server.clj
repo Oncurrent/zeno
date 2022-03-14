@@ -53,18 +53,11 @@
   (String. (.hash (BCrypt/withDefaults)
                   work-factor salt (.getBytes ^String raw))))
 
-(def prefix
-  (let [str-ns (namespace shared/authenticator-name)
-        str-name (name shared/authenticator-name)
-        prefix (if str-ns
-                 (str str-ns "_" str-name)
-                 str-name)]))
-
 (defn identifier-key [identifier]
   (str identifier-to-actor-id-key-prefix identifier))
 
 (defn hashed-token-key [hashed-token]
-  (str (maybe prefix) hashed-token-to-info-key-prefix hashed-token))
+  (str hashed-token-to-info-key-prefix hashed-token))
 
 (defn <dec-remaining-uses! [authenticator-storage hashed-token]
   (storage/<swap! authenticator-storage

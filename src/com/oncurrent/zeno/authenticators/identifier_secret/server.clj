@@ -21,19 +21,12 @@
 (def actor-id-to-hashed-secret-key-prefix "_ACTOR-ID-TO-HASHED-SECRET-")
 (def work-factor 12)
 
-(def prefix
-  (let [str-ns (namespace shared/authenticator-name)
-        str-name (name shared/authenticator-name)
-        prefix (if str-ns
-                 (str str-ns "_" str-name)
-                 str-name)]))
-
 (defn <get-actor-id-for-identifier [authenticator-storage identifier]
   (let [k (str identifier-to-actor-id-key-prefix identifier)]
     (storage/<get authenticator-storage k schemas/actor-id-schema)))
 
 (defn <get-hashed-secret-for-actor-id [authenticator-storage actor-id]
-  (let [k (str (maybe prefix) actor-id-to-hashed-secret-key-prefix actor-id)]
+  (let [k (str actor-id-to-hashed-secret-key-prefix actor-id)]
     (storage/<get authenticator-storage k l/string-schema)))
 
 (defn <log-in!* [{:keys [login-lifetime-mins authenticator-storage login-info]}]
