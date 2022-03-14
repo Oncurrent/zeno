@@ -12,7 +12,7 @@
   [:bytes l/bytes-schema]
   [:fp schemas/fingerprint-schema])
 
-(l/def-record-schema send-magic-token-info-schema
+(l/def-record-schema request-magic-token-info-schema
   [:identifier identifier-schema]
   [:mins-valid l/int-schema]
   [:number-of-uses l/int-schema]
