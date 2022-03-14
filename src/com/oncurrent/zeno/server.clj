@@ -281,15 +281,13 @@
      (let [name->info (reduce
                        (fn [acc* authenticator]
                          (let [authenticator-name (authentication/get-name
-                                                   authenticator)
-                               storage-name (authentication/get-storage-name
-                                              authenticator)
-                               authenticator-storage
-                               (make-authenticator-storage
-                                 (if storage-name
-                                   storage-name
-                                   authenticator-name)
-                                 storage)
+                                                    authenticator)
+                               storage-name (:storage-name authenticator)
+                               authenticator-storage (make-authenticator-storage
+                                                       (if storage-name
+                                                         storage-name
+                                                         authenticator-name)
+                                                       storage)
                                info (u/sym-map authenticator
                                                authenticator-storage)]
                            (assoc acc* authenticator-name info)))

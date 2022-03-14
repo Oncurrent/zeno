@@ -208,8 +208,6 @@
     shared/magic-token-info-schema)
   (get-name [this]
     shared/authenticator-name)
-  (get-storage-name [this]
-    storage-name)
   (get-update-state-info-schema [this update-type]
     (case update-type
       :add-identifier shared/identifier-schema
