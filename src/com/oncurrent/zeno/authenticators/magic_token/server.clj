@@ -201,7 +201,7 @@
     true))
 
 (defrecord MagicTokenAuthenticator
-  [login-lifetime-mins unified-storage? mtas]
+  [login-lifetime-mins storage-name mtas]
   za/IAuthenticator
   (<log-in! [this arg]
     (<log-in!* (merge this arg)))
@@ -215,8 +215,8 @@
     shared/magic-token-info-schema)
   (get-name [this]
     shared/authenticator-name)
-  (unified-storage? [this]
-    (boolean (:unified-storage? this)))
+  (get-storage-name [this]
+    storage-name)
   (get-update-state-info-schema [this update-type]
     (case update-type
       :add-identifier shared/identifier-schema
@@ -231,8 +231,11 @@
       :send-magic-token l/boolean-schema)))
 
 (defn make-authenticator
-  [{:keys [login-lifetime-mins mtas]
+  [{:keys [login-lifetime-mins storage-name mtas]
     :or {login-lifetime-mins (* 14 24 60)}}]
+  (when-not (or (nil? storage-name) (keyword? storage-name))
+    (throw (ex-info (str "The supplied storage-name must be a keyword or nil. Got "
+                         storage-name " which is a " (type storage-name) ". "))))
   (when-not (satisfies? IMagicTokenApplicationServer mtas)
     (throw (ex-info (str "The supplied MagicTokenApplicationServer (mtas) does "
                          "not satisfy the IMagicTokenApplicationServer protocol.")

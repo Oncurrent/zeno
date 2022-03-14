@@ -282,12 +282,12 @@
                        (fn [acc* authenticator]
                          (let [authenticator-name (authentication/get-name
                                                    authenticator)
-                               unified-storage? (authentication/unified-storage?
-                                                  authenticator)
+                               storage-name (authentication/get-storage-name
+                                              authenticator)
                                authenticator-storage
                                (make-authenticator-storage
-                                 (if unified-storage?
-                                   :com.oncurrent.zeno.authenticators/unified-storage
+                                 (if storage-name
+                                   storage-name
                                    authenticator-name)
                                  storage)
                                info (u/sym-map authenticator
