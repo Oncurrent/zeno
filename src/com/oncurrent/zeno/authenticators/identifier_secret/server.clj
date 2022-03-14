@@ -127,7 +127,7 @@
       true)))
 
 (defrecord IdentifierSecretAuthenticator
-  [login-lifetime-mins]
+  [login-lifetime-mins storage-name]
   za/IAuthenticator
   (<log-in! [this arg]
     (<log-in!* (assoc arg :login-lifetime-mins login-lifetime-mins)))
@@ -157,6 +157,9 @@
 (defn make-authenticator
   ([]
    (make-authenticator {}))
-  ([{:keys [login-lifetime-mins]
+  ([{:keys [login-lifetime-mins storage-name]
      :or {login-lifetime-mins (* 14 24 60)}}]
-   (->IdentifierSecretAuthenticator login-lifetime-mins)))
+   (when-not (or (nil? storage-name) (keyword? storage-name))
+     (throw (ex-info (str "The supplied storage-name must be a keyword or nil. Got "
+                          storage-name " which is a " (type storage-name) ". "))))
+   (->IdentifierSecretAuthenticator login-lifetime-mins storage-name)))

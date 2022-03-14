@@ -282,9 +282,12 @@
                        (fn [acc* authenticator]
                          (let [authenticator-name (authentication/get-name
                                                    authenticator)
+                               storage-name (:storage-name authenticator)
                                authenticator-storage (make-authenticator-storage
-                                                      authenticator-name
-                                                      storage)
+                                                       (if storage-name
+                                                         storage-name
+                                                         authenticator-name)
+                                                       storage)
                                info (u/sym-map authenticator
                                                authenticator-storage)]
                            (assoc acc* authenticator-name info)))
