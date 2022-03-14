@@ -58,7 +58,7 @@
 (defn str->int [s]
   (when (seq s)
     #?(:clj (Integer/parseInt s)
-       :cljs (js/parseInt s))))
+       :cljs (js/parseInt s 10))))
 
 (defn str->long [s]
   (when (seq s)

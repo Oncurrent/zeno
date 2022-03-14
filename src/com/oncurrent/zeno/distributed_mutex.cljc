@@ -15,8 +15,8 @@
                                 "{" min-name-len "," max-name-len "}")))
 
 (defn handle-acquisition! [mutex-client mutex-info]
-  (let [{:keys [on-acquire *shutdown? *acquired?]} mutex-client]
-    (when (and (not @*shutdown?)
+  (let [{:keys [on-acquire *stop? *acquired?]} mutex-client]
+    (when (and (not @*stop?)
                (not @*acquired?))
       (reset! *acquired? true)
       (on-acquire mutex-info))))
@@ -32,7 +32,7 @@
     (let [{:keys [client-name
                   lease-length-ms
                   mutex-key
-                  *shutdown?
+                  *stop?
                   storage]} mutex-client
           new-mutex-info {:lease-id (u/compact-random-uuid)
                           :lease-length-ms lease-length-ms
@@ -44,7 +44,7 @@
                                         (u/sym-map cur-mutex-info
                                                    new-mutex-info
                                                    old-mutex-info)))))]
-      (when-not @*shutdown?
+      (when-not @*stop?
         (try
           (au/<? (storage/<swap! storage
                                  mutex-key
@@ -58,9 +58,9 @@
 (defn <attempt-acquisition! [mutex-client prior-lease-id]
   (au/go
     (let [{:keys [mutex-key
-                  *shutdown?
+                  *stop?
                   storage]} mutex-client]
-      (when (not @*shutdown?)
+      (when (not @*stop?)
         (let [mutex-info (au/<? (storage/<get storage
                                               mutex-key
                                               schemas/mutex-info-schema))]
@@ -72,7 +72,7 @@
     (try
       (let [{:keys [mutex-key
                     on-stale
-                    *shutdown?
+                    *stop?
                     storage]} mutex-client]
         (loop [prior-lease-id nil]
           (let [mutex-info (au/<? (storage/<get storage
@@ -82,9 +82,9 @@
                 stale? (= prior-lease-id lease-id)]
             (when stale?
               (on-stale mutex-info)
-              (reset! *shutdown? true))
+              (reset! *stop? true))
             (ca/<! (ca/timeout lease-length-ms))
-            (when-not @*shutdown?
+            (when-not @*stop?
               (recur lease-id)))))
       (catch #?(:clj Exception :cljs js/Error) e
         (log/error "Error in watch loop:\n" (u/ex-msg-and-stacktrace e))))))
@@ -96,9 +96,9 @@
                     mutex-key
                     on-stale
                     refresh-ratio
-                    *shutdown?
+                    *stop?
                     storage]} mutex-client]
-        (while (not @*shutdown?)
+        (while (not @*stop?)
           (try
             (let [mutex-info (au/<? (storage/<get storage
                                                   mutex-key
@@ -136,7 +136,7 @@
 ;;;;;;;;;;;;;;;;;;;;;;;;; External API ;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defn stop! [mutex-client]
-  (reset! (:*shutdown? mutex-client) true)
+  (reset! (:*stop? mutex-client) true)
   (handle-release! mutex-client nil))
 
 (defn make-distributed-mutex-client
@@ -187,11 +187,11 @@
                                       options)
          mutex-key (str storage/mutex-reference-key-prefix mutex-name)
          *acquired? (atom false)
-         *shutdown? (atom false)
+         *stop? (atom false)
          client (u/sym-map mutex-name mutex-key storage client-name
                            lease-length-ms on-acquire on-release on-stale
                            refresh-ratio retry-on-release watch-only?
-                           *acquired? *shutdown?)]
+                           *acquired? *stop?)]
      (if watch-only?
        (start-watch-loop client)
        (start-aquire-loop client))

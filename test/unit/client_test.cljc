@@ -25,4 +25,4 @@
                                              :zeno/op :zeno/set
                                              :zeno/arg :login}]))))
        (is (= '{page :login} (au/<? ch)))
-       (zc/shutdown! zc)))))
+       (zc/stop! zc)))))

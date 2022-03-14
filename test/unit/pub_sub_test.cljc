@@ -25,7 +25,7 @@
        (is (= nil (zc/publish-to-topic! zc topic msg)))
        (is (= msg (au/<? ch)))
        (is (= true (unsub!)))
-       (zc/shutdown! zc)))))
+       (zc/stop! zc)))))
 
 (deftest test-pub-sub-multiple-pubs
   (au/test-async
@@ -44,7 +44,7 @@
        (is (= nil (zc/publish-to-topic! zc topic msg2)))
        (is (= msg2 (au/<? ch)))
        (is (= true (unsub!)))
-       (zc/shutdown! zc)))))
+       (zc/stop! zc)))))
 
 (deftest test-pub-sub-multiple-subs
   (au/test-async
@@ -66,7 +66,7 @@
        (is (= msg (au/<? ch2)))
        (is (= true (unsub1!)))
        (is (= true (unsub2!)))
-       (zc/shutdown! zc)))))
+       (zc/stop! zc)))))
 
 (deftest test-pub-sub-multiple-pubs-and-multiple-subs
   (au/test-async
@@ -92,6 +92,6 @@
        (is (= msg2 (au/<? ch2)))
        (is (= true (unsub1!)))
        (is (= true (unsub2!)))
-       (zc/shutdown! zc)))))
+       (zc/stop! zc)))))
 
 ;; TODO: Test bad arguments, cbs that throw, etc.
