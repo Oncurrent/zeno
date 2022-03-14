@@ -232,4 +232,4 @@
                          "not satisfy the IMagicTokenApplicationServer protocol.")
                     (u/sym-map mtas))))
   (->MagicTokenAuthenticator
-    login-lifetime-mins mtas))
+    login-lifetime-mins storage-name mtas))

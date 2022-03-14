@@ -162,4 +162,4 @@
    (when-not (or (nil? storage-name) (keyword? storage-name))
      (throw (ex-info (str "The supplied storage-name must be a keyword or nil. Got "
                           storage-name " which is a " (type storage-name) ". "))))
-   (->IdentifierSecretAuthenticator login-lifetime-mins)))
+   (->IdentifierSecretAuthenticator login-lifetime-mins storage-name)))
