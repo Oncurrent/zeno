@@ -111,7 +111,8 @@
       true)))
 
 (defmethod <update-authenticator-state!* :set-secret
-  [{:keys [authenticator-storage actor-id update-info]}]
+  [{:keys [authenticator-storage actor-id check-old? update-info]
+    :or [check-old? true]}]
   (au/go
     (when-not actor-id
       (throw (ex-info "Actor is not logged in." {})))
@@ -119,10 +120,11 @@
           sk (str actor-id-to-hashed-secret-key-prefix actor-id)]
       (au/<? (storage/<swap! authenticator-storage sk l/string-schema
                              (fn [old-hashed-secret]
-                               (when-not
+                               (when check-old?
+                                 (when-not
                                    (bcrypt/check old-secret old-hashed-secret)
-                                 (throw (ex-info "Old secret is incorrect."
-                                                 {})))
+                                   (throw (ex-info "Old secret is incorrect."
+                                                   {}))))
                                (bcrypt/encrypt new-secret work-factor))))
       true)))
 
