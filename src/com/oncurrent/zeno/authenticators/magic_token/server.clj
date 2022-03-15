@@ -70,8 +70,8 @@
 ;; corresponding keys in the record that implements this protocol.
 (defprotocol IMagicTokenApplicationServer
   (get-extra-info-schema [this])
-  (<handle-request-magic-token! [this token token-info])
-  (<handle-redeem-magic-token! [this token token-info]))
+  (<handle-request-magic-token! [this arg])
+  (<handle-redeem-magic-token! [this arg]))
 
 (defn <with-deserialized-extra-info
   [{:keys [serialized-extra-info] :as token-info}
@@ -106,8 +106,11 @@
              (au/<? (<dec-remaining-uses! authenticator-storage
                                           hashed-token)))
            (au/<? (<handle-redeem-magic-token!
-                   mtas token (au/<? (<with-deserialized-extra-info
-                                      token-info arg))))
+                   mtas
+                   (merge arg
+                          {:token token
+                           :token-info (au/<? (<with-deserialized-extra-info
+                                               token-info arg))})))
            (assoc (u/sym-map login-lifetime-mins actor-id)
                   :extra-info token-info)))))))
 
@@ -150,8 +153,9 @@
                                 (throw (ex-info "Token already in use." {})))
                               token-info)))
      (au/<? (<handle-request-magic-token!
-             mtas token (au/<? (<with-deserialized-extra-info
-                                token-info arg))))
+             mtas (merge arg {:token token
+                              :token-info (au/<? (<with-deserialized-extra-info
+                                                  token-info arg))})))
      true)))
 
 (defn <add-identifier* [{:keys [authenticator-storage actor-id identifier]}]

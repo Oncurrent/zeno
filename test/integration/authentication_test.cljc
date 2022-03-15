@@ -19,13 +19,9 @@
 (defn make-identifier []
   (str "user-" (u/compact-random-uuid) "@email.com"))
 
-(comment
-  (kaocha.repl/run
-    'integration.authentication-test/test-identity-secret-authenticator)
-  )
 (deftest test-identity-secret-authenticator
   (au/test-async
-   10000
+   15000
    (au/go
      (let [config {:branch "integration-test"
                    :get-server-url (constantly "ws://localhost:8080/client")}
