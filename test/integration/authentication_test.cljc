@@ -23,7 +23,7 @@
   (au/test-async
    15000
    (au/go
-     (let [config {:branch "integration-test"
+     (let [config {:crdt-branch "integration-test"
                    :get-server-url (constantly "ws://localhost:8080/client")}
            zc (zc/zeno-client config)]
        (try
@@ -50,12 +50,14 @@
                _ (is (= false (au/<? (isa/<log-in! zc identifier2 secret))))
                login-ret4 (au/<? (isa/<log-in! zc identifier2 new-secret))
                _ (is (= created-actor-id (:actor-id login-ret4)))
-               {:keys [session-token]} login-ret4
+               {:keys [login-session-token]} login-ret4
                zc2 (zc/zeno-client config)
-               rs-ret (au/<? (isa/<resume-session! zc2 session-token))]
-           (is (= session-token (:session-token rs-ret)))
+               rs-ret (au/<? (isa/<resume-login-session!
+                              zc2 login-session-token))]
+           (is (= login-session-token (:login-session-token rs-ret)))
            (is (= created-actor-id (:actor-id rs-ret)))
-           (is (= false (au/<? (isa/<resume-session! zc2 "an-invalid-token"))))
+           (is (= false (au/<? (isa/<resume-login-session!
+                                zc2 "an-invalid-token"))))
            (zc/stop! zc2))
          (catch #?(:clj Exception :cljs js/Error) e
            (log/error (u/ex-msg-and-stacktrace e))
@@ -69,12 +71,11 @@
   (kaocha.repl/run
     'integration.authentication-test/test-magic-token-authenticator-expiration)
   )
-#?(:clj
-   (deftest test-magic-token-authenticator-expiration
-     (au/test-async
-      10000
-      (au/go
-       (let [config {:branch "integration-test"
+#_(deftest test-magic-token-authenticator-expiration
+    (au/test-async
+     10000
+     (au/go
+       (let [config {:crdt-branch "integration-test"
                      :get-server-url (constantly "ws://localhost:8080/client")}
              zc (zc/zeno-client config)
              extra-info-file (java.io.File/createTempFile "email" ".txt")
@@ -85,59 +86,59 @@
              last-line (fn [filepath] (with-open [rdr (io/reader filepath)]
                                         (last (line-seq rdr))))]
          (try
-          (let [_ (is (= 0 (count-lines extra-info)))
-                identifier (make-identifier)
-                created-actor-id (au/<? (mta/<create-actor! zc identifier))
+           (let [_ (is (= 0 (count-lines extra-info)))
+                 identifier (make-identifier)
+                 created-actor-id (au/<? (mta/<create-actor! zc identifier))
 
-                ;; Test token expiration.
-                redeem-ret-exp (au/<?
-                                (mta/<request-magic-token!
-                                 zc (-> (u/sym-map identifier
-                                                   extra-info
-                                                   extra-info-schema)
-                                        (assoc :mins-valid 0))))
-                extra-info-exp (-> redeem-ret-exp :extra-info)
-                _ (is (= 1 (count-lines extra-info)))
-                expired-token (last-line extra-info)
-                _ (is (= false (au/<? (mta/<redeem-magic-token!
-                                       zc expired-token extra-info-schema))))
-                _ (is (= 1 (count-lines extra-info)))
+                 ;; Test token expiration.
+                 redeem-ret-exp (au/<?
+                                 (mta/<request-magic-token!
+                                  zc (-> (u/sym-map identifier
+                                                    extra-info
+                                                    extra-info-schema)
+                                         (assoc :mins-valid 0))))
+                 extra-info-exp (-> redeem-ret-exp :extra-info)
+                 _ (is (= 1 (count-lines extra-info)))
+                 expired-token (last-line extra-info)
+                 _ (is (= false (au/<? (mta/<redeem-magic-token!
+                                        zc expired-token extra-info-schema))))
+                 _ (is (= 1 (count-lines extra-info)))
 
-                ;; Test number of uses.
-                _ (au/<?
-                   (mta/<request-magic-token!
-                    zc (assoc
-                        (u/sym-map identifier extra-info extra-info-schema)
-                        :number-of-uses 1)))
-                _ (is (= 2 (count-lines extra-info)))
-                used-token (last-line extra-info)
-                used-redeem-ret (au/<? (mta/<redeem-magic-token!
-                                        zc used-token extra-info-schema))]
-            (is (= 3 (count-lines extra-info)))
-            (is (= "did-action!" (last-line extra-info)))
-            (is (= created-actor-id
-                   (-> used-redeem-ret :session-info :actor-id)))
-            (is (= true (au/<? (mta/<log-out! zc))))
-            (is (= false (au/<? (mta/<redeem-magic-token!
-                                 zc used-token extra-info-schema))))
-            (is (= 3 (count-lines extra-info))))
-          (catch #?(:clj Exception :cljs js/Error) e
-            (log/error (u/ex-msg-and-stacktrace e))
-            (is (= :threw :but-should-not-have)))
-          (finally
-           (.delete ^java.io.File extra-info-file)
-           (zc/stop! zc))))))))
+                 ;; Test number of uses.
+                 _ (au/<?
+                    (mta/<request-magic-token!
+                     zc (assoc
+                         (u/sym-map identifier extra-info extra-info-schema)
+                         :number-of-uses 1)))
+                 _ (is (= 2 (count-lines extra-info)))
+                 used-token (last-line extra-info)
+                 used-redeem-ret (au/<? (mta/<redeem-magic-token!
+                                         zc used-token extra-info-schema))]
+             (is (= 3 (count-lines extra-info)))
+             (is (= "did-action!" (last-line extra-info)))
+             (is (= created-actor-id
+                    (-> used-redeem-ret :login-session-info :actor-id)))
+             (is (= true (au/<? (mta/<log-out! zc))))
+             (is (= false (au/<? (mta/<redeem-magic-token!
+                                  zc used-token extra-info-schema))))
+             (is (= 3 (count-lines extra-info))))
+           (catch #?(:clj Exception :cljs js/Error) e
+             (log/error (u/ex-msg-and-stacktrace e))
+             (is (= :threw :but-should-not-have)))
+           (finally
+             (.delete ^java.io.File extra-info-file)
+             (zc/stop! zc)))))))
 
 (comment
   (kaocha.repl/run
     'integration.authentication-test/test-magic-token-authenticator)
   )
-#?(:clj
-   (deftest test-magic-token-authenticator
-     (au/test-async
-      20000
-      (au/go
-       (let [config {:branch "integration-test"
+
+#_(deftest test-magic-token-authenticator
+    (au/test-async
+     20000
+     (au/go
+       (let [config {:crdt-branch "integration-test"
                      :get-server-url (constantly "ws://localhost:8080/client")}
              zc (zc/zeno-client config)
              extra-info-file (java.io.File/createTempFile "email" ".txt")
@@ -148,103 +149,107 @@
              last-line (fn [filepath] (with-open [rdr (io/reader filepath)]
                                         (last (line-seq rdr))))]
          (try
-          (let [_ (is (= 0 (count-lines extra-info)))
-                identifier (make-identifier)
-                created-actor-id (au/<? (mta/<create-actor! zc identifier))
+           (let [_ (is (= 0 (count-lines extra-info)))
+                 identifier (make-identifier)
+                 created-actor-id (au/<? (mta/<create-actor! zc identifier))
 
-                ;; Test standard send/redeem path.
-                _ (au/<?
-                   (mta/<request-magic-token!
-                    zc (assoc
-                        (u/sym-map identifier extra-info extra-info-schema)
-                        :number-of-uses 3)))
-                _ (is (= 1 (count-lines extra-info)))
-                token (last-line extra-info)
-                redeem-ret (au/<? (mta/<redeem-magic-token!
-                                   zc token extra-info-schema))
-                _ (is (= 2 (count-lines extra-info)))
-                _ (is (= "did-action!" (last-line extra-info)))
-                _ (is (= created-actor-id
-                         (-> redeem-ret :session-info :actor-id)))
-                _ (is (= true (au/<? (mta/<log-out! zc))))
-
-                ;; Creating another identifier doesn't stop the token from
-                ;; working.
-                identifier2 (make-identifier)
-                _ (is (= true (au/<? (mta/<add-identifier! zc identifier2))))
-                redeem-ret* (au/<? (mta/<redeem-magic-token!
+                 ;; Test standard send/redeem path.
+                 _ (au/<?
+                    (mta/<request-magic-token!
+                     zc (assoc
+                         (u/sym-map identifier extra-info extra-info-schema)
+                         :number-of-uses 3)))
+                 _ (is (= 1 (count-lines extra-info)))
+                 token (last-line extra-info)
+                 redeem-ret (au/<? (mta/<redeem-magic-token!
                                     zc token extra-info-schema))
-                _ (is (= 3 (count-lines extra-info)))
-                _ (is (= "did-action!" (last-line extra-info)))
-                _ (is (= created-actor-id
-                         (-> redeem-ret* :session-info :actor-id)))
+                 _ (is (= 2 (count-lines extra-info)))
+                 _ (is (= "did-action!" (last-line extra-info)))
+                 _ (is (= created-actor-id
+                          (-> redeem-ret :login-session-info :actor-id)))
+                 _ (is (= true (au/<? (mta/<log-out! zc))))
 
-                ;; Removing the identifier invalidates the token, note it has
-                ;; one use left, hasn't expired, but still won't work.
-                _ (is (= true (au/<? (mta/<remove-identifier! zc identifier))))
-                _ (is (= true (au/<? (mta/<log-out! zc))))
-                _ (is (= false (au/<? (mta/<redeem-magic-token!
-                                       zc token extra-info-schema))))
-                _ (is (= 3 (count-lines extra-info)))
-
-                ;; Creating a new actor with that same identifier does not
-                ;; allow the previously identified actor to now have access to
-                ;; the new actor's stuff. Note the token still has one use left
-                ;; and hasn't expired.
-                new-actor-id (au/<? (mta/<create-actor! zc identifier))
-                _ (is (= false (au/<? (mta/<redeem-magic-token!
-                                       zc token extra-info-schema))))
-                _ (is (= 3 (count-lines extra-info)))
-
-                ;; But if I create an actor using the same original actor-id
-                ;; with the same identifier the token will work and we can use
-                ;; that last remaining use of the token.
-                _ (is (= true (au/<? (mta/<remove-identifier! zc identifier))))
-                original-actor-id (au/<? (mta/<create-actor! zc identifier
-                                                             created-actor-id))
-                redeem-ret** (au/<? (mta/<redeem-magic-token!
+                 ;; Creating another identifier doesn't stop the token from
+                 ;; working.
+                 identifier2 (make-identifier)
+                 _ (is (= true (au/<? (mta/<add-identifier! zc identifier2))))
+                 redeem-ret* (au/<? (mta/<redeem-magic-token!
                                      zc token extra-info-schema))
-                _ (is (= 4 (count-lines extra-info)))
-                _ (is (= "did-action!" (last-line extra-info)))
-                _ (is (= created-actor-id
-                         original-actor-id
-                         (-> redeem-ret** :session-info :actor-id)))
-                _ (is (= true (au/<? (mta/<log-out! zc))))
+                 _ (is (= 3 (count-lines extra-info)))
+                 _ (is (= "did-action!" (last-line extra-info)))
+                 _ (is (= created-actor-id
+                          (-> redeem-ret* :login-session-info :actor-id)))
 
-                ;; identifier2 can get a token and the actor-id should match
-                ;; that returned to identifier.
-                _ (au/<?
-                   (mta/<request-magic-token!
-                    zc (assoc (u/sym-map extra-info extra-info-schema)
-                              :identifier identifier2)))
-                _ (is (= 5 (count-lines extra-info)))
-                token2 (last-line extra-info)
-                redeem-ret2 (au/<? (mta/<redeem-magic-token!
-                                    zc token2 extra-info-schema))
-                _ (is (= 6 (count-lines extra-info)))
-                _ (is (= "did-action!" (last-line extra-info)))
-                _ (is (= created-actor-id
-                         (-> redeem-ret2 :session-info :actor-id)))
+                 ;; Removing the identifier invalidates the token, note it has
+                 ;; one use left, hasn't expired, but still won't work.
+                 _ (is (= true (au/<? (mta/<remove-identifier! zc identifier))))
+                 _ (is (= true (au/<? (mta/<log-out! zc))))
+                 _ (is (= false (au/<? (mta/<redeem-magic-token!
+                                        zc token extra-info-schema))))
+                 _ (is (= 3 (count-lines extra-info)))
 
-                ;; identifier2's token is now used up but the session-token
-                ;; should still be good for resuming on a new client. We create
-                ;; a new client since logging out would invalidate the session
-                ;; token.
-                zc2 (zc/zeno-client config)
-                _ (is (= false (au/<? (mta/<redeem-magic-token!
-                                       zc2 token2 extra-info-schema))))
-                _ (is (= 6 (count-lines extra-info)))
-                session-token (-> redeem-ret2 :session-info :session-token)
-                rs-ret (au/<? (mta/<resume-session! zc2 session-token))]
-            (is (= session-token (:session-token rs-ret)))
-            (is (= created-actor-id (:actor-id rs-ret)))
-            (is (= false (au/<? (mta/<resume-session! zc2 "an-invalid-token"))))
-            (is (= true (au/<? (mta/<log-out! zc))))
-            (is (= true (au/<? (mta/<log-out! zc2))))
-            (zc/stop! zc2))
-          (catch #?(:clj Exception :cljs js/Error) e
-            (log/error (u/ex-msg-and-stacktrace e))
-            (is (= :threw :but-should-not-have)))
-          (finally
-           (.delete ^java.io.File extra-info-file)
-           (zc/stop! zc))))))))
+                 ;; Creating a new actor with that same identifier does not
+                 ;; allow the previously identified actor to now have access to
+                 ;; the new actor's stuff. Note the token still has one use
+                 ;; left and hasn't expired.
+                 new-actor-id (au/<? (mta/<create-actor! zc identifier))
+                 _ (is (= false (au/<? (mta/<redeem-magic-token!
+                                        zc token extra-info-schema))))
+                 _ (is (= 3 (count-lines extra-info)))
+
+                 ;; But if I create an actor using the same original actor-id
+                 ;; with the same identifier the token will work and we can use
+                 ;; that last remaining use of the token.
+                 _ (is (= true (au/<? (mta/<remove-identifier! zc identifier))))
+                 original-actor-id (au/<? (mta/<create-actor! zc identifier
+                                                              created-actor-id))
+                 redeem-ret** (au/<? (mta/<redeem-magic-token!
+                                      zc token extra-info-schema))
+                 _ (is (= 4 (count-lines extra-info)))
+                 _ (is (= "did-action!" (last-line extra-info)))
+                 _ (is (= created-actor-id
+                          original-actor-id
+                          (-> redeem-ret** :login-session-info :actor-id)))
+                 _ (is (= true (au/<? (mta/<log-out! zc))))
+
+                 ;; identifier2 can get a token and the actor-id should match
+                 ;; that returned to identifier.
+                 _ (au/<?
+                    (mta/<request-magic-token!
+                     zc (assoc (u/sym-map extra-info extra-info-schema)
+                               :identifier identifier2)))
+                 _ (is (= 5 (count-lines extra-info)))
+                 token2 (last-line extra-info)
+                 redeem-ret2 (au/<? (mta/<redeem-magic-token!
+                                     zc token2 extra-info-schema))
+                 _ (is (= 6 (count-lines extra-info)))
+                 _ (is (= "did-action!" (last-line extra-info)))
+                 _ (is (= created-actor-id
+                          (-> redeem-ret2 :login-session-info :actor-id)))
+
+                 ;; identifier2's token is now used up but the
+                 ;; login-session-token should still be good for resuming on a
+                 ;; new client. We create a new client since logging out would
+                 ;; invalidate the login-session token.
+                 zc2 (zc/zeno-client config)
+                 _ (is (= false (au/<? (mta/<redeem-magic-token!
+                                        zc2 token2 extra-info-schema))))
+                 _ (is (= 6 (count-lines extra-info)))
+                 login-session-token (-> redeem-ret2
+                                         :login-session-info
+                                         :login-session-token)
+                 rs-ret (au/<? (mta/<resume-login-session!
+                                zc2 login-session-token))]
+             (is (= login-session-token (:login-session-token rs-ret)))
+             (is (= created-actor-id (:actor-id rs-ret)))
+             (is (= false (au/<? (mta/<resume-login-session!
+                                  zc2 "an-invalid-token"))))
+             (is (= true (au/<? (mta/<log-out! zc))))
+             (is (= true (au/<? (mta/<log-out! zc2))))
+             (zc/stop! zc2))
+           (catch #?(:clj Exception :cljs js/Error) e
+             (log/error (u/ex-msg-and-stacktrace e))
+             (is (= :threw :but-should-not-have)))
+           (finally
+             (.delete ^java.io.File extra-info-file)
+             (zc/stop! zc)))))))

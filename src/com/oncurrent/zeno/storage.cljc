@@ -25,22 +25,15 @@
   (<put-k! [this k ba])
   (<read-k [this k]))
 
-;;;;;;;;;;;;; Storage Key Prefixes ;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;; Storage Keys & Prefixes ;;;;;;;;;;;;;;;;;;;
 
-(def array-edges-crdt-key-prefix "_ARRAY-EDGES-CRDT-")
-(def array-nodes-crdt-key-prefix "_ARRAY-NODES-CRDT-")
-(def array-node-item-crdt-key-prefix "_ARRAY-ITEM-CRDT-")
-(def client-data-store-root-item-id-key "CLIENT-DATA-STORE-ROOT-ITEM-ID")
 (def cluster-membership-list-reference-key "_CLUSTER-MEMBERSHIP-LIST")
-(def map-key-value-crdt-key-prefix "_MAP-KV-CRDT-")
-(def map-keyset-crdt-key-prefix "_MAP-KEYSET-CRDT-")
 (def member-info-key-prefix "MEMBER-INFO-")
 (def mutex-reference-key-prefix "_MUTEX-")
-(def record-key-value-crdt-key-prefix "_RECORD-KV-CRDT-")
-(def session-token-to-token-info-key-prefix "SESSION-TOKEN-TO-TOKEN-INFO-")
-(def single-value-crdt-key-prefix "_SV-CRDT-")
+(def login-session-token-to-token-info-key-prefix
+  "LOGIN-SESSION-TOKEN-TO-TOKEN-INFO-")
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (def max-swap-attempts 42)
 

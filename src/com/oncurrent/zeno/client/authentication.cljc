@@ -5,38 +5,62 @@
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
    [com.oncurrent.zeno.client.impl :as cimpl]
+   [com.oncurrent.zeno.client.storage :as client-storage]
    [com.oncurrent.zeno.common :as common]
+   [com.oncurrent.zeno.schemas :as schemas]
    [com.oncurrent.zeno.storage :as storage]
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
-(defn make-schema-requester [talk2-client]
-  (cimpl/make-schema-requester talk2-client))
+(defn set-actor-id! [{:keys [*actor-id actor-id on-actor-id-change]}]
+  (reset! *actor-id actor-id)
+  (on-actor-id-change actor-id))
+
+(defn <process-login-session-info!
+  [{:keys [login-session-info storage] :as arg}]
+  (au/go
+    (let [{:keys [actor-id login-session-token]} login-session-info]
+      (set-actor-id! (assoc arg :actor-id actor-id))
+      (when login-session-token
+        (au/<? (storage/<swap! storage
+                               client-storage/login-session-token-key
+                               schemas/login-session-token-schema
+                               (constantly login-session-token)))))))
 
 (defn <client-log-in
   [{:keys [authenticator-name
            login-info
            login-info-schema
+           login-ret-extra-info-schema
            zc]}]
   (au/go
-    (let [{:keys [branch storage talk2-client]} zc
+    (let [{:keys [crdt-branch storage talk2-client]} zc
           ser-login-info (au/<? (storage/<value->serialized-value
                                  storage
                                  login-info-schema
                                  login-info))
           arg {:authenticator-name authenticator-name
-               :branch branch
+               :branch crdt-branch
                :serialized-login-info ser-login-info}
           ret (au/<? (t2c/<send-msg! talk2-client :log-in arg))
-          actor-id (some-> ret :session-info :actor-id)]
-      (when actor-id
-        (reset! (:*actor-id zc) actor-id))
-      ret)))
+          {:keys [serialized-extra-info login-session-info]} ret
+          <request-schema (cimpl/make-schema-requester talk2-client)
+          extra-info (when (and login-ret-extra-info-schema
+                                serialized-extra-info)
+                       (au/<? (common/<serialized-value->value
+                               {:<request-schema <request-schema
+                                :reader-schema login-ret-extra-info-schema
+                                :serialized-value serialized-extra-info
+                                :storage storage})))]
+      (au/<? (<process-login-session-info!
+              (assoc zc :login-session-info login-session-info)))
+      (u/sym-map extra-info login-session-info))))
 
-(defn <client-log-out [{:keys [talk2-client *actor-id] :as zc}]
+(defn <client-log-out [{:keys [*actor-id storage talk2-client] :as zc}]
   ;; TODO: Delete stored transaction log data
   ;; TODO: Update subscribers that actor-id has changed
-  (reset! *actor-id nil)
+  (set-actor-id! (assoc zc :actor-id nil))
+  (storage/<delete! storage client-storage/login-session-token-key)
   (t2c/<send-msg! talk2-client :log-out nil))
 
 (defn <client-update-authenticator-state
@@ -63,24 +87,29 @@
             (u/sym-map authenticator-name update-info-schema update-type
                        update-info))))
   (au/go
-    (let [{:keys [branch storage talk2-client]} zc
+    (let [{:keys [crdt-branch storage talk2-client]} zc
           ser-info (au/<? (storage/<value->serialized-value storage
                                                             update-info-schema
                                                             update-info))
           arg {:authenticator-name authenticator-name
-               :branch branch
+               :branch crdt-branch
                :serialized-update-info ser-info
                :update-type update-type}
           s-val (au/<? (t2c/<send-msg! talk2-client
                                        :update-authenticator-state
-                                       arg))
-          <request-schema (make-schema-requester talk2-client)]
+                                       arg))]
       (au/<? (common/<serialized-value->value
-              {:<request-schema <request-schema
+              {:<request-schema (cimpl/make-schema-requester talk2-client)
                :reader-schema return-value-schema
                :serialized-value s-val
                :storage storage})))))
 
-(defn <client-resume-session
-  [zc session-token]
-  (t2c/<send-msg! (:talk2-client zc) :resume-session session-token))
+(defn <client-resume-login-session
+  [{:keys [login-session-token zc]}]
+  (au/go
+    (let [login-session-info (au/<? (t2c/<send-msg! (:talk2-client zc)
+                                                    :resume-login-session
+                                                    login-session-token))]
+      (au/<? (<process-login-session-info!
+              (assoc zc :login-session-info login-session-info)))
+      login-session-info)))

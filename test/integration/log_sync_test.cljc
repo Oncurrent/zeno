@@ -5,6 +5,7 @@
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
    [com.oncurrent.zeno.authenticators.identifier-secret.client :as isa]
+   [com.oncurrent.zeno.authorizers.affirmative-authorizer.client :as authz]
    [com.oncurrent.zeno.client :as zc]
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
@@ -23,13 +24,25 @@
   (au/test-async
    15000
    (ca/go
-     (let [config {:branch "integration-test"
+     (let [config {:crdt-authorizer (authz/make-affirmative-authorizer)
+                   :crdt-branch "integration-test"
                    :crdt-schema data-schema
                    :get-server-url (constantly "ws://localhost:8080/client")}
            zc1 (zc/zeno-client (assoc config :client-name "zc1"))
            zc2 (zc/zeno-client (assoc config :client-name "zc2"))]
        (try
-         (let [ch (ca/chan)
+         (let [identifier1 (make-identifier)
+               secret "secret"
+               created-actor-id1 (au/<? (isa/<create-actor!
+                                         zc1 identifier1 secret))
+               login-ret1 (au/<? (isa/<log-in! zc1 identifier1 secret))
+               _ (is (= created-actor-id1 (:actor-id login-ret1)))
+               identifier2 (make-identifier)
+               created-actor-id2 (au/<? (isa/<create-actor!
+                                         zc1 identifier2 secret))
+               login-ret2 (au/<? (isa/<log-in! zc2 identifier2 secret))
+               _ (is (= created-actor-id2 (:actor-id login-ret2)))
+               ch (ca/chan)
                _ (is (= true (au/<? (zc/<set-state! zc1
                                                     [:zeno/crdt :numbers]
                                                     [21]))))

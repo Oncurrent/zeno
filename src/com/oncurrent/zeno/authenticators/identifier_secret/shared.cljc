@@ -22,6 +22,6 @@
   [:old-secret secret-schema]
   [:new-secret secret-schema])
 
-(l/def-record-schema session-token-info-schema
+(l/def-record-schema login-session-token-info-schema
   [:expiration-time-ms schemas/timestamp-ms-schema]
   [:actor-id schemas/actor-id-schema])

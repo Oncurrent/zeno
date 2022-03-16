@@ -23,21 +23,24 @@
   (get-update-state-info-schema [this update-type])
   (get-update-state-ret-schema [this update-type]))
 
-(defn generate-session-token []
+(defn generate-login-session-token []
   (ba/byte-array->b64 (su/secure-random-bytes 32)))
 
 (defn <handle-log-in
-  [{:keys [*connection-info branch->authenticator-name->info storage] :as arg}]
+  [{:keys [*conn-id->auth-info
+           *connected-actor-id->conn-ids
+           authenticator-name->info
+           conn-id
+           storage]
+    :as arg}]
   (au/go
-    (let [{:keys [authenticator-name branch serialized-login-info]} (:arg arg)
-          auth-info (some-> branch->authenticator-name->info
-                            (get branch)
-                            (get authenticator-name))
+    (let [{:keys [authenticator-name serialized-login-info]} (:arg arg)
+          auth-info (authenticator-name->info authenticator-name)
           _ (when-not auth-info
               (throw (ex-info
                       (str "No authenticator with name `" authenticator-name
-                           "` was found for branch id `" branch "`.")
-                      (u/sym-map authenticator-name branch))))
+                           "` was found.")
+                      (u/sym-map authenticator-name))))
           {:keys [authenticator authenticator-storage]} auth-info
           <request-schema (su/make-schema-requester arg)
           reader-schema (get-login-info-schema authenticator)
@@ -72,79 +75,104 @@
                                               (get-login-ret-extra-info-schema
                                                authenticator)
                                               extra-info)))
-              session-token (generate-session-token)
-              session-info {:session-token session-token
-                            :session-token-minutes-remaining login-lifetime-mins
-                            :actor-id actor-id}
-              token-k (str storage/session-token-to-token-info-key-prefix
-                           session-token)
+              login-session-token (generate-login-session-token)
+              login-session-info {:login-session-token login-session-token
+
+                                  :login-session-token-minutes-remaining
+                                  login-lifetime-mins
+
+                                  :actor-id actor-id}
+              token-k (str storage/login-session-token-to-token-info-key-prefix
+                           login-session-token)
               exp-ms (+ (u/current-time-ms) (* 60 1000 login-lifetime-mins))
-              token-info {:session-token-expiration-time-ms exp-ms
+              token-info {:login-session-token-expiration-time-ms exp-ms
                           :actor-id actor-id}]
           (au/<? (storage/<add! storage token-k
-                                schemas/session-token-info-schema token-info))
-          (swap! *connection-info
-                 #(-> %
-                      (assoc ::authenticator authenticator)
-                      (assoc ::authenticator-storage authenticator-storage)
-                      (assoc ::branch (:branch arg))
-                      (assoc ::session-token session-token)
-                      (assoc ::actor-id actor-id)))
-          (u/sym-map serialized-extra-info session-info))))))
+                                schemas/login-session-token-info-schema
+                                token-info))
+          (swap! *conn-id->auth-info
+                 (fn [m]
+                   (update m conn-id
+                           #(-> %
+                                (assoc :authenticator authenticator)
+                                (assoc :authenticator-storage
+                                       authenticator-storage)
+                                (assoc :branch (:branch arg))
+                                (assoc :login-session-token
+                                       login-session-token)
+                                (assoc :actor-id actor-id)))))
+          (swap! *connected-actor-id->conn-ids
+                 #(update % actor-id (fn [conn-ids]
+                                       (conj (or conn-ids #{})
+                                             conn-id))))
+          (u/sym-map serialized-extra-info login-session-info))))))
 
 (defn <handle-log-out
-  [{:keys [*connection-info storage]}]
+  [{:keys [*conn-id->auth-info conn-id storage]}]
   (au/go
-    (let [conn-info @*connection-info
-          token-k (str storage/session-token-to-token-info-key-prefix
-                       (::session-token conn-info))]
+    (let [auth-info (some-> @*conn-id->auth-info
+                            (get conn-id))
+          token-k (str storage/login-session-token-to-token-info-key-prefix
+                       (:login-session-token auth-info))]
       (au/<? (storage/<delete! storage token-k))
-      (au/<? (<log-out! (::authenticator conn-info)
+      (au/<? (<log-out! (:authenticator auth-info)
                         {:authenticator-storage
-                         (::authenticator-storage conn-info)})))))
+                         (:authenticator-storage auth-info)})))))
 
-(defn <handle-resume-session
-  [{:keys [*connection-info storage] :as arg}]
+(defn <handle-resume-login-session
+  [{:keys [*conn-id->auth-info
+           *connected-actor-id->conn-ids
+           conn-id
+           storage]
+    :as arg}]
   (au/go
-    (let [session-token (:arg arg)
-          token-k (str storage/session-token-to-token-info-key-prefix
-                       session-token)
+    (let [login-session-token (:arg arg)
+          token-k (str storage/login-session-token-to-token-info-key-prefix
+                       login-session-token)
           info (au/<? (storage/<get storage
                                     token-k
-                                    schemas/session-token-info-schema))
-          {:keys [session-token-expiration-time-ms actor-id]} info
-          remaining-ms (when session-token-expiration-time-ms
-                         (- session-token-expiration-time-ms
+                                    schemas/login-session-token-info-schema))
+          {:keys [login-session-token-expiration-time-ms actor-id]} info
+          remaining-ms (when login-session-token-expiration-time-ms
+                         (- login-session-token-expiration-time-ms
                             (u/current-time-ms)))
-          session-token-minutes-remaining (when remaining-ms
-                                            (u/floor-int
-                                             (/ remaining-ms 1000 60)))]
+          login-session-token-minutes-remaining (when remaining-ms
+                                                  (u/floor-int
+                                                   (/ remaining-ms 1000 60)))]
       (if (and remaining-ms (pos? remaining-ms))
         (do
-          (swap! *connection-info #(-> %
-                                       (assoc ::session-token session-token)
-                                       (assoc ::actor-id actor-id)))
-          (u/sym-map session-token session-token-minutes-remaining actor-id))
+          (swap! *conn-id->auth-info
+                 (fn [m]
+                   (update m conn-id
+                           #(-> %
+                                (assoc :login-session-token
+                                       login-session-token)
+                                (assoc :actor-id actor-id)))))
+          (swap! *connected-actor-id->conn-ids
+                 #(update % actor-id (fn [conn-ids]
+                                       (conj (or conn-ids #{})
+                                             conn-id))))
+          (u/sym-map actor-id
+                     login-session-token
+                     login-session-token-minutes-remaining))
         (do
           (au/<? (storage/<delete! storage token-k))
           nil)))))
 
 (defn <handle-update-authenticator-state
-  [{:keys [*connection-info branch->authenticator-name->info storage] :as arg}]
+  [{:keys [*conn-id->auth-info authenticator-name->info conn-id storage]
+    :as arg}]
   ;; Client may or may not be logged in when this is called
   (au/go
     (let [{:keys [authenticator-name
-                  branch
                   serialized-update-info
                   update-type]} (:arg arg)
-          auth-info (some-> branch->authenticator-name->info
-                            (get branch)
-                            (get authenticator-name))
+          auth-info (authenticator-name->info authenticator-name)
           _ (when-not auth-info
               (throw (ex-info
                       (str "No authenticator with name `" authenticator-name
-                           "` was found for branch id `" branch "`.")
-                      (u/sym-map authenticator-name branch))))
+                           "` was found.")
+                      (u/sym-map authenticator-name))))
           {:keys [authenticator authenticator-storage]} auth-info
           reader-schema (get-update-state-info-schema authenticator update-type)
           <request-schema (su/make-schema-requester arg)
@@ -153,7 +181,8 @@
                                :reader-schema reader-schema
                                :serialized-value serialized-update-info
                                :storage storage}))
-          actor-id (::actor-id @*connection-info)
+          {:keys [actor-id]} (some-> @*conn-id->auth-info
+                                     (get conn-id))
           ret (au/<? (<update-authenticator-state!
                       authenticator
                       (u/sym-map authenticator-storage

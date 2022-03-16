@@ -91,13 +91,14 @@
                :login-info-schema shared/login-info-schema
                :zc zc}
           ret (au/<? (za/<client-log-in arg))]
-      (or (:session-info ret)
+      (or (:login-session-info ret)
           false))))
 
 (defn <log-out! [zc]
   (za/<client-log-out zc))
 
-(defn <resume-session! [zc session-token]
+(defn <resume-login-session! [zc login-session-token]
   (au/go
-    (let [ret (au/<? (za/<client-resume-session zc session-token))]
+    (let [ret (au/<? (za/<client-resume-login-session
+                      (u/sym-map login-session-token zc)))]
       (or ret false))))

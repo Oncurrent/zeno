@@ -86,3 +86,21 @@
 (defn logged-in?
   [zc]
   (impl/logged-in? zc))
+
+(defn rpc!
+  "Calls a remote procedure on the server. If provided, calls callback
+  `cb` with result."
+  ([zc rpc-name-kw arg]
+   (impl/rpc! (u/sym-map zc rpc-name-kw arg)))
+  ([zc rpc-name-kw arg timeout-ms]
+   (impl/rpc! (u/sym-map zc rpc-name-kw arg timeout-ms)))
+  ([zc rpc-name-kw arg timeout-ms cb]
+   (impl/rpc! (u/sym-map zc rpc-name-kw arg timeout-ms cb))))
+
+(defn <rpc!
+  "Calls a remote procedure on the server. Returns a channel which will yield
+   the result."
+  ([zc rpc-name-kw arg]
+   (impl/<rpc! (u/sym-map zc rpc-name-kw arg)))
+  ([zc rpc-name-kw arg timeout-ms]
+   (impl/<rpc! (u/sym-map zc rpc-name-kw arg timeout-ms))))
