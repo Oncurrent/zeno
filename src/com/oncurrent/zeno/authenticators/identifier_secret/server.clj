@@ -112,7 +112,7 @@
 
 (defmethod <update-authenticator-state!* :set-secret
   [{:keys [authenticator-storage actor-id check-old? update-info]
-    :or [check-old? true]}]
+    :or {check-old? true}}]
   (au/go
     (when-not actor-id
       (throw (ex-info "Actor is not logged in." {})))

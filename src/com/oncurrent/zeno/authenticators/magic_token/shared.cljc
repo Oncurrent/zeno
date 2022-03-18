@@ -5,7 +5,7 @@
 
 (def authenticator-name :com.oncurrent.zeno.authenticators/magic-token)
 
-(def token-schema l/string-schema)
+(def magic-token-schema l/string-schema)
 (def identifier-schema l/string-schema)
 
 (l/def-record-schema serialized-value-schema

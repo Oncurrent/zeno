@@ -209,7 +209,7 @@
   (<update-authenticator-state! [this arg]
     (<update-authenticator-state!* (merge this arg)))
   (get-login-info-schema [this]
-    shared/token-schema)
+    shared/magic-token-schema)
   (get-login-ret-extra-info-schema [this]
     shared/magic-token-info-schema)
   (get-name [this]

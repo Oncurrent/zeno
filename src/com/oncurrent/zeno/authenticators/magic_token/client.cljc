@@ -57,7 +57,8 @@
                        (u/sym-map extra-info-schema))))
      (let [arg {:authenticator-name shared/authenticator-name
                 :login-info token
-                :login-info-schema shared/token-schema
+                :login-info-schema shared/magic-token-schema
+                :login-ret-extra-info-schema shared/magic-token-info-schema
                 :zc zc}
            ret (au/<? (za/<client-log-in arg))
            ;; Note that the plubming can return extra-info which has a naming
