@@ -137,15 +137,15 @@
                                   default-number-of-uses
                                   default-number-of-uses*)))))
 
-(defn <add-identifier* [{:keys [authenticator-storage actor-id identifier]
-                         :or {actor-id (u/compact-random-uuid)}}]
+(defn <add-identifier* [{:keys [authenticator-storage actor-id identifier]}]
   (au/go
    (try
-    (au/<? (storage/<add! authenticator-storage
-                          (identifier-key identifier)
-                          schemas/actor-id-schema
-                          actor-id))
-    actor-id
+    (let [actor-id (or actor-id (u/compact-random-uuid))]
+      (au/<? (storage/<add! authenticator-storage
+                            (identifier-key identifier)
+                            schemas/actor-id-schema
+                            actor-id))
+      actor-id)
     (catch ExceptionInfo e
       (if (= :key-exists (some-> e ex-data :type))
         (throw (ex-info
@@ -181,18 +181,17 @@
 
 (defmethod <update-authenticator-state!* :create-actor
   [{:keys [authenticator-storage update-info]}]
-  (au/go
-   (let [{:keys [actor-id identifier]} update-info]
-     (au/<? (<add-identifier* (u/sym-map authenticator-storage actor-id
-                                         identifier))))))
+  (let [{:keys [actor-id identifier]} update-info]
+    (<add-identifier* (u/sym-map authenticator-storage actor-id
+                                 identifier))))
 
 (defmethod <update-authenticator-state!* :add-identifier
   [{:keys [authenticator-storage actor-id update-info]}]
   (au/go
    (when-not actor-id
      (throw (ex-info "Actor is not logged in." {})))
-   (<add-identifier* (assoc (u/sym-map authenticator-storage actor-id)
-                            :identifier update-info))
+   (au/<? (<add-identifier* (assoc (u/sym-map authenticator-storage actor-id)
+                                   :identifier update-info)))
    true))
 
 (defmethod <update-authenticator-state!* :remove-identifier
