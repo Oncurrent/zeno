@@ -122,29 +122,50 @@
 
 (defmulti <update-authenticator-state!* :update-type)
 
-(defn <request-magic-token-info->magic-token-info
+(defn request-magic-token-info->magic-token-info
   [{{:keys [identifier mins-valid number-of-uses] :as info} :update-info
     {:keys [default-mins-valid default-number-of-uses]} :mtas
-    :keys [authenticator-storage]}]
+    :keys [actor-id authenticator-storage]}]
+  (-> info
+      (assoc :actor-id actor-id)
+      (assoc :expiration-ms (number-of-mins->epoch-ms
+                             (or mins-valid
+                                 default-mins-valid
+                                 default-mins-valid*)))
+      (assoc :remaining-uses (or number-of-uses
+                                 default-number-of-uses
+                                 default-number-of-uses*))))
+
+(defn <add-identifier* [{:keys [authenticator-storage actor-id identifier]}]
   (au/go
-   (-> info
-       (assoc :actor-id (au/<? (storage/<get authenticator-storage
-                                             (identifier-key identifier)
-                                             schemas/actor-id-schema)))
-       (assoc :expiration-ms (number-of-mins->epoch-ms
-                              (or mins-valid
-                                  default-mins-valid
-                                  default-mins-valid*)))
-       (assoc :remaining-uses (or number-of-uses
-                                  default-number-of-uses
-                                  default-number-of-uses*)))))
+   (try
+    (let [actor-id (or actor-id (u/compact-random-uuid))]
+      (au/<? (storage/<add! authenticator-storage
+                            (identifier-key identifier)
+                            schemas/actor-id-schema
+                            actor-id))
+      actor-id)
+    (catch ExceptionInfo e
+      (if (= :key-exists (some-> e ex-data :type))
+        (throw (ex-info
+                (str "identifier `" identifier "` already exists.")
+                (u/sym-map actor-id identifier)))
+        (throw e))))))
 
 (defmethod <update-authenticator-state!* :request-magic-token
-  [{:keys [authenticator-storage update-info mtas] :as arg}]
+  [{:keys [actor-id authenticator-storage update-info mtas] :as arg}]
   (au/go
-   (let [token (generate-token)
+   (let [{:keys [identifier]} update-info
+         token (generate-token)
          hashed-token (encrypt-const-salt token)
-         token-info (au/<? (<request-magic-token-info->magic-token-info arg))]
+         stored-actor-id (or (au/<? (storage/<get authenticator-storage
+                                                  (identifier-key identifier)
+                                                  schemas/actor-id-schema))
+                             (au/<? (<add-identifier*
+                                     (u/sym-map authenticator-storage
+                                                identifier))))
+         token-info (request-magic-token-info->magic-token-info
+                     (assoc arg :actor-id stored-actor-id))]
      (au/<? (storage/<swap! authenticator-storage
                             (hashed-token-key hashed-token)
                             shared/magic-token-info-schema
@@ -158,36 +179,19 @@
                                                   token-info arg))})))
      true)))
 
-(defn <add-identifier* [{:keys [authenticator-storage actor-id identifier]}]
-  (au/go
-   (try
-    (au/<? (storage/<add! authenticator-storage
-                          (identifier-key identifier)
-                          schemas/actor-id-schema
-                          actor-id))
-    (catch ExceptionInfo e
-      (if (= :key-exists (some-> e ex-data :type))
-        (throw (ex-info
-                (str "identifier `" identifier "` already exists.")
-                (u/sym-map actor-id identifier)))
-        (throw e))))))
-
 (defmethod <update-authenticator-state!* :create-actor
   [{:keys [authenticator-storage update-info]}]
-  (au/go
-   (let [{:keys [actor-id identifier]
-          :or {actor-id (u/compact-random-uuid)}} update-info]
-     (au/<? (<add-identifier* (u/sym-map authenticator-storage actor-id
-                                         identifier)))
-     actor-id)))
+  (let [{:keys [actor-id identifier]} update-info]
+    (<add-identifier* (u/sym-map authenticator-storage actor-id
+                                 identifier))))
 
 (defmethod <update-authenticator-state!* :add-identifier
   [{:keys [authenticator-storage actor-id update-info]}]
   (au/go
    (when-not actor-id
      (throw (ex-info "Actor is not logged in." {})))
-   (<add-identifier* (assoc (u/sym-map authenticator-storage actor-id)
-                            :identifier update-info))
+   (au/<? (<add-identifier* (assoc (u/sym-map authenticator-storage actor-id)
+                                   :identifier update-info)))
    true))
 
 (defmethod <update-authenticator-state!* :remove-identifier
