@@ -126,16 +126,15 @@
   [{{:keys [identifier mins-valid number-of-uses] :as info} :update-info
     {:keys [default-mins-valid default-number-of-uses]} :mtas
     :keys [actor-id authenticator-storage]}]
-  (au/go
-   (-> info
-       (assoc :actor-id actor-id)
-       (assoc :expiration-ms (number-of-mins->epoch-ms
-                              (or mins-valid
-                                  default-mins-valid
-                                  default-mins-valid*)))
-       (assoc :remaining-uses (or number-of-uses
-                                  default-number-of-uses
-                                  default-number-of-uses*)))))
+  (-> info
+      (assoc :actor-id actor-id)
+      (assoc :expiration-ms (number-of-mins->epoch-ms
+                             (or mins-valid
+                                 default-mins-valid
+                                 default-mins-valid*)))
+      (assoc :remaining-uses (or number-of-uses
+                                 default-number-of-uses
+                                 default-number-of-uses*))))
 
 (defn <add-identifier* [{:keys [authenticator-storage actor-id identifier]}]
   (au/go
@@ -162,8 +161,9 @@
          stored-actor-id (or (au/<? (storage/<get authenticator-storage
                                                   (identifier-key identifier)
                                                   schemas/actor-id-schema))
-                             (<add-identifier* (u/sym-map authenticator-storage
-                                                          identifier)))
+                             (au/<? (<add-identifier*
+                                     (u/sym-map authenticator-storage
+                                                identifier))))
          token-info (request-magic-token-info->magic-token-info
                      (assoc arg :actor-id stored-actor-id))]
      (au/<? (storage/<swap! authenticator-storage
