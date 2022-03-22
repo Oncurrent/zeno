@@ -144,8 +144,9 @@
              extra-info* (-> redeem-ret :token-info :extra-info)
              actor-id (-> redeem-ret :login-session-info :actor-id)]
          (is (= 2 (count-lines extra-info*)))
-         (is (= created-actor-id (-> extra-info* last-line :actor-id)))
-         (is (= created-actor-id actor-id))
+         (is (= created-actor-id
+                actor-id
+                (-> extra-info* last-line :actor-id)))
          (is (= true (au/<? (mta/<log-out! zc))))
          (is (= false (au/<? (mta/<redeem-magic-token!
                               zc token extra-info-schema))))
@@ -153,8 +154,8 @@
        (catch ex e (catcher e))
        (finally (clean-up-zc!) (clean-up-extras!)))))))
 
-(comment (kaocha.repl/run 'integration.authentication-test/test-magic-token-authenticator-basic-happy-path))
-(deftest test-magic-token-authenticator-basic-happy-path
+(defn test-magic-token-authenticator-basic-happy-path*
+  [{:keys [create-actor?]}]
   (au/test-async
    10000
    (au/go
@@ -164,7 +165,8 @@
            clean-up-extras! :clean-up!} (magic-token-extras)]
       (try
        (let [identifier (make-identifier)
-             created-actor-id (au/<? (mta/<create-actor! zc identifier))
+             created-actor-id (when create-actor?
+                                (au/<? (mta/<create-actor! zc identifier)))
              _ (au/<?
                 (mta/<request-magic-token!
                  zc (assoc
@@ -172,16 +174,27 @@
                      :number-of-uses 1)))
              _ (is (= 1 (count-lines extra-info)))
              token (-> extra-info last-line :token)
+             created-actor-id (or created-actor-id
+                                  (-> extra-info last-line
+                                      :token-info :actor-id))
              redeem-ret (au/<? (mta/<redeem-magic-token!
                                 zc token extra-info-schema))
              extra-info* (-> redeem-ret :token-info :extra-info)
              actor-id (-> redeem-ret :login-session-info :actor-id)]
-             (is (= 2 (count-lines extra-info*)))
-             (is (= created-actor-id (-> extra-info* last-line :actor-id)))
-             (is (= created-actor-id actor-id))
-             (is (= true (au/<? (mta/<log-out! zc)))))
+         (is (= 2 (count-lines extra-info*)))
+         (is (= created-actor-id
+                actor-id
+                (-> extra-info last-line :actor-id)
+                (-> extra-info* last-line :actor-id)))
+         (is (= true (au/<? (mta/<log-out! zc)))))
        (catch ex e (catcher e))
        (finally (clean-up-zc!) (clean-up-extras!)))))))
+
+(comment (kaocha.repl/run 'integration.authentication-test/test-magic-token-authenticator-basic-happy-path))
+(deftest test-magic-token-authenticator-basic-happy-path
+  (test-magic-token-authenticator-basic-happy-path* {:create-actor? true})
+  ;; Requesting a magic token creates an actor for you.
+  (test-magic-token-authenticator-basic-happy-path* {:create-actor? false}))
 
 (comment (kaocha.repl/run 'integration.authentication-test/test-magic-token-authenticator-second-identifier))
 (deftest test-magic-token-authenticator-second-identifier
