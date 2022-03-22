@@ -31,6 +31,9 @@
 (defn nil-or-pred? [x p]
   (or (nil? x) (p x)))
 
+(defn unlimited-or-greater-than? [x v]
+  (or (= shared/unlimited x) (> x v)))
+
 (defn number-of-mins->epoch-ms [mins]
   (when mins
     (+ (u/current-time-ms) (* mins 60 1000))))
@@ -64,7 +67,9 @@
                   (hashed-token-key hashed-token)
                   shared/magic-token-info-schema
                   (fn [old-token-info]
-                    (update old-token-info :remaining-uses dec))))
+                    (if (= shared/unlimited (:remaining-uses old-token-info))
+                      old-token-info
+                      (update old-token-info :remaining-uses dec)))))
 
 ;; Can provide default values for keys for mins-valid and number-of-uses as
 ;; corresponding keys in the record that implements this protocol.
@@ -102,8 +107,9 @@
                                             (identifier-key identifier)
                                             schemas/actor-id-schema))
              same-actor? (= actor-id actor-id*)
-             active? (nil-or-pred? expiration-ms #(> % (u/current-time-ms)))
-             more-uses? (nil-or-pred? remaining-uses #(> % 0))]
+             active? (unlimited-or-greater-than? expiration-ms
+                                                 (u/current-time-ms))
+             more-uses? (unlimited-or-greater-than? remaining-uses 0)]
          (when (and active? more-uses? same-actor?)
            (when remaining-uses
              (au/<? (<dec-remaining-uses! authenticator-storage
@@ -129,17 +135,18 @@
   [{{:keys [identifier mins-valid number-of-uses] :as info} :update-info
     {:keys [default-mins-valid default-number-of-uses]} :mtas
     :keys [actor-id requestor-id]}]
-  (-> info
-      (assoc :actor-id actor-id)
-      (assoc :requestor-id requestor-id)
-      (assoc :expiration-ms (number-of-mins->epoch-ms
-                             (or mins-valid
-                                 default-mins-valid
-                                 default-mins-valid*)))
-      (assoc :remaining-uses (or number-of-uses
-                                 default-number-of-uses
-                                 default-number-of-uses*))
-      (dissoc :serialized-params)))
+  (let [mins-valid* (or mins-valid
+                        default-mins-valid
+                        default-mins-valid*)
+        expiration-ms (if (= shared/unlimited mins-valid*)
+                        shared/unlimited
+                        (number-of-mins->epoch-ms mins-valid*))
+        remaining-uses (or number-of-uses
+                           default-number-of-uses
+                           default-number-of-uses*)]
+    (-> info
+        (merge (u/sym-map actor-id requestor-id expiration-ms remaining-uses))
+        (dissoc :serialized-params))))
 
 (defn <add-identifier* [{:keys [authenticator-storage actor-id identifier]}]
   (au/go
