@@ -128,9 +128,10 @@
 (defn request-magic-token-info->magic-token-info
   [{{:keys [identifier mins-valid number-of-uses] :as info} :update-info
     {:keys [default-mins-valid default-number-of-uses]} :mtas
-    :keys [actor-id]}]
+    :keys [actor-id requestor-id]}]
   (-> info
       (assoc :actor-id actor-id)
+      (assoc :requestor-id requestor-id)
       (assoc :expiration-ms (number-of-mins->epoch-ms
                              (or mins-valid
                                  default-mins-valid
@@ -170,7 +171,8 @@
                                                 identifier))))
          token-info (request-magic-token-info->magic-token-info
                      (assoc (u/sym-map update-info mtas)
-                            :actor-id stored-actor-id))]
+                            :actor-id stored-actor-id
+                            :requestor-id actor-id))]
      (au/<? (storage/<swap! authenticator-storage
                             (hashed-token-key hashed-token)
                             shared/magic-token-info-schema

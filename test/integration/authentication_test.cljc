@@ -404,6 +404,7 @@
          ;; Notice this next one, no one was logged in when the request
          ;; happened. It was a request in order to log in.
          (is (= nil (-> request1-handle :actor-id)))
+         (is (= nil (-> redeem1-handle :token-info :requestor-id)))
          (is (= actor1 (-> request1-handle :token-info :actor-id)))
          (is (= actor1 (-> redeem1-handle :token-info :actor-id)))
          (is (= actor1 (-> redeem1-ret :token-info :actor-id)))
@@ -414,6 +415,7 @@
          ;; Notice this next one, actor1 requested a token for actor2, perhaps
          ;; inviting them to use the app.
          (is (= actor1 (-> request2-handle :actor-id)))
+         (is (= actor1 (-> redeem2-handle :token-info :requestor-id)))
          (is (= actor2 (-> redeem2-handle :token-info :actor-id)))
          (is (= actor2 (-> redeem2-ret :token-info :actor-id)))
          (is (= actor2 (-> redeem2-ret :login-session-info :actor-id))))
