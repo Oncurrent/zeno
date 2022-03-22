@@ -70,6 +70,7 @@
 ;; corresponding keys in the record that implements this protocol.
 (defprotocol IMagicTokenApplicationServer
   (get-extra-info-schema [this])
+  (get-params-schema [this])
   (<handle-request-magic-token! [this arg])
   (<handle-redeem-magic-token! [this arg]))
 
@@ -77,13 +78,15 @@
   [{:keys [serialized-extra-info] :as token-info}
    {:keys [authenticator-storage mtas] :as arg}]
   (au/go
-   (assoc token-info :extra-info
-          (when serialized-extra-info
-            (au/<? (common/<serialized-value->value
-                    {:<request-schema (su/make-schema-requester arg)
-                     :reader-schema (get-extra-info-schema mtas)
-                     :serialized-value serialized-extra-info
-                     :storage authenticator-storage}))))))
+   (-> token-info
+       (assoc :extra-info
+              (when serialized-extra-info
+                (au/<? (common/<serialized-value->value
+                        {:<request-schema (su/make-schema-requester arg)
+                         :reader-schema (get-extra-info-schema mtas)
+                         :serialized-value serialized-extra-info
+                         :storage authenticator-storage}))))
+       (dissoc :serialized-extra-info))))
 
 (defn <log-in!* [{token :login-info
                   :keys [login-lifetime-mins authenticator-storage mtas]
@@ -125,7 +128,7 @@
 (defn request-magic-token-info->magic-token-info
   [{{:keys [identifier mins-valid number-of-uses] :as info} :update-info
     {:keys [default-mins-valid default-number-of-uses]} :mtas
-    :keys [actor-id authenticator-storage]}]
+    :keys [actor-id]}]
   (-> info
       (assoc :actor-id actor-id)
       (assoc :expiration-ms (number-of-mins->epoch-ms
@@ -134,7 +137,8 @@
                                  default-mins-valid*)))
       (assoc :remaining-uses (or number-of-uses
                                  default-number-of-uses
-                                 default-number-of-uses*))))
+                                 default-number-of-uses*))
+      (dissoc :serialized-params)))
 
 (defn <add-identifier* [{:keys [authenticator-storage actor-id identifier]}]
   (au/go
@@ -155,7 +159,7 @@
 (defmethod <update-authenticator-state!* :request-magic-token
   [{:keys [actor-id authenticator-storage update-info mtas] :as arg}]
   (au/go
-   (let [{:keys [identifier]} update-info
+   (let [{:keys [identifier serialized-params]} update-info
          token (generate-token)
          hashed-token (encrypt-const-salt token)
          stored-actor-id (or (au/<? (storage/<get authenticator-storage
@@ -165,7 +169,8 @@
                                      (u/sym-map authenticator-storage
                                                 identifier))))
          token-info (request-magic-token-info->magic-token-info
-                     (assoc arg :actor-id stored-actor-id))]
+                     (assoc (u/sym-map update-info mtas)
+                            :actor-id stored-actor-id))]
      (au/<? (storage/<swap! authenticator-storage
                             (hashed-token-key hashed-token)
                             shared/magic-token-info-schema
@@ -174,9 +179,17 @@
                                 (throw (ex-info "Token already in use." {})))
                               token-info)))
      (au/<? (<handle-request-magic-token!
-             mtas (merge arg {:token token
-                              :token-info (au/<? (<with-deserialized-extra-info
-                                                  token-info arg))})))
+             mtas (merge arg
+                         {:token token
+                          :token-info (au/<? (<with-deserialized-extra-info
+                                              token-info arg))
+                          :params (au/<?
+                                   (common/<serialized-value->value
+                                    {:<request-schema (su/make-schema-requester
+                                                       arg)
+                                     :reader-schema (get-params-schema mtas)
+                                     :serialized-value serialized-params
+                                     :storage authenticator-storage}))})))
      true)))
 
 (defmethod <update-authenticator-state!* :create-actor

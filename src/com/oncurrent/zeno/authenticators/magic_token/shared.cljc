@@ -16,7 +16,8 @@
   [:identifier identifier-schema]
   [:mins-valid l/int-schema]
   [:number-of-uses l/int-schema]
-  [:serialized-extra-info serialized-value-schema])
+  [:serialized-extra-info serialized-value-schema]
+  [:serialized-params serialized-value-schema])
 
 (l/def-record-schema magic-token-info-schema
   [:actor-id schemas/actor-id-schema]

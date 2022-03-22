@@ -15,7 +15,8 @@
 
 (defn <request-magic-token!
   "Returns a boolean success value."
-  [zc {:keys [identifier mins-valid number-of-uses extra-info extra-info-schema]
+  [zc {:keys [identifier mins-valid number-of-uses extra-info extra-info-schema
+              params params-schema]
        :as request-magic-token-info}]
   (au/go
     (when-not (string? identifier)
@@ -28,12 +29,22 @@
     (when (and extra-info-schema (not (l/schema? extra-info-schema)))
       (throw (ex-info "extra-info-schema was provided but is not a Lancaster schema."
                       (u/sym-map extra-info-schema))))
+    (when (and params (not params-schema))
+      (throw (ex-info "params was provided with no params-schema"
+                      (u/sym-map extra-info))))
+    (when (and params-schema (not (l/schema? params-schema)))
+      (throw (ex-info "params-schema was provided but is not a Lancaster schema."
+                      (u/sym-map params-schema))))
     (let [request-magic-token-info*
-          (if-not (and extra-info extra-info-schema)
-            request-magic-token-info
-            (assoc request-magic-token-info :serialized-extra-info
+          (cond-> request-magic-token-info
+            (and extra-info extra-info-schema)
+            (assoc :serialized-extra-info
                    (au/<? (storage/<value->serialized-value
-                           (:storage zc) extra-info-schema extra-info))))
+                           (:storage zc) extra-info-schema extra-info)))
+            (and params params-schema)
+            (assoc :serialized-params
+                   (au/<? (storage/<value->serialized-value
+                           (:storage zc) params-schema params))))
           arg {:authenticator-name shared/authenticator-name
                :return-value-schema l/boolean-schema
                :update-info-schema shared/request-magic-token-info-schema
