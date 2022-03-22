@@ -1,6 +1,7 @@
 (ns integration.authentication-test
   (:require
    [clojure.core.async :as ca]
+   [clojure.edn :as edn]
    #?(:clj [clojure.java.io :as io])
    [clojure.test :refer [deftest is]]
    [deercreeklabs.async-utils :as au]
@@ -88,7 +89,7 @@
         count-lines (fn [filepath] (with-open [rdr (io/reader filepath)]
                                      (count (line-seq rdr))))
         last-line (fn [filepath] (with-open [rdr (io/reader filepath)]
-                                   (last (line-seq rdr))))
+                                   (edn/read-string (last (line-seq rdr)))))
         clean-up! #(.delete ^java.io.File extra-info-file)]
     (is (= 0 (count-lines extra-info)))
     (u/sym-map extra-info-file extra-info extra-info-schema
@@ -112,7 +113,7 @@
                                          extra-info-schema)
                               (assoc :mins-valid 0))))
              _ (is (= 1 (count-lines extra-info)))
-             token (last-line extra-info)]
+             token (-> extra-info last-line :token)]
          (is (= false (au/<? (mta/<redeem-magic-token!
                               zc token extra-info-schema))))
          (is (= 1 (count-lines extra-info))))
@@ -137,13 +138,13 @@
                                          extra-info-schema)
                               (assoc :number-of-uses 1))))
              _ (is (= 1 (count-lines extra-info)))
-             token (last-line extra-info)
+             token (-> extra-info last-line :token)
              redeem-ret (au/<? (mta/<redeem-magic-token!
                                 zc token extra-info-schema))
              extra-info* (-> redeem-ret :token-info :extra-info)
              actor-id (-> redeem-ret :login-session-info :actor-id)]
          (is (= 2 (count-lines extra-info*)))
-         (is (= "did-action!" (last-line extra-info*)))
+         (is (= created-actor-id (-> extra-info* last-line :actor-id)))
          (is (= created-actor-id actor-id))
          (is (= true (au/<? (mta/<log-out! zc))))
          (is (= false (au/<? (mta/<redeem-magic-token!
@@ -170,13 +171,13 @@
                      (u/sym-map identifier extra-info extra-info-schema)
                      :number-of-uses 1)))
              _ (is (= 1 (count-lines extra-info)))
-             token (last-line extra-info)
+             token (-> extra-info last-line :token)
              redeem-ret (au/<? (mta/<redeem-magic-token!
                                 zc token extra-info-schema))
              extra-info* (-> redeem-ret :token-info :extra-info)
              actor-id (-> redeem-ret :login-session-info :actor-id)]
              (is (= 2 (count-lines extra-info*)))
-             (is (= "did-action!" (last-line extra-info*)))
+             (is (= created-actor-id (-> extra-info* last-line :actor-id)))
              (is (= created-actor-id actor-id))
              (is (= true (au/<? (mta/<log-out! zc)))))
        (catch ex e (catcher e))
@@ -199,7 +200,7 @@
                  zc (assoc
                      (u/sym-map identifier extra-info extra-info-schema)
                      :number-of-uses 2)))
-             token (last-line extra-info)
+             token (-> extra-info last-line :token)
              _ (au/<? (mta/<redeem-magic-token!
                        zc token extra-info-schema))
              ;; Can make second identifier.
@@ -212,7 +213,7 @@
              extra-info* (-> redeem-ret* :token-info :extra-info)
              actor-id* (-> redeem-ret* :login-session-info :actor-id)
              _ (is (= 3 (count-lines extra-info*)))
-             _ (is (= "did-action!" (last-line extra-info*)))
+             _ (is (= created-actor-id (-> extra-info* last-line :actor-id)))
              _ (is (= created-actor-id actor-id*))
              _ (au/<? (mta/<log-out! zc))
              ;; Second identifier returns same actor id
@@ -222,7 +223,7 @@
                      (u/sym-map identifier extra-info extra-info-schema)
                      :number-of-uses 1)))
              _ (is (= 4 (count-lines extra-info)))
-             token2 (last-line extra-info)
+             token2 (-> extra-info last-line :token)
              redeem-ret2 (au/<? (mta/<redeem-magic-token!
                                  zc token2 extra-info-schema))
              extra-info2* (-> redeem-ret2 :token-info :extra-info)
@@ -250,7 +251,7 @@
                  zc (assoc
                      (u/sym-map identifier extra-info extra-info-schema)
                      :number-of-uses 3)))
-             token (last-line extra-info)
+             token (-> extra-info last-line :token)
              _ (au/<? (mta/<redeem-magic-token!
                        zc token extra-info-schema))
              _ (au/<? (mta/<add-identifier! zc identifier2))
@@ -263,7 +264,7 @@
              extra-info* (-> redeem-ret :token-info :extra-info)
              actor-id (-> redeem-ret :login-session-info :actor-id)
              _ (is (= 3 (count-lines extra-info*)))
-             _ (is (= "did-action!" (last-line extra-info*)))
+             _ (is (= created-actor-id (-> extra-info* last-line :actor-id)))
              _ (is (= created-actor-id actor-id))
              ;; Removing identifier invalidates the token.
              _ (is (= true (au/<? (mta/<remove-identifier! zc identifier))))
@@ -283,13 +284,13 @@
              _ (au/<?
                 (mta/<request-magic-token!
                  zc (u/sym-map identifier extra-info extra-info-schema)))
-             token-new (last-line extra-info)
+             token-new (-> extra-info last-line :token)
              redeem-ret-new (au/<? (mta/<redeem-magic-token!
                                     zc token-new extra-info-schema))
              extra-info-new (-> redeem-ret-new :token-info :extra-info)
              actor-id-new (-> redeem-ret-new :login-session-info :actor-id)
              _ (is (= 5 (count-lines extra-info-new)))
-             _ (is (= "did-action!" (last-line extra-info-new)))
+             _ (is (= new-actor-id (-> extra-info-new last-line :actor-id)))
              _ (is (= new-actor-id actor-id-new))
              _ (is (= true (au/<? (mta/<remove-identifier! zc identifier))))
              ;; But if I create an actor using the same original actor-id
@@ -302,7 +303,7 @@
              extra-info** (-> redeem-ret* :token-info :extra-info)
              actor-id* (-> redeem-ret* :login-session-info :actor-id)
              _ (is (= 6 (count-lines extra-info**)))
-             _ (is (= "did-action!" (last-line extra-info**)))
+             _ (is (= created-actor-id (-> extra-info** last-line :actor-id)))
              _ (is (= created-actor-id original-actor-id actor-id*))
              _ (is (= true (au/<? (mta/<log-out! zc))))])
        (catch ex e (catcher e))
@@ -325,7 +326,7 @@
                  zc (assoc
                      (u/sym-map identifier extra-info extra-info-schema)
                      :number-of-uses 1)))
-             token (last-line extra-info)
+             token (-> extra-info last-line :token)
              redeem-ret (au/<? (mta/<redeem-magic-token!
                                 zc token extra-info-schema))
              actor-id (-> redeem-ret :login-session-info :actor-id)

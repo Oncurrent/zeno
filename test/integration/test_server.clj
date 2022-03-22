@@ -31,12 +31,17 @@
   [mins-valid number-of-uses]
   mt-auth/IMagicTokenApplicationServer
   (get-extra-info-schema [this] l/string-schema)
-  (<handle-request-magic-token! [this {:keys [token token-info]}]
+  (get-params-schema [this] l/string-schema)
+  (<handle-request-magic-token! [this arg]
     (au/go
-      (spit (:extra-info token-info) (str token "\n") :append true)))
+     (spit (-> arg :token-info :extra-info)
+           (prn-str (select-keys arg [:actor-id :token :token-info :params]))
+           :append true)))
   (<handle-redeem-magic-token! [this {:keys [token-info]}]
     (au/go
-      (spit (:extra-info token-info) "did-action!\n" :append true))))
+     (spit (:extra-info token-info)
+           (prn-str (select-keys token-info [:actor-id :identifier]))
+           :append true))))
 
 (defn make-mtas
   ([] (make-mtas {}))
