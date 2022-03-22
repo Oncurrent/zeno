@@ -37,10 +37,10 @@
      (spit (-> arg :token-info :extra-info)
            (prn-str (select-keys arg [:actor-id :token :token-info :params]))
            :append true)))
-  (<handle-redeem-magic-token! [this {:keys [token-info]}]
+  (<handle-redeem-magic-token! [this arg]
     (au/go
-     (spit (:extra-info token-info)
-           (prn-str (select-keys token-info [:actor-id :identifier]))
+     (spit (-> arg :token-info :extra-info)
+           (prn-str (select-keys arg [:token :token-info]))
            :append true))))
 
 (defn make-mtas

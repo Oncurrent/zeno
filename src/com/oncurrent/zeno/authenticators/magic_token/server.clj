@@ -137,7 +137,8 @@
                                  default-mins-valid*)))
       (assoc :remaining-uses (or number-of-uses
                                  default-number-of-uses
-                                 default-number-of-uses*))))
+                                 default-number-of-uses*))
+      (dissoc :serialized-params)))
 
 (defn <add-identifier* [{:keys [authenticator-storage actor-id identifier]}]
   (au/go
