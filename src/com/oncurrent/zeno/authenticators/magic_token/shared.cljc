@@ -12,18 +12,26 @@
   [:bytes l/bytes-schema]
   [:fp schemas/fingerprint-schema])
 
+(def unlimited :unlimited)
+(l/def-enum-schema unlimited-schema
+  unlimited)
+
+(l/def-union-schema long-or-unlimited-schema
+  l/long-schema
+  unlimited-schema)
+
 (l/def-record-schema request-magic-token-info-schema
   [:identifier identifier-schema]
-  [:mins-valid l/int-schema]
-  [:number-of-uses l/int-schema]
+  [:mins-valid long-or-unlimited-schema]
+  [:number-of-uses long-or-unlimited-schema]
   [:serialized-extra-info serialized-value-schema]
   [:serialized-params serialized-value-schema])
 
 (l/def-record-schema magic-token-info-schema
   [:actor-id schemas/actor-id-schema]
   [:identifier identifier-schema]
-  [:expiration-ms l/long-schema]
-  [:remaining-uses l/int-schema]
+  [:expiration-ms long-or-unlimited-schema]
+  [:remaining-uses long-or-unlimited-schema]
   [:requestor-id schemas/actor-id-schema]
   [:serialized-extra-info serialized-value-schema])
 

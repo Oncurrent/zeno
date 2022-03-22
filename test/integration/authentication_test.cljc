@@ -171,7 +171,8 @@
                 (mta/<request-magic-token!
                  zc (assoc
                      (u/sym-map identifier extra-info extra-info-schema)
-                     :number-of-uses 1)))
+                     :mins-valid :unlimited
+                     :number-of-uses :unlimited)))
              _ (is (= 1 (count-lines extra-info)))
              token (-> extra-info last-line :token)
              created-actor-id (or created-actor-id
