@@ -24,6 +24,7 @@
   [:identifier identifier-schema]
   [:expiration-ms l/long-schema]
   [:remaining-uses l/int-schema]
+  [:requestor-id schemas/actor-id-schema]
   [:serialized-extra-info serialized-value-schema])
 
 (l/def-record-schema create-actor-info-schema
