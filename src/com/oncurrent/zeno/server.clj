@@ -297,6 +297,10 @@
 
               :update-authenticator-state
               #(authentication/<handle-update-authenticator-state
+                (merge % arg))
+
+              :get-authenticator-state
+              #(authentication/<handle-get-authenticator-state
                 (merge % arg))}
    :on-connect (fn [{:keys [conn-id] :as conn}]
                  (swap! *conn-id->auth-info assoc conn-id {})

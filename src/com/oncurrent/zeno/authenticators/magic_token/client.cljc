@@ -151,10 +151,10 @@
                          (or identifier "nil") "`.")
                     (u/sym-map identifier))))
   (let [arg {:authenticator-name shared/authenticator-name
-             :return-value-schema l/booloan-schema
+             :return-value-schema l/boolean-schema
              :get-info-schema shared/identifier-schema
              :get-info identifier
-             :get-type :identifier-taken
+             :get-type :is-identifier-taken
              :zc zc}]
     (za/<client-get-authenticator-state arg)))
 

@@ -129,13 +129,12 @@
                                (bcrypt/encrypt new-secret work-factor))))
       true)))
 
-(defmethod <get-authenticator-state* :identifier-taken
-  [{:keys [authenticator-storage get-info]}]
-  (-> (storage/<get authenticator-storage
-                    (identifier-key (:identifier get-info))
-                    schemas/actor-id-schema)
-      au/<?
-      boolean))
+(defmethod <get-authenticator-state* :is-identifier-taken
+  [{identifier :get-info :keys [authenticator-storage]}]
+  (au/go
+   (-> (<get-actor-id-for-identifier authenticator-storage identifier)
+       (au/<?)
+       (boolean))))
 
 (defrecord IdentifierSecretAuthenticator
   [login-lifetime-mins storage-name]
@@ -146,7 +145,7 @@
     (<log-out!* arg))
   (<update-authenticator-state! [this arg]
     (<update-authenticator-state!* arg))
-  (<get-authenticator-state! [this arg]
+  (<get-authenticator-state [this arg]
     (<get-authenticator-state* arg))
   (get-login-info-schema [this]
     shared/login-info-schema)
@@ -168,10 +167,10 @@
       :set-secret l/boolean-schema))
   (get-get-state-info-schema [this get-type]
     (case get-type
-      :identifier-taken shared/identifier-schema))
+      :is-identifier-taken shared/identifier-schema))
   (get-get-state-ret-schema [this get-type]
     (case get-type
-      :identifier-taken l/boolean-schema)))
+      :is-identifier-taken l/boolean-schema)))
 
 (defn make-authenticator
   ([]

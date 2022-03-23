@@ -104,7 +104,7 @@
                :serialized-value s-val
                :storage storage})))))
 
-(defn <client-update-authenticator-state
+(defn <client-get-authenticator-state
   [{:keys [authenticator-name
            return-value-schema
            get-info-schema

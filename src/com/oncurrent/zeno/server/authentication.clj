@@ -205,13 +205,13 @@
    (let [{:keys [authenticator-name
                  serialized-get-info
                  get-type]} (:arg arg)
-         auth-info (authonticator-name->info authenticator-name)
+         auth-info (authenticator-name->info authenticator-name)
          _ (when-not auth-info
              (throw (ex-info
                      (str "No authenticator with name `" authenticator-name
                           "` was found.")
                      (u/sym-map authenticator-name))))
-         {:keys [authenticator authenticator-storega]} auth-info
+         {:keys [authenticator authenticator-storage]} auth-info
          reader-schema (get-get-state-info-schema authenticator get-type)
          <request-schema (su/make-schema-requester arg)
          get-info (au/<? (common/<serialized-value->value
@@ -221,7 +221,7 @@
                            :storage storage}))
          {:keys [actor-id]} (some-> @*conn-id->auth-info
                                     (get conn-id))
-         ret (au/<? (<get-authenticator-state!
+         ret (au/<? (<get-authenticator-state
                      authenticator
                      (u/sym-map authenticator-storage
                                 actor-id
@@ -230,4 +230,4 @@
      (au/<? (storage/<value->serialized-value
              storage
              (get-get-state-ret-schema authenticator get-type)
-             ret))))
+             ret)))))
