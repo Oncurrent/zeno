@@ -18,7 +18,13 @@
   [zc {:keys [identifier mins-valid number-of-uses extra-info extra-info-schema
               params params-schema]
        :as request-magic-token-info}]
-  (au/go
+  ;; We use regular `go` here instead of `au/go` because callers don't want to
+  ;; wait for the server side handler which is where e.g. emails are sent, but
+  ;; we still want to catch errors. Thus, we use our own try/catch with error
+  ;; logging instead of `au/go`'s try/catch which puts the error on the
+  ;; returned channel.
+  (ca/go
+   (try
     (when-not (string? identifier)
       (throw (ex-info (str "`identifier` must be a string. Got `"
                            (or identifier "nil") "`.")
@@ -52,7 +58,9 @@
                :update-type :request-magic-token
                :zc zc}]
       (au/<? (za/<client-update-authenticator-state arg))
-      true)))
+      true)
+    (catch Exception e
+      (log/error (u/ex-msg-and-stacktrace e))))))
 
 (defn <redeem-magic-token!
   ([zc token]
