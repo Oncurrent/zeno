@@ -130,6 +130,7 @@
    true))
 
 (defmulti <update-authenticator-state!* :update-type)
+(defmulti <get-authenticator-state* :get-type)
 
 (defn request-magic-token-info->magic-token-info
   [{{:keys [identifier mins-valid number-of-uses] :as info} :update-info
@@ -217,13 +218,21 @@
    true))
 
 (defmethod <update-authenticator-state!* :remove-identifier
-  [{:keys [authenticator-storage actor-id update-info] :as arg}]
+  [{:keys [authenticator-storage actor-id update-info]}]
   (au/go
    (when-not actor-id
      (throw (ex-info "Actor is not logged in." {})))
    (au/<? (storage/<delete! authenticator-storage
                             (identifier-key update-info)))
    true))
+
+(defmethod <get-authenticator-state* :identifier-taken
+  [{:keys [authenticator-storage get-info]}]
+  (-> (storage/<get authenticator-storage
+                    (identifier-key (:identifier get-info))
+                    schemas/actor-id-schema)
+      au/<?
+      boolean))
 
 (defrecord MagicTokenAuthenticator
   [login-lifetime-mins storage-name mtas]
@@ -234,6 +243,8 @@
     (<log-out!* (merge this arg)))
   (<update-authenticator-state! [this arg]
     (<update-authenticator-state!* (merge this arg)))
+  (<get-authenticator-state [this arg]
+    (<get-authenticator-state* (merge this arg)))
   (get-login-info-schema [this]
     shared/magic-token-schema)
   (get-login-ret-extra-info-schema [this]
@@ -251,7 +262,13 @@
       :add-identifier l/boolean-schema
       :create-actor schemas/actor-id-schema
       :remove-identifier l/boolean-schema
-      :request-magic-token l/boolean-schema)))
+      :request-magic-token l/boolean-schema))
+  (get-get-state-info-schema [this get-type]
+    (case get-type
+      :identifier-taken shared/identifier-schema))
+  (get-get-state-ret-schema [this get-type]
+    (case get-type
+      :identifier-taken l/boolean-schema)))
 
 (defn make-authenticator
   [{:keys [login-lifetime-mins storage-name mtas]
