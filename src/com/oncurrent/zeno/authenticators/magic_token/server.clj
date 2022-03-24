@@ -160,7 +160,7 @@
    (try
     (let [actor-id (or actor-id (u/compact-random-uuid))]
       (au/<? (storage/<add! authenticator-storage
-                            (identifier-key identifier)
+                            (identifier-key (str/lower-case identifier))
                             schemas/actor-id-schema
                             actor-id))
       actor-id)
@@ -174,7 +174,8 @@
 (defmethod <update-authenticator-state!* :request-magic-token
   [{:keys [actor-id authenticator-storage update-info mtas] :as arg}]
   (au/go
-   (let [{:keys [identifier serialized-params]} update-info
+   (let [{:keys [serialized-params]} update-info
+         identifier (-> update-info :identifier str/lower-case)
          token (generate-token)
          hashed-token (encrypt-const-salt token)
          stored-actor-id (or (au/<? (<get-actor-id-for-identifier
@@ -209,7 +210,8 @@
 
 (defmethod <update-authenticator-state!* :create-actor
   [{:keys [authenticator-storage update-info]}]
-  (let [{:keys [actor-id identifier]} update-info]
+  (let [{:keys [actor-id]} update-info
+        identifier (-> update-info :identifier str/lower-case)]
     (<add-identifier* (u/sym-map authenticator-storage actor-id
                                  identifier))))
 
@@ -219,7 +221,7 @@
    (when-not actor-id
      (throw (ex-info "Actor is not logged in." {})))
    (au/<? (<add-identifier* (assoc (u/sym-map authenticator-storage actor-id)
-                                   :identifier update-info)))
+                                   :identifier (str/lower-case update-info))))
    true))
 
 (defmethod <update-authenticator-state!* :remove-identifier
@@ -228,15 +230,17 @@
    (when-not actor-id
      (throw (ex-info "Actor is not logged in." {})))
    (au/<? (storage/<delete! authenticator-storage
-                            (identifier-key update-info)))
+                            (identifier-key (str/lower-case update-info))))
    true))
 
 (defmethod <get-authenticator-state* :is-identifier-taken
   [{identifier :get-info :keys [authenticator-storage]}]
   (au/go
-   (-> (<get-actor-id-for-identifier authenticator-storage identifier)
-       (au/<?)
-       (boolean))))
+   (->> identifier
+        (str/lower-case)
+        (<get-actor-id-for-identifier authenticator-storage)
+        (au/<?)
+        (boolean))))
 
 (defrecord MagicTokenAuthenticator
   [login-lifetime-mins storage-name mtas]
