@@ -53,8 +53,9 @@
 (defmethod <update-authenticator-state!* :create-actor
   [{:keys [authenticator-storage update-info]}]
   (au/go
-    (let [{:keys [identifier secret actor-id]
-           :or {actor-id (u/compact-random-uuid)}} update-info
+    (let [identifier (-> update-info :identifier str/lower-case)
+          secret (:secret update-info)
+          actor-id (or (:actor-id update-info) (u/compact-random-uuid))
           ik (str identifier-to-actor-id-key-prefix identifier)
           sk (str actor-id-to-hashed-secret-key-prefix actor-id)]
       (try
@@ -88,7 +89,7 @@
   (au/go
     (when-not actor-id
       (throw (ex-info "Actor is not logged in." {})))
-    (let [identifier (:update-info arg)
+    (let [identifier (-> arg :update-info str/lower-case)
           ik (str identifier-to-actor-id-key-prefix identifier)]
       (try
         (au/<? (storage/<add! authenticator-storage ik schemas/actor-id-schema
@@ -106,7 +107,7 @@
   (au/go
     (when-not actor-id
       (throw (ex-info "Actor is not logged in." {})))
-    (let [identifier (:update-info arg)
+    (let [identifier (-> arg :update-info str/lower-case)
           ik (str identifier-to-actor-id-key-prefix identifier)]
       (au/<? (storage/<delete! authenticator-storage ik))
       true)))
@@ -132,9 +133,11 @@
 (defmethod <get-authenticator-state* :is-identifier-taken
   [{identifier :get-info :keys [authenticator-storage]}]
   (au/go
-   (-> (<get-actor-id-for-identifier authenticator-storage identifier)
-       (au/<?)
-       (boolean))))
+   (->> identifier
+        (str/lower-case)
+        (<get-actor-id-for-identifier authenticator-storage)
+        (au/<?)
+        (boolean))))
 
 (defrecord IdentifierSecretAuthenticator
   [login-lifetime-mins storage-name]
