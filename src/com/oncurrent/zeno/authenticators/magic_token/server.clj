@@ -67,8 +67,6 @@
                 (identifier-key identifier)
                 schemas/actor-id-schema))
 
-(defn <get-token-info-for-token [authenticator-storage token])
-
 (defn <dec-remaining-uses! [authenticator-storage hashed-token]
   (storage/<swap! authenticator-storage
                   (hashed-token-key hashed-token)
