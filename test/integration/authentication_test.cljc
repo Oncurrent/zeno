@@ -47,8 +47,10 @@
        (try
          (let [identifier (make-identifier)
                secret "a secret that has some spaces CAPS 132412 !!#$@|_.*<>"
+               _ (is (= false (au/<? (isa/<identifier-taken? zc identifier))))
                created-actor-id (au/<? (isa/<create-actor!
                                         zc identifier secret))
+               _ (is (= true (au/<? (isa/<identifier-taken? zc identifier))))
                _ (is (string? created-actor-id))
                login-ret (au/<? (isa/<log-in! zc identifier secret))
                _ (is (= created-actor-id (:actor-id login-ret)))
@@ -165,17 +167,21 @@
            clean-up-extras! :clean-up!} (magic-token-extras)]
       (try
        (let [identifier (make-identifier)
-             created-actor-id (when create-actor?
-                                (au/<? (mta/<create-actor! zc identifier)))
+             _ (is (= false (au/<? (mta/<identifier-taken? zc identifier))))
+             created-actor-id* (when create-actor?
+                                 (au/<? (mta/<create-actor! zc identifier)))
+             _ (when create-actor?
+                 (is (= true (au/<? (mta/<identifier-taken? zc identifier)))))
              _ (au/<?
                 (mta/<request-magic-token!
                  zc (assoc
                      (u/sym-map identifier extra-info extra-info-schema)
                      :mins-valid :unlimited
                      :number-of-uses :unlimited)))
+             _ (is (= true (au/<? (mta/<identifier-taken? zc identifier))))
              _ (is (= 1 (count-lines extra-info)))
              token (-> extra-info last-line :token)
-             created-actor-id (or created-actor-id
+             created-actor-id (or created-actor-id*
                                   (-> extra-info last-line
                                       :token-info :actor-id))
              redeem-ret (au/<? (mta/<redeem-magic-token!
@@ -270,7 +276,9 @@
              _ (au/<? (mta/<redeem-magic-token!
                        zc token extra-info-schema))
              _ (au/<? (mta/<add-identifier! zc identifier2))
+             _ (is (= true (au/<? (mta/<identifier-taken? zc identifier2))))
              _ (is (= true (au/<? (mta/<remove-identifier! zc identifier2))))
+             _ (is (= false (au/<? (mta/<identifier-taken? zc identifier2))))
              _ (au/<? (mta/<log-out! zc))
              ;; Removing identifier2 which didn't request the token doesn't
              ;; effect the token requested by identifier.

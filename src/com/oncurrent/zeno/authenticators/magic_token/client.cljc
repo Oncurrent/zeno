@@ -145,6 +145,19 @@
              :zc zc}]
     (za/<client-update-authenticator-state arg)))
 
+(defn <identifier-taken? [zc identifier]
+  (when-not (string? identifier)
+    (throw (ex-info (str "`identifier` must be a string. Got `"
+                         (or identifier "nil") "`.")
+                    (u/sym-map identifier))))
+  (let [arg {:authenticator-name shared/authenticator-name
+             :return-value-schema l/boolean-schema
+             :get-info-schema shared/identifier-schema
+             :get-info identifier
+             :get-type :is-identifier-taken
+             :zc zc}]
+    (za/<client-get-authenticator-state arg)))
+
 (defn <log-out! [zc]
   (za/<client-log-out zc))
 

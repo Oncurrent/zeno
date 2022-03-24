@@ -104,6 +104,47 @@
                :serialized-value s-val
                :storage storage})))))
 
+(defn <client-get-authenticator-state
+  [{:keys [authenticator-name
+           return-value-schema
+           get-info-schema
+           get-info
+           get-type
+           zc]}]
+  (when-not (keyword? authenticator-name)
+    (throw (ex-info (str "`authenticator-name` must be a keyword. Got `"
+                         (or authenticator-name "nil") "`.")
+                    (u/sym-map authenticator-name get-type get-info))))
+  (when-not (l/schema? return-value-schema)
+    (throw (ex-info
+            (str "`return-value-schema` must be a Lancaster schema. Got `"
+                 (or return-value-schema "nil") "`.")
+            (u/sym-map authenticator-name return-value-schema get-type
+                       get-info))))
+  (when-not (l/schema? get-info-schema)
+    (throw (ex-info
+            (str "`get-info-schema` must be a Lancaster schema. Got `"
+                 (or get-info-schema "nil") "`.")
+            (u/sym-map authenticator-name get-info-schema get-type
+                       get-info))))
+  (au/go
+    (let [{:keys [crdt-branch storage talk2-client]} zc
+          ser-info (au/<? (storage/<value->serialized-value storage
+                                                            get-info-schema
+                                                            get-info))
+          arg {:authenticator-name authenticator-name
+               :branch crdt-branch
+               :serialized-get-info ser-info
+               :get-type get-type}
+          s-val (au/<? (t2c/<send-msg! talk2-client
+                                       :get-authenticator-state
+                                       arg))]
+      (au/<? (common/<serialized-value->value
+              {:<request-schema (cimpl/make-schema-requester talk2-client)
+               :reader-schema return-value-schema
+               :serialized-value s-val
+               :storage storage})))))
+
 (defn <client-resume-login-session
   [{:keys [login-session-token zc]}]
   (au/go

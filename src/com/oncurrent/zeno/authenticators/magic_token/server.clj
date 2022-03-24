@@ -62,6 +62,13 @@
 (defn hashed-token-key [hashed-token]
   (str hashed-token-to-info-key-prefix hashed-token))
 
+(defn <get-actor-id-for-identifier [authenticator-storage identifier]
+  (storage/<get authenticator-storage
+                (identifier-key identifier)
+                schemas/actor-id-schema))
+
+(defn <get-token-info-for-token [authenticator-storage token])
+
 (defn <dec-remaining-uses! [authenticator-storage hashed-token]
   (storage/<swap! authenticator-storage
                   (hashed-token-key hashed-token)
@@ -103,9 +110,8 @@
                                          shared/magic-token-info-schema))]
      (when-let [{:keys [actor-id identifier expiration-ms remaining-uses
                         serialized-extra-info]} token-info]
-       (let [actor-id* (au/<? (storage/<get authenticator-storage
-                                            (identifier-key identifier)
-                                            schemas/actor-id-schema))
+       (let [actor-id* (au/<? (<get-actor-id-for-identifier
+                               authenticator-storage identifier))
              same-actor? (= actor-id actor-id*)
              active? (unlimited-or-greater-than? expiration-ms
                                                  (u/current-time-ms))
@@ -130,6 +136,7 @@
    true))
 
 (defmulti <update-authenticator-state!* :update-type)
+(defmulti <get-authenticator-state* :get-type)
 
 (defn request-magic-token-info->magic-token-info
   [{{:keys [identifier mins-valid number-of-uses] :as info} :update-info
@@ -170,9 +177,8 @@
    (let [{:keys [identifier serialized-params]} update-info
          token (generate-token)
          hashed-token (encrypt-const-salt token)
-         stored-actor-id (or (au/<? (storage/<get authenticator-storage
-                                                  (identifier-key identifier)
-                                                  schemas/actor-id-schema))
+         stored-actor-id (or (au/<? (<get-actor-id-for-identifier
+                                     authenticator-storage identifier))
                              (au/<? (<add-identifier*
                                      (u/sym-map authenticator-storage
                                                 identifier))))
@@ -217,13 +223,20 @@
    true))
 
 (defmethod <update-authenticator-state!* :remove-identifier
-  [{:keys [authenticator-storage actor-id update-info] :as arg}]
+  [{:keys [authenticator-storage actor-id update-info]}]
   (au/go
    (when-not actor-id
      (throw (ex-info "Actor is not logged in." {})))
    (au/<? (storage/<delete! authenticator-storage
                             (identifier-key update-info)))
    true))
+
+(defmethod <get-authenticator-state* :is-identifier-taken
+  [{identifier :get-info :keys [authenticator-storage]}]
+  (au/go
+   (-> (<get-actor-id-for-identifier authenticator-storage identifier)
+       (au/<?)
+       (boolean))))
 
 (defrecord MagicTokenAuthenticator
   [login-lifetime-mins storage-name mtas]
@@ -234,6 +247,8 @@
     (<log-out!* (merge this arg)))
   (<update-authenticator-state! [this arg]
     (<update-authenticator-state!* (merge this arg)))
+  (<get-authenticator-state [this arg]
+    (<get-authenticator-state* (merge this arg)))
   (get-login-info-schema [this]
     shared/magic-token-schema)
   (get-login-ret-extra-info-schema [this]
@@ -251,7 +266,13 @@
       :add-identifier l/boolean-schema
       :create-actor schemas/actor-id-schema
       :remove-identifier l/boolean-schema
-      :request-magic-token l/boolean-schema)))
+      :request-magic-token l/boolean-schema))
+  (get-get-state-info-schema [this get-type]
+    (case get-type
+      :is-identifier-taken shared/identifier-schema))
+  (get-get-state-ret-schema [this get-type]
+    (case get-type
+      :is-identifier-taken l/boolean-schema)))
 
 (defn make-authenticator
   [{:keys [login-lifetime-mins storage-name mtas]

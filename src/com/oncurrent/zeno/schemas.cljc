@@ -144,6 +144,12 @@
   [:serialized-update-info serialized-value-schema]
   [:update-type l/keyword-schema])
 
+(l/def-record-schema get-authenticator-state-arg-schema
+  [:authenticator-name authenticator-name-schema]
+  [:branch branch-schema]
+  [:serialized-get-info serialized-value-schema]
+  [:get-type l/keyword-schema])
+
 ;;;;;;;;;;;;;;; RPCs ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (l/def-enum-schema unauthorized-schema
@@ -181,6 +187,9 @@
                            :ret-schema l/boolean-schema}
    :update-authenticator-state {:arg-schema
                                 update-authenticator-state-arg-schema
-
                                 :ret-schema
-                                serialized-value-schema}})
+                                serialized-value-schema}
+   :get-authenticator-state {:arg-schema
+                             get-authenticator-state-arg-schema
+                             :ret-schema
+                             serialized-value-schema}})

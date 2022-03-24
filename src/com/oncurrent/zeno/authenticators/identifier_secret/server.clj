@@ -48,6 +48,7 @@
     true))
 
 (defmulti <update-authenticator-state!* :update-type)
+(defmulti <get-authenticator-state* :get-type)
 
 (defmethod <update-authenticator-state!* :create-actor
   [{:keys [authenticator-storage update-info]}]
@@ -128,6 +129,13 @@
                                (bcrypt/encrypt new-secret work-factor))))
       true)))
 
+(defmethod <get-authenticator-state* :is-identifier-taken
+  [{identifier :get-info :keys [authenticator-storage]}]
+  (au/go
+   (-> (<get-actor-id-for-identifier authenticator-storage identifier)
+       (au/<?)
+       (boolean))))
+
 (defrecord IdentifierSecretAuthenticator
   [login-lifetime-mins storage-name]
   za/IAuthenticator
@@ -137,6 +145,8 @@
     (<log-out!* arg))
   (<update-authenticator-state! [this arg]
     (<update-authenticator-state!* arg))
+  (<get-authenticator-state [this arg]
+    (<get-authenticator-state* arg))
   (get-login-info-schema [this]
     shared/login-info-schema)
   (get-login-ret-extra-info-schema [this]
@@ -154,7 +164,13 @@
       :add-identifier l/boolean-schema
       :create-actor schemas/actor-id-schema
       :remove-identifier l/boolean-schema
-      :set-secret l/boolean-schema)))
+      :set-secret l/boolean-schema))
+  (get-get-state-info-schema [this get-type]
+    (case get-type
+      :is-identifier-taken shared/identifier-schema))
+  (get-get-state-ret-schema [this get-type]
+    (case get-type
+      :is-identifier-taken l/boolean-schema)))
 
 (defn make-authenticator
   ([]

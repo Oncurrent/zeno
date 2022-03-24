@@ -17,11 +17,14 @@
   (<log-in! [this arg])
   (<log-out! [this arg])
   (<update-authenticator-state! [this arg])
+  (<get-authenticator-state [this arg])
   (get-login-info-schema [this])
   (get-login-ret-extra-info-schema [this])
   (get-name [this])
   (get-update-state-info-schema [this update-type])
-  (get-update-state-ret-schema [this update-type]))
+  (get-update-state-ret-schema [this update-type])
+  (get-get-state-info-schema [this get-type])
+  (get-get-state-ret-schema [this get-type]))
 
 (defn generate-login-session-token []
   (ba/byte-array->b64 (su/secure-random-bytes 32)))
@@ -193,3 +196,38 @@
               storage
               (get-update-state-ret-schema authenticator update-type)
               ret)))))
+
+(defn <handle-get-authenticator-state
+  [{:keys [*conn-id->auth-info authenticator-name->info conn-id storage]
+    :as arg}]
+  ;; Client may or may not be logged in when this is called)
+  (au/go
+   (let [{:keys [authenticator-name
+                 serialized-get-info
+                 get-type]} (:arg arg)
+         auth-info (authenticator-name->info authenticator-name)
+         _ (when-not auth-info
+             (throw (ex-info
+                     (str "No authenticator with name `" authenticator-name
+                          "` was found.")
+                     (u/sym-map authenticator-name))))
+         {:keys [authenticator authenticator-storage]} auth-info
+         reader-schema (get-get-state-info-schema authenticator get-type)
+         <request-schema (su/make-schema-requester arg)
+         get-info (au/<? (common/<serialized-value->value
+                          {:<request-schema <request-schema
+                           :reader-schema reader-schema
+                           :serialized-value serialized-get-info
+                           :storage storage}))
+         {:keys [actor-id]} (some-> @*conn-id->auth-info
+                                    (get conn-id))
+         ret (au/<? (<get-authenticator-state
+                     authenticator
+                     (u/sym-map authenticator-storage
+                                actor-id
+                                get-info
+                                get-type)))]
+     (au/<? (storage/<value->serialized-value
+             storage
+             (get-get-state-ret-schema authenticator get-type)
+             ret)))))
