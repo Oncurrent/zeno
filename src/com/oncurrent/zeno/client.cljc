@@ -20,7 +20,10 @@
   [zc]
   (impl/stop! zc))
 
-(defn update-state! [zc update-cmds cb]
+(defn update-state!
+  ([zc update-cmds]
+   (update-state! zc update-cmds (constantly nil)))
+  ([zc update-cmds cb])
   (impl/update-state! zc update-cmds cb))
 
 (defn <update-state! [zc update-commands]
@@ -31,7 +34,7 @@
 
 (defn set-state!
   ([zc path arg]
-   (set-state! zc path arg nil))
+   (set-state! zc path arg (constantly nil)))
   ([zc path arg cb]
    (impl/update-state! zc [{:zeno/path path
                             :zeno/op :zeno/set
