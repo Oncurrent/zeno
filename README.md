@@ -384,11 +384,6 @@ server side. While the data is arbitrary and opaque from Zeno's perspective
 the authenticator plugin must still define Lancaster Schema's for that data
 and provide the schemas to Zeno for serializing/deserializing.
 
-Zeno ships with one authentication plugin to support identifier/secret (e.g.
-username/password) authentication which you can reference as an example. It's
-located at
-[src/com/oncurrent/zeno/authenticators/identifier_secret/](#src/com/oncurrent/zeno/authenticators/identifier_secret/)
-
 ### Authorization
 TODO
 
