@@ -6,7 +6,7 @@
    [clojure.core.async :as ca]
    [clojure.string :as str]
    [deercreeklabs.async-utils :as au]
-   [com.oncurrent.zeno.client.impl :as client]
+   [com.oncurrent.zeno.client :as client]
    [com.oncurrent.zeno.client.macro-impl :as macro-impl]
    [com.oncurrent.zeno.client.react.impl :as react-impl]
    [com.oncurrent.zeno.utils :as u]
