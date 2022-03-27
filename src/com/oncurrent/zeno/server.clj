@@ -323,7 +323,7 @@
   (let [state-fns (make-state-fns arg)]
     {:handlers {:get-authenticator-state
                 #(authentication/<handle-get-authenticator-state
-                  (merge % arg))
+                  (merge % arg state-fns))
 
                 :get-log-range
                 #(log-sync/<handle-get-log-range (merge % arg))
@@ -342,16 +342,17 @@
                 #(log-sync/<handle-get-tx-info (merge % arg))
 
                 :log-in
-                #(authentication/<handle-log-in (merge % arg))
+                #(authentication/<handle-log-in (merge % arg state-fns))
 
                 :log-out
-                #(authentication/<handle-log-out (merge % arg))
+                #(authentication/<handle-log-out (merge % arg state-fns))
 
                 :publish-log-status
                 #(log-sync/<handle-publish-log-status (merge % arg))
 
                 :resume-login-session
-                #(authentication/<handle-resume-login-session (merge % arg))
+                #(authentication/<handle-resume-login-session
+                  (merge % arg state-fns))
 
                 :rpc
                 #(<do-rpc!
@@ -362,7 +363,7 @@
 
                 :update-authenticator-state
                 #(authentication/<handle-update-authenticator-state
-                  (merge % arg))}
+                  (merge % arg state-fns))}
      :on-connect (fn [{:keys [conn-id] :as conn}]
                    (swap! *conn-id->auth-info assoc conn-id {})
                    (swap! *conn-id->sync-session-info assoc conn-id {})
