@@ -7,6 +7,7 @@
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
    [com.oncurrent.zeno.common :as common]
+   [com.oncurrent.zeno.crdt.commands :as commands]
    [com.oncurrent.zeno.crdt :as crdt]
    [com.oncurrent.zeno.distributed-mutex :as dm]
    [com.oncurrent.zeno.schemas :as schemas]
@@ -17,55 +18,53 @@
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
-(def default-config
-  {})
-
 (def server-config-rules
   ;; TODO: Check that authenticators satisfy protocol
   ;; TODO: Check rpcs
-  {:authenticators
-   {:required? true
-    :checks [{:pred sequential?
-              :msg "must be a sequence of authenticators"}]}
+  #:zeno{:authenticators
+         {:required? true
+          :checks [{:pred sequential?
+                    :msg "must be a sequence of authenticators"}]}
 
-   :certificate-str
-   {:required? false
-    :checks [{:pred string?
-              :msg "must be a string"}]}
+         :certificate-str
+         {:required? false
+          :checks [{:pred string?
+                    :msg "must be a string"}]}
 
-   :port
-   {:required? true
-    :checks [{:pred #(and (pos-int? %)
-                          (<= % 65536))
-              :msg "must be a positive integer less than or equal to 65536"}]}
+         :port
+         {:required? true
+          :checks [{:pred #(and (pos-int? %)
+                                (<= % 65536))
+                    :msg (str "must be a positive integer less than or "
+                              "equal to 65536")}]}
 
-   :private-key-str
-   {:required? false
-    :checks [{:pred string?
-              :msg "must be a string"}]}
+         :private-key-str
+         {:required? false
+          :checks [{:pred string?
+                    :msg "must be a string"}]}
 
-   :storage
-   {:required? true
-    :checks [{:pred #(satisfies? storage/IStorage %)
-              :msg "must satisfy the IStorage protocol"}]}
+         :storage
+         {:required? true
+          :checks [{:pred #(satisfies? storage/IStorage %)
+                    :msg "must satisfy the IStorage protocol"}]}
 
-   :ws-url
-   {:required? false
-    :checks [{:pred string?
-              :msg "must be a string"}
-             {:pred #(or (str/starts-with? % "ws://")
-                         (str/starts-with? % "wss://"))
-              :msg "must be start with `ws://` or `wss://`"}]}
+         :ws-url
+         {:required? false
+          :checks [{:pred string?
+                    :msg "must be a string"}
+                   {:pred #(or (str/starts-with? % "ws://")
+                               (str/starts-with? % "wss://"))
+                    :msg "must be start with `ws://` or `wss://`"}]}
 
-   :<get-published-member-urls
-   {:required? false
-    :checks [{:pred fn?
-              :msg "must be a function that returns a channel"}]}
+         :<get-published-member-urls
+         {:required? false
+          :checks [{:pred fn?
+                    :msg "must be a function that returns a channel"}]}
 
-   :<publish-member-urls
-   {:required? false
-    :checks [{:pred fn?
-              :msg "must be a function that returns a channel"}]}})
+         :<publish-member-urls
+         {:required? false
+          :checks [{:pred fn?
+                    :msg "must be a function that returns a channel"}]}})
 
 (defn member-id->member-mutex-name [member-id]
   (str "role-cluster-member-" member-id))
@@ -216,7 +215,15 @@
               (dm/make-distributed-mutex-client mutex-name storage opts)))
           roles)))
 
-(defn <do-rpc! [{:keys [*rpc-name-kw->handler conn-id get-in-crdt rpcs storage]
+(defn <do-rpc! [{:keys [*conn-id->auth-info
+                        *conn-id->sync-session-info
+                        *rpc-name-kw->handler
+                        conn-id
+                        <get-state
+                        <set-state!
+                        <update-state!
+                        rpcs
+                        storage]
                  :as orig-arg}]
   (au/go
     (let [{:keys [arg rpc-name-kw-name rpc-name-kw-ns]} (:arg orig-arg)
@@ -228,99 +235,153 @@
                                    rpc-name-kw "`.")
                               (u/sym-map rpc-name-kw arg))))
           {:keys [arg-schema ret-schema]} (get rpcs rpc-name-kw)
-          arg (au/<? (common/<serialized-value->value
-                      {:<request-schema <request-schema
-                       :reader-schema arg-schema
-                       :serialized-value (-> orig-arg :arg :arg)
-                       :storage storage}))
-          ret (handler {:arg arg
-                        :conn-id conn-id
-                        :get-in-crdt get-in-crdt})
-          v (if (au/channel? ret)
-              (au/<? ret)
-              ret)]
-      (au/<? (storage/<value->serialized-value
-              storage ret-schema v)))))
+          deser-arg (au/<? (common/<serialized-value->value
+                            {:<request-schema <request-schema
+                             :reader-schema arg-schema
+                             :serialized-value (-> orig-arg :arg :arg)
+                             :storage storage}))
+          actor-id (some-> @*conn-id->auth-info
+                           (get conn-id)
+                           (:actor-id))
+          branch (some-> @*conn-id->sync-session-info
+                         (get conn-id)
+                         (:branch))
+          ret (handler #:zeno{:<get-state #(<get-state
+                                            (merge {:zeno/branch branch} %))
+                              :<set-state! #(<set-state!
+                                             (merge {:zeno/branch branch} %))
+                              :<update-state! #(<update-state!
+                                                (merge {:zeno/branch branch} %))
+                              :arg deser-arg
+                              :actor-id actor-id
+                              :branch branch
+                              :conn-id conn-id})
+          val (if (au/channel? ret)
+                (au/<? ret)
+                ret)]
+      (au/<? (storage/<value->serialized-value storage ret-schema val)))))
+
+(defmulti get-state* (fn [{:keys [path]}]
+                       (first path)))
+(defmulti set-state!* (fn [{:keys [path]}]
+                        (first path)))
+(defmulti update-state!* (fn [{:keys [cmds]}]
+                           (reduce (fn [acc {:zeno/keys [path]}]
+                                     (conj acc (first path)))
+                                   #{}
+                                   cmds)))
+
+(defmethod get-state* :zeno/crdt
+  [{:keys [*branch->crdt-store branch crdt-schema path]}]
+  (crdt/get-value {:crdt (get @*branch->crdt-store branch)
+                   :path (rest path)
+                   :prefix :zeno/crdt
+                   :schema crdt-schema}))
+
+(defmethod update-state!* #{:zeno/crdt}
+  [{:keys [*branch->crdt-store branch cmds crdt-schema] :as fn-arg}]
+  (swap! *branch->crdt-store
+         update branch (fn [old-crdt]
+                         (let [arg {:cmds cmds
+                                    :crdt old-crdt
+                                    :crdt-schema crdt-schema}]
+                           (:crdt (commands/process-cmds arg))))))
+
+;; TODO: Add more parameter checks to these fns
+(defn make-state-fns [arg]
+  (let [<get-state (fn [{:zeno/keys [branch path]}]
+                     (au/go
+                       (get-state* (assoc arg
+                                          :branch branch
+                                          :path path))))
+        <update-state! (fn [{:zeno/keys [branch cmds]
+                             :as update-state!-arg}]
+                         (au/go
+                           (when-not (sequential? cmds)
+                             (throw (ex-info
+                                     (str "<update-state! must be called with "
+                                          "a `:zeno/cmds` value that is a"
+                                          "sequence of commands. Got: `"
+                                          (or cmds "nil") "`.")
+                                     (u/sym-map update-state!-arg))))
+                           (update-state!* (assoc arg
+                                                  :branch branch
+                                                  :cmds cmds))))
+        <set-state! (fn [{:zeno/keys [branch path value]}]
+                      (<update-state! #:zeno{:branch branch
+                                             :cmds [#:zeno{:arg value
+                                                           :op :zeno/set
+                                                           :path path}]}))]
+    (u/sym-map <get-state <set-state! <update-state!)))
 
 (defn make-client-ep-info
   [{:keys [*conn-id->auth-info
            *conn-id->sync-session-info
            *connected-actor-id->conn-ids
-           *branch->crdt-store
-           crdt-schema
            storage]
     :as arg}]
-  {:handlers {:get-log-range
-              #(log-sync/<handle-get-log-range (merge % arg))
+  (let [state-fns (make-state-fns arg)]
+    {:handlers {:get-authenticator-state
+                #(authentication/<handle-get-authenticator-state
+                  (merge % arg))
 
-              :get-log-status
-              #(log-sync/<handle-get-log-status (merge % arg))
+                :get-log-range
+                #(log-sync/<handle-get-log-range (merge % arg))
 
-              :get-schema-pcf-for-fingerprint
-              (fn [{:keys [arg]}]
-                (au/go
-                  (-> (storage/<fp->schema storage arg)
-                      (au/<?)
-                      (l/json))))
+                :get-log-status
+                #(log-sync/<handle-get-log-status (merge % arg))
 
-              :get-tx-info
-              #(log-sync/<handle-get-tx-info (merge % arg))
+                :get-schema-pcf-for-fingerprint
+                (fn [{:keys [arg]}]
+                  (au/go
+                    (-> (storage/<fp->schema storage arg)
+                        (au/<?)
+                        (l/json))))
 
-              :log-in
-              #(authentication/<handle-log-in (merge % arg))
+                :get-tx-info
+                #(log-sync/<handle-get-tx-info (merge % arg))
 
-              :log-out
-              #(authentication/<handle-log-out (merge % arg))
+                :log-in
+                #(authentication/<handle-log-in (merge % arg))
 
-              :publish-log-status
-              #(log-sync/<handle-publish-log-status (merge % arg))
+                :log-out
+                #(authentication/<handle-log-out (merge % arg))
 
-              :resume-login-session
-              #(authentication/<handle-resume-login-session (merge % arg))
+                :publish-log-status
+                #(log-sync/<handle-publish-log-status (merge % arg))
 
-              :rpc
-              #(<do-rpc!
-                (-> (merge % arg)
-                    (assoc :get-in-crdt
-                           (fn [{:keys [branch path]}]
-                             (let [{:keys [conn-id]} %
-                                   si (get @*conn-id->sync-session-info conn-id)
-                                   branch* (or branch (:branch si))
-                                   crdt  (get @*branch->crdt-store branch*)]
-                               (crdt/get-value {:crdt crdt
-                                                :path path
-                                                :prefix :zeno/crdt
-                                                :schema crdt-schema}))))))
+                :resume-login-session
+                #(authentication/<handle-resume-login-session (merge % arg))
 
-              :set-sync-session-info
-              #(log-sync/handle-set-sync-session-info (merge % arg))
+                :rpc
+                #(<do-rpc!
+                  (-> (merge % arg state-fns)))
 
-              :update-authenticator-state
-              #(authentication/<handle-update-authenticator-state
-                (merge % arg))
+                :set-sync-session-info
+                #(log-sync/handle-set-sync-session-info (merge % arg))
 
-              :get-authenticator-state
-              #(authentication/<handle-get-authenticator-state
-                (merge % arg))}
-   :on-connect (fn [{:keys [conn-id] :as conn}]
-                 (swap! *conn-id->auth-info assoc conn-id {})
-                 (swap! *conn-id->sync-session-info assoc conn-id {})
-                 (log/info
-                  (str "Client connection opened:\n"
-                       (u/pprint-str
-                        (select-keys conn [:conn-id :remote-address])))))
-   :on-disconnect (fn [{:keys [conn-id]}]
-                    (when-let [actor-id (some-> @*conn-id->auth-info
-                                                (get conn-id)
-                                                (:actor-id))]
-                      (swap! *connected-actor-id->conn-ids
-                             #(update % actor-id disj conn-id)))
-                    (swap! *conn-id->auth-info dissoc conn-id)
-                    (swap! *conn-id->sync-session-info dissoc conn-id)
-                    (log/info
-                     (str "Client connection closed:\n"
-                          (u/pprint-str (u/sym-map conn-id)))))
-   :protocol schemas/client-server-protocol})
+                :update-authenticator-state
+                #(authentication/<handle-update-authenticator-state
+                  (merge % arg))}
+     :on-connect (fn [{:keys [conn-id] :as conn}]
+                   (swap! *conn-id->auth-info assoc conn-id {})
+                   (swap! *conn-id->sync-session-info assoc conn-id {})
+                   (log/info
+                    (str "Client connection opened:\n"
+                         (u/pprint-str
+                          (select-keys conn [:conn-id :remote-address])))))
+     :on-disconnect (fn [{:keys [conn-id]}]
+                      (when-let [actor-id (some-> @*conn-id->auth-info
+                                                  (get conn-id)
+                                                  (:actor-id))]
+                        (swap! *connected-actor-id->conn-ids
+                               #(update % actor-id disj conn-id)))
+                      (swap! *conn-id->auth-info dissoc conn-id)
+                      (swap! *conn-id->sync-session-info dissoc conn-id)
+                      (log/info
+                       (str "Client connection closed:\n"
+                            (u/pprint-str (u/sym-map conn-id)))))
+     :protocol schemas/client-server-protocol}))
 
 (defn make-talk2-server [{:keys [port] :as arg}]
   (let [client-ep-info (make-client-ep-info arg)
@@ -354,42 +415,43 @@
           authenticators))
 
 (defn zeno-server [config]
-  (let [config* (merge default-config config)
-        _ (u/check-config {:config config*
-                           :config-type :server
-                           :config-rules server-config-rules})
-        {:keys [<get-published-member-urls
-                <publish-member-urls
-                crdt-authorizer
-                certificate-str
-                crdt-schema
-                port
-                private-key-str
-                rpcs
-                storage
-                ws-url]} config*
+  (u/check-config {:config config
+                   :config-type :server
+                   :config-rules server-config-rules})
+  (let [{:zeno/keys [<get-published-member-urls
+                     <publish-member-urls
+                     authenticators
+                     crdt-authorizer
+                     certificate-str
+                     crdt-schema
+                     port
+                     private-key-str
+                     rpcs
+                     storage
+                     ws-url]} config
         *conn-id->auth-info (atom {})
         *conn-id->sync-session-info (atom {})
         *branch->crdt-store (atom {})
         *connected-actor-id->conn-ids (atom {})
         *consumer-actor-id->last-branch-log-tx-i (atom {})
         *rpc-name-kw->handler (atom {})
-        authenticator-name->info (xf-authenticator-info config)
-        talk2-server (make-talk2-server
-                      (u/sym-map *branch->crdt-store
-                                 *conn-id->auth-info
-                                 *conn-id->sync-session-info
-                                 *connected-actor-id->conn-ids
-                                 *consumer-actor-id->last-branch-log-tx-i
-                                 *rpc-name-kw->handler
-                                 authenticator-name->info
-                                 crdt-authorizer
-                                 crdt-schema
-                                 certificate-str
-                                 port
-                                 private-key-str
-                                 rpcs
-                                 storage))
+        authenticator-name->info (xf-authenticator-info
+                                  (u/sym-map authenticators storage))
+        arg (u/sym-map *branch->crdt-store
+                       *conn-id->auth-info
+                       *conn-id->sync-session-info
+                       *connected-actor-id->conn-ids
+                       *consumer-actor-id->last-branch-log-tx-i
+                       *rpc-name-kw->handler
+                       authenticator-name->info
+                       crdt-authorizer
+                       crdt-schema
+                       certificate-str
+                       port
+                       private-key-str
+                       rpcs
+                       storage)
+        talk2-server (make-talk2-server arg)
         member-id (u/compact-random-uuid)
         mutex-clients (when (and <get-published-member-urls
                                  <publish-member-urls)

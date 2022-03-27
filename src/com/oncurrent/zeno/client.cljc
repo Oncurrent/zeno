@@ -23,8 +23,8 @@
 (defn update-state!
   ([zc update-cmds]
    (update-state! zc update-cmds (constantly nil)))
-  ([zc update-cmds cb])
-  (impl/update-state! zc update-cmds cb))
+  ([zc update-cmds cb]
+   (impl/update-state! zc update-cmds cb)))
 
 (defn <update-state! [zc update-commands]
   (let [ch (ca/chan)

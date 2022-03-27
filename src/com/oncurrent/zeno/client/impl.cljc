@@ -22,31 +22,42 @@
    [taoensso.timbre :as log]))
 
 (def default-config
-  {:crdt-authorizer (aa/make-affirmative-authorizer)
-   :crdt-branch "prod"
-   :initial-client-state {}})
+  {:zeno/crdt-authorizer (aa/make-affirmative-authorizer)
+   :zeno/crdt-branch "prod"
+   :zeno/initial-client-state {}})
 
 (def client-config-rules
-  {:crdt-authorizer {:required? false
-                     :checks [{:pred #(satisfies?
-                                       client-authz/IClientAuthorizer %)
-                               :msg (str "must satisfy the IClientAuthorizer "
-                                         "protocol")}]}
-   :crdt-branch {:required? false
-                 :checks [{:pred string?
-                           :msg "must be a string"}]}
-   :crdt-schema {:required? false
-                 :checks [{:pred l/schema?
-                           :msg "must be a valid Lancaster schema"}]}
-   :get-server-url {:required? false
-                    :checks [{:pred ifn?
-                              :msg "must be a function"}]}
-   :initial-client-state {:required? false
-                          :checks [{:pred associative?
-                                    :msg "must be associative"}]}
-   :storage {:required? false
-             :checks [{:pred #(satisfies? storage/IStorage %)
-                       :msg "must satisfy the IStorage protocol"}]}})
+  #:zeno{:crdt-authorizer
+         {:required? false
+          :checks [{:pred #(satisfies?
+                            client-authz/IClientAuthorizer %)
+                    :msg (str "must satisfy the IClientAuthorizer "
+                              "protocol")}]}
+
+         :crdt-branch
+         {:required? false
+          :checks [{:pred string?
+                    :msg "must be a string"}]}
+
+         :crdt-schema
+         {:required? false
+          :checks [{:pred l/schema?
+                    :msg "must be a valid Lancaster schema"}]}
+
+         :get-server-url
+         {:required? false
+          :checks [{:pred ifn?
+                    :msg "must be a function"}]}
+
+         :initial-client-state
+         {:required? false
+          :checks [{:pred associative?
+                    :msg "must be associative"}]}
+
+         :storage
+         {:required? false
+          :checks [{:pred #(satisfies? storage/IStorage %)
+                    :msg "must satisfy the IStorage protocol"}]}})
 
 (def default-rpc-timeout-ms 30000)
 
@@ -217,20 +228,25 @@
 
 (defn <set-sync-session-info
   [{:keys [*client-id crdt-branch talk2-client] :as arg}]
-  (loop []
-    (let [client-id @*client-id]
-      (if-not client-id
+  (au/go
+    (loop []
+      (if-let [client-id @*client-id]
+        (au/<? (t2c/<send-msg! talk2-client :set-sync-session-info
+                               {:branch crdt-branch
+                                :client-id client-id}))
         (do
-          (ca/<! (ca/timeout 100))
-          (recur))
-        (t2c/<send-msg! talk2-client :set-sync-session-info
-                        {:branch crdt-branch
-                         :client-id client-id})))))
+          (ca/<! (ca/timeout 50))
+          (recur))))))
 
 (defn start-sync-session-loop
   [{:keys [*actor-id *stop? end-sync-session-ch talk2-client] :as arg}]
   (ca/go
-    (au/<? (<set-sync-session-info arg))
+    (try
+      (au/<? (<set-sync-session-info arg))
+      (catch #?(:clj Exception :cljs js/Error) e
+        (log/error "Error in setting sync session info"
+                   (u/ex-msg-and-stacktrace e))
+        (ca/<! (ca/timeout 1000))))
     (loop []
       (try
         (let [p-tx-i (au/<? (<get-last-producer-log-tx-i arg))]
@@ -243,7 +259,7 @@
           (log/error "Error in sync-session-loop"
                      (u/ex-msg-and-stacktrace e))
           (ca/<! (ca/timeout 1000))))
-      (let [[v ch] (ca/alts! [end-sync-session-ch (ca/timeout 25000)])]
+      (let [[v ch] (ca/alts! [end-sync-session-ch (ca/timeout 23000)])]
         (when (and (not= end-sync-session-ch ch)
                    (not @*stop?))
           (recur))))))
@@ -335,12 +351,14 @@
         _ (u/check-config {:config config*
                            :config-type :client
                            :config-rules client-config-rules})
-        {:keys [client-name
-                crdt-branch
-                crdt-schema
-                initial-client-state
-                rpcs
-                storage]
+        {:zeno/keys [client-name
+                     crdt-authorizer
+                     crdt-branch
+                     crdt-schema
+                     get-server-url
+                     initial-client-state
+                     rpcs
+                     storage]
          :or {storage (storage/make-storage
                        (storage/make-mem-raw-storage))}} config*
         *next-instance-num (atom 0)
@@ -363,9 +381,11 @@
                        *client-id
                        *stop?
                        client-name
+                       crdt-authorizer
                        crdt-branch
                        crdt-schema
                        end-sync-session
+                       get-server-url
                        rpcs
                        storage
                        update-state-ch)
@@ -379,11 +399,11 @@
                                         :end-sync-session-ch end-sync-session-ch
                                         :talk2-client talk2-client))))
 
-        talk2-client (when (:get-server-url config*)
+        talk2-client (when (:zeno/get-server-url config*)
                        (let [arg* (assoc arg
                                          :*talk2-client *talk2-client
                                          :start-sync-session start-sync-session)]
-                         (make-talk2-client (merge config* arg*))))
+                         (make-talk2-client arg*)))
         _ (reset! *talk2-client talk2-client)
         on-actor-id-change (fn [actor-id]
                              (ca/put! update-state-ch

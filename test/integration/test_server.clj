@@ -13,9 +13,6 @@
    [integration.test-schemas :as test-schemas]
    [taoensso.timbre :as log]))
 
-(l/def-record-schema data-schema
-  [:numbers (l/array-schema l/int-schema)])
-
 (defn get-tls-configs []
   (let [certificate-str (some-> (System/getenv "ZENO_SERVER_CERTIFICATE_FILE")
                                 (slurp))
@@ -25,7 +22,8 @@
       (throw (ex-info "Failed to load certificate file." {})))
     (when-not private-key-str
       (throw (ex-info "Failed to load private key file" {})))
-    (u/sym-map certificate-str private-key-str)))
+    #:zeno{:certificate-str certificate-str
+           :private-key-str private-key-str}))
 
 (defrecord MagicTokenApplicationServer
   [mins-valid number-of-uses]
@@ -48,13 +46,27 @@
   ([{:keys [mins-valid number-of-uses]}]
    (->MagicTokenApplicationServer mins-valid number-of-uses)))
 
-(defn <add-nums [{:keys [arg conn-id get-in-crdt]}]
+(defn add-nums
+  [{:zeno/keys [arg]}]
+  (apply + arg))
+
+(defn <get-name
+  [{:zeno/keys [<get-state]}]
+  (<get-state {:zeno/path [:zeno/crdt :name]}))
+
+(defn <set-name!
+  [{:zeno/keys [<set-state! arg]}]
   (au/go
-    (let [v (get-in-crdt {:branch nil ; defaults to caller's branch
-                          :path []})]
-      (log/info (str "Adding nums: "
-                     (u/pprint-str (u/sym-map arg conn-id v))))
-      (apply + arg))))
+    (au/<? (<set-state! {:zeno/path [:zeno/crdt :name]
+                         :zeno/value arg}))
+    true))
+
+(defn <remove-name!
+  [{:zeno/keys [<update-state!]}]
+  (au/go
+    (au/<? (<update-state! {:zeno/cmds [{:zeno/op :zeno/remove
+                                         :zeno/path [:zeno/crdt :name]}]}))
+    true))
 
 (defn -main [port-str tls?-str]
   (let [tls? (#{"true" "1"} (str/lower-case tls?-str))
@@ -63,18 +75,22 @@
         magic-token-auth (mt-auth/make-authenticator {:mtas (make-mtas)})
         authenticators [identity-secret-auth magic-token-auth]
         port (u/str->int port-str)
-        config {:authenticators authenticators
-                :crdt-authorizer (authz/make-affirmative-authorizer)
-                :crdt-branch branch
-                :crdt-schema data-schema
-                :port port
-                :rpcs test-schemas/rpcs
-                :storage (storage/make-storage)}
+        config #:zeno{:authenticators authenticators
+                      :crdt-authorizer (authz/make-affirmative-authorizer)
+                      :crdt-branch branch
+                      :crdt-schema test-schemas/crdt-schema
+                      :port port
+                      :rpcs test-schemas/rpcs
+                      :storage (storage/make-storage)}
         _ (log/info (str "Starting Zeno integration test server on port "
                          port "."))
         zs (server/zeno-server (cond-> config
                                  tls? (merge (get-tls-configs))))]
-    (server/set-rpc-handler! zs :add-nums <add-nums)))
+    (server/set-rpc-handler! zs :add-nums add-nums)
+    (server/set-rpc-handler! zs :get-name <get-name)
+    (server/set-rpc-handler! zs :set-name <set-name!)
+    (server/set-rpc-handler! zs :remove-name <remove-name!)
+    zs))
 
 (comment
   (defonce *zs (atom nil))

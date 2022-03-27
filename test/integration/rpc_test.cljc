@@ -15,16 +15,23 @@
 
 (deftest test-rpc
   (au/test-async
-   15000
+   10000
    (ca/go
-     (let [config {:get-server-url (constantly "ws://localhost:8080/client")
-                   :rpcs test-schemas/rpcs}
+     (let [config #:zeno{:crdt-schema test-schemas/crdt-schema
+                         :get-server-url (constantly
+                                          "ws://localhost:8080/client")
+                         :rpcs test-schemas/rpcs}
            zc (zc/zeno-client config)]
        (try
          (let [arg [1 3 6]
                ret (au/<? (zc/<rpc! zc :add-nums arg))
-               expected (apply + arg)]
-           (is (= expected ret)))
+               expected (apply + arg)
+               the-name "Bonzo"]
+           (is (= nil (au/<? (zc/<rpc! zc :get-name nil))))
+           (is (= true (au/<? (zc/<rpc! zc :set-name the-name))))
+           (is (= the-name (au/<? (zc/<rpc! zc :get-name nil))))
+           (is (= true (au/<? (zc/<rpc! zc :remove-name nil))))
+           (is (= nil (au/<? (zc/<rpc! zc :get-name nil)))))
          (catch #?(:clj Exception :cljs js/Error) e
            (log/error (u/ex-msg-and-stacktrace e))
            (is (= :threw :but-should-not-have)))

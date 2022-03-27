@@ -22,9 +22,10 @@
 (defn make-zc
   ([] (make-zc nil))
   ([extra-config]
-   (let [config (merge {:crdt-branch "integration-test"
+   (let [config (merge
+                 #:zeno{:crdt-branch "integration-test"
                         :get-server-url (constantly "ws://localhost:8080/client")}
-                       extra-config)
+                 extra-config)
          zc (zc/zeno-client config)
          clean-up! #(zc/stop! zc)]
      (u/sym-map zc clean-up!))))

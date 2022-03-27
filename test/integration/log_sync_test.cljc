@@ -24,10 +24,10 @@
   (au/test-async
    15000
    (ca/go
-     (let [config {:crdt-authorizer (authz/make-affirmative-authorizer)
-                   :crdt-branch "integration-test"
-                   :crdt-schema data-schema
-                   :get-server-url (constantly "ws://localhost:8080/client")}
+     (let [config #:zeno{:crdt-authorizer (authz/make-affirmative-authorizer)
+                         :crdt-branch "integration-test"
+                         :crdt-schema data-schema
+                         :get-server-url (constantly "ws://localhost:8080/client")}
            zc1 (zc/zeno-client (assoc config :client-name "zc1"))
            zc2 (zc/zeno-client (assoc config :client-name "zc2"))]
        (try
