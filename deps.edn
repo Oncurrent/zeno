@@ -4,7 +4,7 @@
   com.cognitect.aws/dynamodb {:mvn/version "820.2.1083.0"}
   com.cognitect.aws/endpoints {:mvn/version "1.1.12.181"}
   com.cognitect.aws/s3 {:mvn/version "820.2.1083.0"}
-  com.deercreeklabs/talk2 {:local/root "../../dcl/talk2/"} #_{:mvn/version "0.1.4"}
+  com.deercreeklabs/talk2 {:mvn/version "0.1.5"}
   com.taoensso/timbre {:mvn/version "5.2.1"}
   compact-uuids/compact-uuids {:mvn/version "0.2.0"}
   crypto-password/crypto-password {:mvn/version "0.3.0"}
