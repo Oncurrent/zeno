@@ -147,11 +147,10 @@
                       #{"h" "f"} *name->info)))))
 
 (deftest test-get-state-and-expanded-paths
-  (let [zc (zc/zeno-client {:initial-client-state {:page :frobnozzle}})
+  (let [zc (zc/zeno-client {:zeno/initial-client-state {:page :frobnozzle}})
         independent-pairs [['page [:zeno/client :page]]
                            ['actor-id [:zeno/actor-id]]]
         ordered-dependent-pairs []
-
         ret (state-subscriptions/get-state-and-expanded-paths
              zc independent-pairs ordered-dependent-pairs)
         {:keys [state expanded-paths]} ret

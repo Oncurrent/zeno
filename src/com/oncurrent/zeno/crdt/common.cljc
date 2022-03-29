@@ -261,14 +261,22 @@
   (au/go
     (when update-info
       (let [{:keys [norm-path value]} update-info
-            value-schema (l/schema-at-path crdt-schema
-                                           ;; Chop off the :zeno/crdt part
-                                           (rest norm-path))]
-        (-> update-info
-            (dissoc :value)
-            (assoc :serialized-value
-                   (au/<? (storage/<value->serialized-value
-                           storage value-schema value))))))))
+            value-schema (when-not (nil? value)
+                           (l/schema-at-path crdt-schema
+                                             ;; Chop off the :zeno/crdt part
+                                             (rest norm-path)))
+            range? (#{:zeno/insert-range-after
+                      :zeno/insert-range-before} (:op update-info))
+            range-schema (when range?
+                           (l/array-schema value-schema))]
+        (cond-> (dissoc update-info :value)
+          (not (nil? value)) (assoc :serialized-value
+                                    (au/<? (storage/<value->serialized-value
+                                            storage
+                                            (if range?
+                                              range-schema
+                                              value-schema)
+                                            value))))))))
 
 (defn <serializable-update-info->update-info
   [{:keys [crdt-schema update-info] :as arg}]

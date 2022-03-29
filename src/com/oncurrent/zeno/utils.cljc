@@ -344,3 +344,17 @@
             (str "The value of `" k "` in the " (name config-type) " config "
                  "map is invalid. It " msg ". Got `" (or v "nil") "`.")
             (sym-map k v config))))))))
+
+;;;;;;;;;;;;;;;;;;;; Platform detection ;;;;;;;;;;;;;;;;;;;;
+
+(defn jvm? []
+  #?(:clj true
+     :cljs false))
+
+(defn browser? []
+  #?(:clj false
+     :cljs (exists? js/navigator)))
+
+(defn node? []
+  #?(:clj false
+     :cljs (boolean (= "nodejs" cljs.core/*target*))))

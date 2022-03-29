@@ -122,6 +122,8 @@
           (au/<?)))))
 
 (defn <get-idb [db-name store-name db-version]
+  (when (u/node?)
+    (js/require "fake-indexeddb/auto"))
   (let [ch (ca/chan)
         op-req (ocall js/indexedDB :open db-name db-version)]
     (oset! op-req :onupgradeneeded

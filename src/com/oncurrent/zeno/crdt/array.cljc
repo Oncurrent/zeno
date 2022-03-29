@@ -94,37 +94,42 @@
                 nil
                 linked-nodes))))
 
-(defn make-connecting-edges
-  [{:keys [edges live-nodes make-id]
+(defn make-connections-to-terminal
+  [{:keys [make-id terminal]
     :or {make-id u/compact-random-uuid}
     :as arg}]
+  (reduce (fn [acc node]
+            (let [node->edge-info (make-node->edge-info (:edges acc))
+                  arg* (assoc arg
+                              :node node
+                              :node->edge-info node->edge-info
+                              :terminal terminal)]
+              (if (connected-to-terminal? arg*)
+                acc
+                (let [conn-node (get-connected-node arg*)
+                      [self-add-id opp-add-id] (if (= :start terminal)
+                                                 [:tail-node-id
+                                                  :head-node-id]
+                                                 [:head-node-id
+                                                  :tail-node-id])
+                      edge {:add-id (make-id)
+                            self-add-id node
+                            opp-add-id conn-node}
+
+
+                      new-edges (:new-edges acc)]
+                  (-> acc
+                      (update :edges conj edge)
+                      (update :new-edges conj edge))))))
+          arg
+          (:live-nodes arg)))
+
+(defn make-connecting-edges [{:keys [edges] :as arg}]
   (if (empty? edges)
     #{}
     (-> (reduce (fn [acc terminal]
-                  (reduce
-                   (fn [acc* node]
-                     (let [node->edge-info (make-node->edge-info (:edges acc*))
-                           arg* (assoc arg
-                                       :node node
-                                       :node->edge-info node->edge-info
-                                       :terminal terminal)]
-                       (if (connected-to-terminal? arg*)
-                         acc*
-                         (let [conn-node (get-connected-node arg*)
-                               [self-add-id
-                                opp-add-id] (if (= :start terminal)
-                                              [:tail-node-id
-                                               :head-node-id]
-                                              [:head-node-id
-                                               :tail-node-id])
-                               edge {:add-id (make-id)
-                                     self-add-id node
-                                     opp-add-id conn-node}]
-                           (-> acc*
-                               (update :edges conj edge)
-                               (update :new-edges conj edge))))))
-                   acc
-                   live-nodes))
+                  (make-connections-to-terminal
+                   (merge arg acc (u/sym-map terminal))))
                 {:edges edges
                  :new-edges #{}}
                 [:start :end])
