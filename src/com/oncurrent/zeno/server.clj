@@ -218,6 +218,7 @@
 (defn <do-rpc! [{:keys [*conn-id->auth-info
                         *conn-id->sync-session-info
                         *rpc-name-kw->handler
+                        authenticator-name->info
                         conn-id
                         <get-state
                         <set-state!
@@ -252,6 +253,7 @@
                                              (merge {:zeno/branch branch} %))
                               :<update-state! #(<update-state!
                                                 (merge {:zeno/branch branch} %))
+                              :authenticator-name->info authenticator-name->info
                               :arg deser-arg
                               :actor-id actor-id
                               :branch branch
