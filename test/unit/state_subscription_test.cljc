@@ -6,6 +6,7 @@
    [com.oncurrent.zeno.client :as zc]
    [com.oncurrent.zeno.client.state-subscriptions :as state-subscriptions]
    [com.oncurrent.zeno.utils :as u]
+   #?(:clj kaocha.repl)
    [taoensso.timbre :as log])
   #?(:clj
      (:import
@@ -74,6 +75,22 @@
        (is (= expected (zc/subscribe-to-state! zc "test" sub-map
                                                update-fn)))
        (zc/stop! zc)))))
+
+(comment (kaocha.repl/run 'unit.state-subscription-test/test-subscribe!-actor-id))
+(deftest test-subscribe!-actor-id
+  (au/test-async
+   1000
+   (ca/go
+    (let [zc (zc/zeno-client)
+          ch (ca/chan 1)
+          update-fn #(ca/put! ch %)
+          actor-id "AAAA"
+          sub-map '{actor-id* [:zeno/actor-id]}
+          expected '{actor-id* "AAAA"}]
+      (reset! (:*actor-id zc) actor-id) ; Simulate login
+      (is (= expected (zc/subscribe-to-state! zc "test" sub-map
+                                              update-fn)))
+      (zc/stop! zc)))))
 
 (deftest test-subscribe!-single-entry
   (au/test-async

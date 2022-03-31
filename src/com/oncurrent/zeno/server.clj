@@ -474,7 +474,8 @@
 
 (defn stop! [zeno-server]
   (doseq [mutex-client (:mutex-clients zeno-server)]
-    (dm/stop! mutex-client)))
+    (dm/stop! mutex-client))
+  (t2s/stop! (:talk2-server zeno-server)))
 
 (defn set-rpc-handler! [zeno-server rpc-name-kw handler]
   (let [{:keys [*rpc-name-kw->handler]} zeno-server]
