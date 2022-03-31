@@ -658,3 +658,34 @@
          #?(:clj ExceptionInfo :cljs js/Error)
          #"arg is not sequential"
          (commands/process-cmds arg)))))
+
+(deftest test-set-nested-arrays-at-once
+  (let [sys-time-ms (u/str->long "1643061294782")
+        value [[1 2] [3]]
+        path [:zeno/crdt]
+        arg {:cmds [{:zeno/arg value
+                     :zeno/op :zeno/set
+                     :zeno/path path}]
+             :crdt-schema (l/array-schema (l/array-schema l/string-schema))
+             :sys-time-ms sys-time-ms}
+        {:keys [crdt]} (commands/process-cmds arg)]
+    (is (= value (crdt/get-value {:crdt crdt
+                                  :path []
+                                  :schema (:crdt-schema arg)})))))
+
+(deftest test-set-nested-arrays-piecewise
+  (let [sys-time-ms (u/str->long "1643061294782")
+        path [:zeno/crdt]
+        arg {:cmds [{:zeno/arg [1 2]
+                     :zeno/op :zeno/set
+                     :zeno/path [:zeno/crdt 0]}
+                    {:zeno/arg [3]
+                     :zeno/op :zeno/set
+                     :zeno/path [:zeno/crdt 1]}]
+             :crdt-schema (l/array-schema (l/array-schema l/string-schema))
+             :sys-time-ms sys-time-ms}
+        expected-value [[1 2] [3]]
+        {:keys [crdt]} (commands/process-cmds arg)]
+    (is (= expected-value (crdt/get-value {:crdt crdt
+                                           :path []
+                                           :schema (:crdt-schema arg)})))))
