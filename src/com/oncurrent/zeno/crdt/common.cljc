@@ -199,7 +199,6 @@
                     (u/sym-map op-type norm-path crdt-schema))]
         (cond-> op
           true (dissoc :path)
-          true (assoc :op-path path)
           true (dissoc :value)
           schema (assoc :serialized-value
                         (au/<? (storage/<value->serialized-value
@@ -209,12 +208,10 @@
   [{:keys [storage crdt-schema op] :as arg}]
   (au/go
     (when op
-      (let [{:keys [norm-path op-type op-path serialized-value]} op
+      (let [{:keys [norm-path op-type serialized-value]} op
             schema (get-op-value-schema
                     (u/sym-map op-type norm-path crdt-schema))]
         (cond-> op
-          true (dissoc :op-path)
-          true (assoc :path op-path)
           true (dissoc :serialized-value)
           schema (assoc :value
                         (au/<? (common/<serialized-value->value

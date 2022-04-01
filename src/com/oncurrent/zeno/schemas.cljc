@@ -79,7 +79,6 @@
   "Depending on the op-type, different fields will be used."
   [:add-id add-id-schema]
   [:norm-path path-schema]
-  [:op-path path-schema]
   [:op-type crdt-op-type-schema]
   [:serialized-value serialized-value-schema]
   [:sys-time-ms timestamp-ms-schema])

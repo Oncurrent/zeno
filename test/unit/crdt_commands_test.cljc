@@ -6,6 +6,7 @@
    [com.oncurrent.zeno.crdt.commands :as commands]
    [com.oncurrent.zeno.crdt :as crdt]
    [com.oncurrent.zeno.utils :as u]
+   #?(:clj [kaocha.repl])
    [taoensso.timbre :as log])
   #?(:clj
      (:import
@@ -128,6 +129,21 @@
              :sys-time-ms sys-time-ms}
         {:keys [crdt ops]} (commands/process-cmds arg)
         expected-value ["Hi" "There"]]
+    (is (= expected-value (crdt/get-value {:crdt crdt
+                                           :path []
+                                           :schema (:crdt-schema arg)})))))
+
+;; Broken
+(comment (kaocha.repl/run #'test-crdt-array-set-index))
+(deftest test-crdt-array-set-index
+  (let [sys-time-ms (u/str->long "1643061294999")
+        arg {:cmds [{:zeno/arg "Hi"
+                     :zeno/op :zeno/set
+                     :zeno/path [:zeno/crdt 0]}]
+             :crdt-schema (l/array-schema l/string-schema)
+             :sys-time-ms sys-time-ms}
+        {:keys [crdt ops]} (commands/process-cmds arg)
+        expected-value ["Hi"]]
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:crdt-schema arg)})))))
@@ -659,6 +675,39 @@
          #"arg is not sequential"
          (commands/process-cmds arg)))))
 
+(comment (kaocha.repl/run #'test-set-map-of-two-arrays))
+(deftest test-set-map-of-two-arrays
+  (let [sys-time-ms (u/str->long "1643061294782")
+        value {"a" [1]
+               "b" [2]}
+        path [:zeno/crdt]
+        arg {:cmds [{:zeno/arg value
+                     :zeno/op :zeno/set
+                     :zeno/path path}]
+             :crdt-schema (l/map-schema (l/array-schema l/int-schema))
+             :sys-time-ms sys-time-ms}
+        {:keys [crdt]} (commands/process-cmds arg)]
+    (is (= value (crdt/get-value {:crdt crdt
+                                  :path []
+                                  :schema (:crdt-schema arg)})))))
+
+(comment (kaocha.repl/run #'test-set-nested-map-of-two-arrays))
+(deftest test-set-nested-map-of-two-arrays
+  (let [sys-time-ms (u/str->long "1643061294782")
+        value {"a" {"aa" [1]}
+               "b" {"bb" [2]}}
+        path [:zeno/crdt]
+        arg {:cmds [{:zeno/arg value
+                     :zeno/op :zeno/set
+                     :zeno/path path}]
+             :crdt-schema (l/map-schema (l/map-schema (l/array-schema l/int-schema)))
+             :sys-time-ms sys-time-ms}
+        {:keys [crdt]} (commands/process-cmds arg)]
+    (is (= value (crdt/get-value {:crdt crdt
+                                  :path []
+                                  :schema (:crdt-schema arg)})))))
+
+(comment (kaocha.repl/run #'test-set-nested-arrays-at-once))
 (deftest test-set-nested-arrays-at-once
   (let [sys-time-ms (u/str->long "1643061294782")
         value [[1 2] [3]]
@@ -666,25 +715,66 @@
         arg {:cmds [{:zeno/arg value
                      :zeno/op :zeno/set
                      :zeno/path path}]
-             :crdt-schema (l/array-schema (l/array-schema l/string-schema))
+             :crdt-schema (l/array-schema (l/array-schema l/int-schema))
              :sys-time-ms sys-time-ms}
         {:keys [crdt]} (commands/process-cmds arg)]
     (is (= value (crdt/get-value {:crdt crdt
                                   :path []
                                   :schema (:crdt-schema arg)})))))
 
+;; Broken
+(comment (kaocha.repl/run #'test-set-nested-arrays-piecewise))
 (deftest test-set-nested-arrays-piecewise
   (let [sys-time-ms (u/str->long "1643061294782")
-        path [:zeno/crdt]
-        arg {:cmds [{:zeno/arg [1 2]
+        arg {:cmds [{:zeno/arg 1 #_[1 2]
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt 0]}
-                    {:zeno/arg [3]
+                    #_{:zeno/arg [3]
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt 1]}]
-             :crdt-schema (l/array-schema (l/array-schema l/string-schema))
+             :crdt-schema (l/array-schema l/int-schema #_(l/array-schema l/int-schema))
              :sys-time-ms sys-time-ms}
-        expected-value [[1 2] [3]]
+        expected-value [[1 2] #_[3]]
+        {:keys [crdt]} (commands/process-cmds arg)]
+    (is (= expected-value (crdt/get-value {:crdt crdt
+                                           :path []
+                                           :schema (:crdt-schema arg)})))))
+
+(comment (kaocha.repl/run #'test-set-nested-map-of-two-nested-arrays
+                          {:capture-output? false}))
+(deftest test-set-nested-map-of-two-nested-arrays
+  (let [sys-time-ms (u/str->long "1643061294782")
+        value {"a" {"aa" [[1 2] [3]]}
+               "b" {"bb" [[4 5] [6]]}}
+        path [:zeno/crdt]
+        arg {:cmds [{:zeno/arg value
+                     :zeno/op :zeno/set
+                     :zeno/path path}]
+             :crdt-schema (l/map-schema
+                           (l/map-schema
+                            (l/array-schema
+                             (l/array-schema l/int-schema))))
+             :sys-time-ms sys-time-ms}
+        {:keys [crdt]} (commands/process-cmds arg)]
+    (is (= value (crdt/get-value {:crdt crdt
+                                  :path []
+                                  :schema (:crdt-schema arg)})))))
+
+(comment (kaocha.repl/run #'test-set-remove-nested-arrays
+                          {:capture-output? false}))
+(deftest test-set-remove-nested-arrays
+  (let [sys-time-ms (u/str->long "1643061294782")
+        value [[1 2] [3]]
+        arg {:cmds [{:zeno/arg value
+                     :zeno/op :zeno/set
+                     :zeno/path [:zeno/crdt]}
+                    {:zeno/op :zeno/remove
+                     :zeno/path [:zeno/crdt 0 1]}
+                    {:zeno/op :zeno/remove
+                     :zeno/path [:zeno/crdt 1]}]
+             :crdt-schema (l/array-schema (l/array-schema l/int-schema))
+             :sys-time-ms sys-time-ms}
+        expected-value [[1]]
         {:keys [crdt]} (commands/process-cmds arg)]
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
