@@ -760,15 +760,15 @@
 (comment (kaocha.repl/run #'test-set-nested-arrays-piecewise))
 (deftest test-set-nested-arrays-piecewise
   (let [sys-time-ms (u/str->long "1643061294782")
-        arg {:cmds [{:zeno/arg 1 #_[1 2]
+        arg {:cmds [{:zeno/arg [1 2]
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt 0]}
-                    #_{:zeno/arg [3]
+                    {:zeno/arg [3]
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt 1]}]
-             :crdt-schema (l/array-schema l/int-schema #_(l/array-schema l/int-schema))
+             :crdt-schema (l/array-schema (l/array-schema l/int-schema))
              :sys-time-ms sys-time-ms}
-        expected-value [[1 2] #_[3]]
+        expected-value [[1 2] [3]]
         {:keys [crdt]} (commands/process-cmds arg)]
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
