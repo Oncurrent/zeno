@@ -83,7 +83,9 @@
                  {:ops #{}
                   :norm-path norm-path}
                  (:children crdt))
-      (get-child-ops-info (get-child-path-info path)))))
+      (-> path
+          (get-child-path-info)
+          (get-child-ops-info)))))
 
 (defmethod get-delete-ops-info :map
   [{:keys [schema] :as arg}]

@@ -133,9 +133,42 @@
                                            :path []
                                            :schema (:crdt-schema arg)})))))
 
+
+(comment (kaocha.repl/run #'test-crdt-array-set-empty))
+(deftest test-crdt-array-set-empty
+  (let [sys-time-ms (u/str->long "1643061294999")
+        arg {:cmds [{:zeno/arg []
+                     :zeno/op :zeno/set
+                     :zeno/path [:zeno/crdt]}]
+             :crdt-schema (l/array-schema l/string-schema)
+             :sys-time-ms sys-time-ms}
+        {:keys [crdt ops]} (commands/process-cmds arg)
+        expected-value []]
+    (is (= expected-value (crdt/get-value {:crdt crdt
+                                           :path []
+                                           :schema (:crdt-schema arg)})))))
+
 ;; Broken
 (comment (kaocha.repl/run #'test-crdt-array-set-index))
 (deftest test-crdt-array-set-index
+  (let [sys-time-ms (u/str->long "1643061294999")
+        arg {:cmds [{:zeno/arg ["Hi"]
+                     :zeno/op :zeno/set
+                     :zeno/path [:zeno/crdt]}
+                    {:zeno/arg "Bob"
+                     :zeno/op :zeno/set
+                     :zeno/path [:zeno/crdt 1]}]
+             :crdt-schema (l/array-schema l/string-schema)
+             :sys-time-ms sys-time-ms}
+        {:keys [crdt ops]} (commands/process-cmds arg)
+        expected-value ["Hi" "Bob"]]
+    (is (= expected-value (crdt/get-value {:crdt crdt
+                                           :path []
+                                           :schema (:crdt-schema arg)})))))
+
+;; Broken
+(comment (kaocha.repl/run #'test-crdt-array-set-index-into-empty))
+(deftest test-crdt-array-set-into-empty
   (let [sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg "Hi"
                      :zeno/op :zeno/set
@@ -707,7 +740,8 @@
                                   :path []
                                   :schema (:crdt-schema arg)})))))
 
-(comment (kaocha.repl/run #'test-set-nested-arrays-at-once))
+(comment (kaocha.repl/run #'test-set-nested-arrays-at-once
+                          {:capture-output? false}))
 (deftest test-set-nested-arrays-at-once
   (let [sys-time-ms (u/str->long "1643061294782")
         value [[1 2] [3]]
