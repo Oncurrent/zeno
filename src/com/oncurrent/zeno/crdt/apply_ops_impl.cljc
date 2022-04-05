@@ -188,44 +188,46 @@
 
 (defmethod apply-op [:array :add-array-edge]
   [{:keys [add-id crdt path schema value] :as arg}]
-  (when (seq path)
-    (throw (ex-info "Can't index into array when adding an edge."
-                    (u/sym-map path crdt add-id value))))
-  ;; We use a slightly different CRDT implementation here because we
-  ;; need to be able to resurrect deleted edges. The `:single-value`
-  ;; CRDT does not keep info for deleted items.
-  (let [{:keys [add-id-to-edge current-edge-add-ids deleted-edge-add-ids]} crdt
-        deleted? (get deleted-edge-add-ids add-id)
-        current? (get current-edge-add-ids add-id)
-        edge (get add-id-to-edge add-id)
-        same? (= edge value)]
-    (when (and edge value (not same?))
-      (throw (ex-info
-              (str "Attempt to reuse an existing add-id "
-                   "(`" add-id "`) to add a different edge to CRDT.")
-              arg)))
-    (check-edge arg)
-    (cond-> (assoc-in crdt [:add-id-to-edge add-id] value)
-      (not deleted?)
-      (update :current-edge-add-ids (fn [ids]
-                                      (if (seq ids)
-                                        (conj ids add-id)
-                                        #{add-id}))))))
+  (if (seq path)
+    (associative-apply-op (assoc arg :get-child-schema
+                                 (fn [k]
+                                   (l/schema-at-path schema [0]))))
+    ;; We use a slightly different CRDT implementation here because we
+    ;; need to be able to resurrect deleted edges. The `:single-value`
+    ;; CRDT does not keep info for deleted items.
+    (let [{:keys [add-id-to-edge current-edge-add-ids deleted-edge-add-ids]} crdt
+          deleted? (get deleted-edge-add-ids add-id)
+          current? (get current-edge-add-ids add-id)
+          edge (get add-id-to-edge add-id)
+          same? (= edge value)]
+      (when (and edge value (not same?))
+        (throw (ex-info
+                (str "Attempt to reuse an existing add-id "
+                     "(`" add-id "`) to add a different edge to CRDT.")
+                arg)))
+      (check-edge arg)
+      (cond-> (assoc-in crdt [:add-id-to-edge add-id] value)
+        (not deleted?)
+        (update :current-edge-add-ids (fn [ids]
+                                        (if (seq ids)
+                                          (conj ids add-id)
+                                          #{add-id})))))))
 
 (defmethod apply-op [:array :delete-array-edge]
   [{:keys [add-id cmd crdt path schema value] :as arg}]
-  (when (seq path)
-    (throw (ex-info "Can't index into array when deleting an edge."
-                    (u/sym-map cmd path add-id value))))
-  ;; We use a slightly different CRDT implementation here because we
-  ;; need to be able to resurrect deleted edges. The `:single-value`
-  ;; CRDT does not keep info for deleted items.
-  (-> crdt
-      (update :current-edge-add-ids disj add-id)
-      (update :deleted-edge-add-ids (fn [ids]
-                                      (if (seq ids)
-                                        (conj ids add-id)
-                                        #{add-id})))))
+  (if (seq path)
+    (associative-delete-value (assoc arg :get-child-schema
+                                     (fn [k]
+                                       (l/schema-at-path schema [0]))))
+    ;; We use a slightly different CRDT implementation here because we
+    ;; need to be able to resurrect deleted edges. The `:single-value`
+    ;; CRDT does not keep info for deleted items.
+    (-> crdt
+        (update :current-edge-add-ids disj add-id)
+        (update :deleted-edge-add-ids (fn [ids]
+                                        (if (seq ids)
+                                          (conj ids add-id)
+                                          #{add-id}))))))
 
 (defn apply-ops
   [{:keys [crdt ops schema] :as arg}]
