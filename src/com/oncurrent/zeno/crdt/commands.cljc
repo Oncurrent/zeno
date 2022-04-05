@@ -150,7 +150,6 @@
         ordered-node-ids (array/get-ordered-node-ids arg)
         node-ret (associative-get-delete-ops-info
                   (assoc arg
-                         :crdt crdt
                          :get-child-path-info
                          (fn [[i & sub-path]]
                            (when-not (integer? i)
@@ -158,10 +157,17 @@
                                      (str "Index into array must be an "
                                           "integer. Got: `" (or i "nil") "`.")
                                      (u/sym-map i sub-path path cmd))))
-                           (let [ci (array/get-clamped-array-index
+                           (let [ni (array/get-normalized-array-index
                                      {:array-len (count ordered-node-ids)
                                       :i i})]
-                             {:k (nth ordered-node-ids ci)
+                             (when (or (not ni) (empty? ordered-node-ids))
+                               (throw
+                                (ex-info
+                                 (str "Index `" ni "` into array `"
+                                      ordered-node-ids "` is out of bounds.")
+                                 (u/sym-map cmd path ordered-node-ids
+                                            i sub-path))))
+                             {:k (nth ordered-node-ids ni)
                               :sub-path sub-path}))
                          :get-child-schema (constantly items-schema)))
         {:keys [add-id-to-edge current-edge-add-ids]} crdt
@@ -177,7 +183,15 @@
 
                    (and (empty? sub-path)
                         (= :zeno/remove (:zeno/op cmd)))
-                   (let [node-id (nth ordered-node-ids i)]
+                   (let [_ (when (or (> i (count ordered-node-ids))
+                                     (empty? ordered-node-ids))
+                             (throw (ex-info
+                                     (str "Index `" i "` into array `"
+                                          ordered-node-ids "` is out of bounds.")
+                                     (u/sym-map cmd path ordered-node-ids
+                                                add-id-to-edge current-edge-add-ids
+                                                i sub-path))))
+                         node-id (nth ordered-node-ids i)]
                      (get-ops-del-single-node (u/sym-map crdt make-id node-id
                                                          sys-time-ms)))
 
@@ -311,10 +325,16 @@
         ordered-node-ids (array/get-ordered-node-ids arg)]
     (if (seq path)
       (let [[i & sub-path] path
-            ci (array/get-clamped-array-index
+            ni (array/get-normalized-array-index
                 {:array-len (count ordered-node-ids)
                  :i i})
-            k (nth ordered-node-ids ci)
+            _ (when (or (not ni) (empty? ordered-node-ids))
+                (throw (ex-info
+                        (str "Index `" ni "` into array `" ordered-node-ids
+                             "` is out of bounds.")
+                        (u/sym-map cmd-arg cmd-path norm-path path
+                                   ordered-node-ids i sub-path))))
+            k (nth ordered-node-ids ni)
             ret (get-add-ops-info (assoc arg
                                          :crdt (get-in crdt [:children k])
                                          :path sub-path

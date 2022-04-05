@@ -12,6 +12,8 @@
      (:import
       (clojure.lang ExceptionInfo))))
 
+(comment (kaocha.repl/run))
+
 (l/def-record-schema pet-schema
   [:name l/string-schema]
   [:species l/string-schema])
@@ -148,11 +150,10 @@
                                            :path []
                                            :schema (:crdt-schema arg)})))))
 
-;; Broken
-(comment (kaocha.repl/run #'test-crdt-array-set-index))
-(deftest test-crdt-array-set-index
+(comment (kaocha.repl/run #'test-crdt-array-set-index-pos))
+(deftest test-crdt-array-set-index-pos
   (let [sys-time-ms (u/str->long "1643061294999")
-        arg {:cmds [{:zeno/arg ["Hi"]
+        arg {:cmds [{:zeno/arg ["Hi" "there"]
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
                     {:zeno/arg "Bob"
@@ -166,20 +167,67 @@
                                            :path []
                                            :schema (:crdt-schema arg)})))))
 
-;; Broken
+(comment (kaocha.repl/run #'test-crdt-array-set-index-neg))
+(deftest test-crdt-array-set-index-neg
+  (let [sys-time-ms (u/str->long "1643061294999")
+        arg {:cmds [{:zeno/arg ["Hi" "there"]
+                     :zeno/op :zeno/set
+                     :zeno/path [:zeno/crdt]}
+                    {:zeno/arg "Bob"
+                     :zeno/op :zeno/set
+                     :zeno/path [:zeno/crdt -2]}]
+             :crdt-schema (l/array-schema l/string-schema)
+             :sys-time-ms sys-time-ms}
+        {:keys [crdt ops]} (commands/process-cmds arg)
+        expected-value ["Bob" "there"]]
+    (is (= expected-value (crdt/get-value {:crdt crdt
+                                           :path []
+                                           :schema (:crdt-schema arg)})))))
+
+(comment (kaocha.repl/run #'test-crdt-array-set-index-out-of-bounds-pos))
+(deftest test-crdt-array-set-index-out-of-bounds-pos
+  (let [sys-time-ms (u/str->long "1643061294999")
+        arg {:cmds [{:zeno/arg ["Hi" "there"]
+                     :zeno/op :zeno/set
+                     :zeno/path [:zeno/crdt]}
+                    {:zeno/arg "Bob"
+                     :zeno/op :zeno/set
+                     :zeno/path [:zeno/crdt 2]}]
+             :crdt-schema (l/array-schema l/string-schema)
+             :sys-time-ms sys-time-ms}]
+    (is (thrown-with-msg?
+         #?(:clj ExceptionInfo :cljs js/Error)
+         #"Index .* into array .* is out of bounds"
+         (commands/process-cmds arg)))))
+
+(comment (kaocha.repl/run #'test-crdt-array-set-index-out-of-bounds-neg))
+(deftest test-crdt-array-set-index-out-of-bounds-neg
+  (let [sys-time-ms (u/str->long "1643061294999")
+        arg {:cmds [{:zeno/arg ["Hi" "there"]
+                     :zeno/op :zeno/set
+                     :zeno/path [:zeno/crdt]}
+                    {:zeno/arg "Bob"
+                     :zeno/op :zeno/set
+                     :zeno/path [:zeno/crdt -3]}]
+             :crdt-schema (l/array-schema l/string-schema)
+             :sys-time-ms sys-time-ms}]
+    (is (thrown-with-msg?
+         #?(:clj ExceptionInfo :cljs js/Error)
+         #"Index .* into array .* is out of bounds"
+         (commands/process-cmds arg)))))
+
 (comment (kaocha.repl/run #'test-crdt-array-set-index-into-empty))
-(deftest test-crdt-array-set-into-empty
+(deftest test-crdt-array-set-index-into-empty
   (let [sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg "Hi"
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt 0]}]
              :crdt-schema (l/array-schema l/string-schema)
-             :sys-time-ms sys-time-ms}
-        {:keys [crdt ops]} (commands/process-cmds arg)
-        expected-value ["Hi"]]
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:crdt-schema arg)})))))
+             :sys-time-ms sys-time-ms}]
+    (is (thrown-with-msg?
+         #?(:clj ExceptionInfo :cljs js/Error)
+         #"Index .* into array .* is out of bounds"
+         (commands/process-cmds arg)))))
 
 (deftest test-crdt-array-set-and-remove
   (let [sys-time-ms (u/str->long "1643061294999")
@@ -277,6 +325,7 @@
                                :schema (:crdt-schema arg)})]
     (is (= expected-value value))))
 
+(comment (kaocha.repl/run #'test-crdt-array-insert-range-after-into-empty))
 (deftest test-crdt-array-insert-range-after-into-empty
   (let [sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg ["1" "2" "3"]
@@ -756,13 +805,12 @@
                                   :path []
                                   :schema (:crdt-schema arg)})))))
 
-;; Broken
-(comment (kaocha.repl/run #'test-set-nested-arrays-piecewise))
-(deftest test-set-nested-arrays-piecewise
+(comment (kaocha.repl/run #'test-crdt-nested-arrays-set-index))
+(deftest test-crdt-nested-arrays-set-index
   (let [sys-time-ms (u/str->long "1643061294782")
-        arg {:cmds [{:zeno/arg [1 2]
+        arg {:cmds [{:zeno/arg [[1 2] [2]]
                      :zeno/op :zeno/set
-                     :zeno/path [:zeno/crdt 0]}
+                     :zeno/path [:zeno/crdt]}
                     {:zeno/arg [3]
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt 1]}]
@@ -773,6 +821,22 @@
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:crdt-schema arg)})))))
+
+(comment (kaocha.repl/run #'test-crdt-nested-arrays-set-index-out-of-bounds))
+(deftest test-crdt-nested-arrays-set-index-out-of-bounds
+  (let [sys-time-ms (u/str->long "1643061294782")
+        arg {:cmds [{:zeno/arg [[1 2]]
+                     :zeno/op :zeno/set
+                     :zeno/path [:zeno/crdt]}
+                    {:zeno/arg [3]
+                     :zeno/op :zeno/set
+                     :zeno/path [:zeno/crdt 1]}]
+             :crdt-schema (l/array-schema (l/array-schema l/int-schema))
+             :sys-time-ms sys-time-ms}]
+    (is (thrown-with-msg?
+         #?(:clj ExceptionInfo :cljs js/Error)
+         #"Index .* into array .* is out of bounds"
+         (commands/process-cmds arg)))))
 
 (comment (kaocha.repl/run #'test-set-nested-map-of-two-nested-arrays
                           {:capture-output? false}))
