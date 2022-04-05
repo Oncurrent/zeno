@@ -106,6 +106,20 @@
                                            :path []
                                            :schema (:crdt-schema arg)})))))
 
+(comment (kaocha.repl/run #'test-crdt-record-set-optional))
+(deftest test-crdt-record-set-optional
+  (let [sys-time-ms (u/str->long "1643061294782")
+        arg {:cmds [{:zeno/arg "Sheepy"
+                     :zeno/op :zeno/set
+                     :zeno/path [:zeno/crdt :name]}]
+             :crdt-schema pet-schema
+             :sys-time-ms sys-time-ms}
+        {:keys [crdt ops]} (commands/process-cmds arg)
+        expected-value {:name "Sheepy"}]
+    (is (= expected-value (crdt/get-value {:crdt crdt
+                                           :path []
+                                           :schema (:crdt-schema arg)})))))
+
 (deftest test-crdt-union-set-and-reset
   (let [sys-time-ms (u/str->long "1643061294782")
         arg {:cmds [{:zeno/arg 3.14
