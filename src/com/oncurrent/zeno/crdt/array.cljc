@@ -216,7 +216,26 @@
                                         :paths (map :path path-infos)
                                         :splitting-node node)))))))))))
 
-(defn get-clamped-array-index [{:keys [array-len i]}]
+(defn get-normalized-array-index
+  "Translates relative indexing (e.g. using negative numbers to index from the
+   end) into absolute indexing. Returns nil if out of bounds."
+  [{:keys [array-len i]}]
+  (let [max-i (if (pos? array-len)
+                (dec array-len)
+                0)
+        norm-i (if (nat-int? i)
+                 i
+                 (+ array-len i))]
+    (cond
+     (neg? norm-i) nil
+     (> norm-i max-i) nil
+     :else norm-i)))
+
+(defn get-clamped-array-index
+  "Translates relative indexing (e.g. using negative numbers to index from the
+   end) into absolute indexing. Returns the first or last element if out of
+   bounds (depending on which end it's out)."
+  [{:keys [array-len i]}]
   (let [max-i (if (pos? array-len)
                 (dec array-len)
                 0)
@@ -402,9 +421,16 @@
 
                     (integer? raw-k)
                     (let [array-len (count ordered-node-ids)
-                          ci (get-clamped-array-index {:array-len array-len
-                                                       :i raw-k})]
-                      [(nth ordered-node-ids ci) ci])
+                          ni (get-normalized-array-index {:array-len array-len
+                                                          :i raw-k})]
+                      (when (or (not ni) (empty? ordered-node-ids))
+                        (throw
+                         (ex-info
+                          (str "Index `" ni "` into array `" ordered-node-ids
+                               "` is out of bounds.")
+                          (u/sym-map norm-path path ordered-node-ids
+                                     raw-k sub-path))))
+                      [(nth ordered-node-ids ni) ni])
 
                     :else
                     (throw (ex-info (str "Unknown key type in :array path `"

@@ -107,15 +107,18 @@
                               [(dissoc value k) k]
 
                               :else
-                              (let [norm-i (if (nat-int? k)
-                                             k
-                                             (+ (count value) k))
+                              (let [norm-i (array/get-normalized-array-index
+                                            {:array-len (count value)
+                                             :i k})
                                     [h t] (split-at norm-i value)]
                                 (if (nat-int? norm-i)
                                   [(vec (concat h (rest t))) norm-i]
-                                  (throw (ex-info "Path index out of range."
-                                                  (u/sym-map norm-i path
-                                                             norm-path))))))
+                                  (throw
+                                   (ex-info
+                                    (str "Index `" norm-i "` into array `"
+                                         value "` is out of bounds.")
+                                    (u/sym-map norm-i path
+                                               norm-path))))))
         state-path (if prefix
                      (rest norm-path)
                      norm-path)
@@ -154,11 +157,11 @@
             (throw (ex-info (str "In `" op "` operations, the `:zeno/arg` "
                                  "value must be sequential. Got `" arg "`.")
                             (u/sym-map op path value norm-path))))
-        norm-i (array/get-clamped-array-index {:array-len (count value)
-                                               :i i})
+        clamped-i (array/get-clamped-array-index {:array-len (count value)
+                                                  :i i})
         split-i (if (#{:zeno/insert-before :zeno/insert-range-before} op)
-                  norm-i
-                  (inc norm-i))
+                  clamped-i
+                  (inc clamped-i))
         [h t] (split-at split-i value)
         new-parent (vec (concat h (if range? arg [arg]) t))
         state-path (if prefix
