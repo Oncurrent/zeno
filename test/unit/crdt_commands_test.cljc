@@ -789,9 +789,9 @@
                                   :path []
                                   :schema (:crdt-schema arg)})))))
 
-(comment (kaocha.repl/run #'test-set-nested-arrays-at-once
+(comment (kaocha.repl/run #'test-crdt-nested-arrays-set
                           {:capture-output? false}))
-(deftest test-set-nested-arrays-at-once
+(deftest test-crdt-nested-arrays-set
   (let [sys-time-ms (u/str->long "1643061294782")
         value [[1 2] [3]]
         path [:zeno/crdt]
