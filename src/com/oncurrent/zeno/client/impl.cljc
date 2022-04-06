@@ -75,17 +75,16 @@
    {}
    cmds))
 
-(defn <log-tx! [{:keys [zc] :as arg}]
+(defn <log-tx! [{:keys [zc ops update-infos] :as arg}]
   (au/go
     (let [{:keys [*actor-id client-name storage]} zc
           actor-id @*actor-id
           crdt-ops (au/<? (crdt-common/<crdt-ops->serializable-crdt-ops
-                           (assoc zc
-                                  :ops (:ops arg))))
+                           (assoc zc :ops ops)))
           sys-time-ms (u/current-time-ms)
           update-infos (au/<?
                         (crdt-common/<update-infos->serializable-update-infos
-                         (assoc zc :update-infos (:update-infos arg))))
+                         (assoc zc :update-infos update-infos)))
           tx-info (u/sym-map actor-id crdt-ops sys-time-ms update-infos)
           tx-id (u/compact-random-uuid)
           arg* (-> zc

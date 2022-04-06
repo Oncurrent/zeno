@@ -621,13 +621,8 @@
   [arg]
   (do-insert arg))
 
-(defn clean-path* [path]
-  (case (first path)
-    :zeno/crdt (recur (-> path rest))
-    path))
-
 (defn process-cmd [{:keys [cmd] :as arg}]
-  (let [path (-> cmd :zeno/path clean-path*)]
+  (let [path (-> cmd :zeno/path c/chop-root)]
     (process-cmd* (-> arg
                       (assoc :cmd-arg (:zeno/arg cmd))
                       (assoc :cmd-path path)

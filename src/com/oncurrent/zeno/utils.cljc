@@ -53,7 +53,7 @@
      :cljs (with-out-str (pprint/pprint x))))
 
 (defn pprint-str [x]
-  #?(:clj (puget/with-color (pprint-str*))
+  #?(:clj (puget/with-color (pprint-str* x))
      :cljs (pprint-str*)))
 
 
