@@ -631,14 +631,13 @@
 (defn process-cmds [{:keys [cmds make-id]
                      :or {make-id u/compact-random-uuid}
                      :as arg}]
-  (let [ret* (reduce (fn [acc cmd]
-                      (let [ret (process-cmd (assoc acc
-                                                    :cmd cmd
-                                                    :make-id make-id))]
-                        (-> acc
-                            (assoc :crdt (:crdt ret))
-                            (update :ops set/union (:ops ret))
-                            (update :update-infos conj (:update-info ret)))))
-                    arg
-                    cmds)]
-    ret*))
+  (reduce (fn [acc cmd]
+            (let [ret (process-cmd (assoc acc
+                                          :cmd cmd
+                                          :make-id make-id))]
+              (-> acc
+                  (assoc :crdt (:crdt ret))
+                  (update :ops set/union (:ops ret))
+                  (update :update-infos conj (:update-info ret)))))
+          arg
+          cmds))
