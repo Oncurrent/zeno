@@ -31,7 +31,7 @@
 (defmulti get-add-ops (fn [{:keys [schema]}]
                              (c/schema->dispatch-type schema)))
 
-(defn xf-op-paths [{:keys [prefix ops union? array?]}]
+(defn xf-op-paths [{:keys [prefix i ops union? array?]}]
   (reduce (fn [acc {:keys [norm-path] :as op}]
             (conj acc
                   (cond-> op
@@ -46,7 +46,7 @@
                     (and norm-path
                          array?
                          (not union?))
-                    (update :norm-path #(cons 0 %)))))
+                    (update :norm-path #(cons i %)))))
           #{}
           ops))
 
@@ -56,7 +56,8 @@
     (reduce-kv (fn [acc add-id value-info]
                  (conj acc {:add-id add-id
                             :op-type :delete-value
-                            :path '()}))
+                            :path '()
+                            :norm-path norm-path}))
                #{}
                current-add-id-to-value-info)))
 
@@ -241,15 +242,15 @@
                         {:arg cmd-arg
                          :path cmd-path})))]
         (reduce-kv (fn [acc k v]
-                     (let [ret (get-add-ops
-                                (assoc arg
-                                       :cmd-arg v
-                                       :crdt (get-in crdt [:children k])
-                                       :path []
-                                       :schema values-schema))]
+                     (let [add-ops (get-add-ops
+                                    (assoc arg
+                                           :cmd-arg v
+                                           :crdt (get-in crdt [:children k])
+                                           :path []
+                                           :schema values-schema))]
                        (set/union acc
                                   (xf-op-paths {:prefix k
-                                                :ops ret}))))
+                                                :ops add-ops}))))
                    #{}
                    cmd-arg)))))
 
@@ -275,7 +276,7 @@
       (reduce (fn [acc k]
                 (let [v (get cmd-arg k)
                       child-schema (l/schema-at-path schema [k])
-                      ret (get-add-ops
+                      add-ops (get-add-ops
                            (assoc arg
                                   :cmd-arg v
                                   :crdt (get-in crdt [:children k])
@@ -284,7 +285,7 @@
                                   :schema child-schema))]
                   (set/union acc
                              (xf-op-paths {:prefix k
-                                           :ops ret}))))
+                                           :ops add-ops}))))
               #{}
               (->> (l/edn schema)
                    (:fields)
@@ -324,13 +325,14 @@
                         (u/sym-map cmd-arg cmd-path norm-path path
                                    ordered-node-ids i sub-path))))
             k (nth ordered-node-ids ni)
-            ret (get-add-ops (assoc arg
-                                         :crdt (get-in crdt [:children k])
-                                         :path sub-path
-                                         :schema items-schema))]
+            add-ops (get-add-ops (assoc arg
+                                        :crdt (get-in crdt [:children k])
+                                        :path sub-path
+                                        :schema items-schema))]
         (xf-op-paths {:array? true
                       :prefix k
-                      :ops ret}))
+                      :i ni
+                      :ops add-ops}))
       (let [_ (when-not (sequential? cmd-arg)
                 (throw (ex-info
                         (str "Command path indicates an array, but arg is "
@@ -340,13 +342,13 @@
             info (reduce
                   (fn [acc v]
                     (let [node-id (make-id)
-                          node-ret (get-add-ops
-                                    (assoc arg
-                                           :cmd-arg v
-                                           :crdt (get-in crdt
-                                                         [:children node-id])
-                                           :path []
-                                           :schema items-schema))]
+                          add-ops (get-add-ops
+                                   (assoc arg
+                                          :cmd-arg v
+                                          :crdt (get-in crdt
+                                                        [:children node-id])
+                                          :path []
+                                          :schema items-schema))]
                       (-> acc
                           (update :node-ops
                                   (fn [node-ops]
@@ -354,7 +356,8 @@
                                      node-ops
                                      (xf-op-paths {:array? true
                                                    :prefix node-id
-                                                   :ops node-ret}))))
+                                                   :i (count (:node-ids acc))
+                                                   :ops add-ops}))))
                           (update :node-ids conj node-id))))
                   {:node-ids []
                    :node-ops #{}}
@@ -416,11 +419,11 @@
         [i & sub-path] path
         items-schema (l/schema-at-path schema [0])
         node-id (make-id)
-        node-ret (get-add-ops
-                  (assoc arg
-                         :crdt repaired-crdt
-                         :path []
-                         :schema items-schema))
+        add-ops (get-add-ops
+                 (assoc arg
+                        :crdt repaired-crdt
+                        :path []
+                        :schema items-schema))
         ordered-node-ids (array/get-ordered-node-ids arg)
         array-len (count ordered-node-ids)
         clamped-i (array/get-clamped-array-index (u/sym-map array-len i))
@@ -431,9 +434,10 @@
                          :new-node-id node-id
                          :ordered-node-ids ordered-node-ids))
         ops (set/union edge-ops (xf-op-paths
-                                            {:array? true
-                                             :prefix node-id
-                                             :ops node-ret}))
+                                 {:array? true
+                                  :prefix node-id
+                                  :i (inc clamped-i)
+                                  :ops add-ops}))
         final-crdt (apply-ops/apply-ops
                     (assoc arg
                            :crdt repaired-crdt
@@ -461,13 +465,13 @@
         info (reduce
               (fn [acc v]
                 (let [node-id (make-id)
-                      node-ret (get-add-ops
-                                (assoc arg
-                                       :cmd-arg v
-                                       :crdt (get-in crdt
-                                                     [:children node-id])
-                                       :path []
-                                       :schema items-schema))]
+                      add-ops (get-add-ops
+                               (assoc arg
+                                      :cmd-arg v
+                                      :crdt (get-in crdt
+                                                    [:children node-id])
+                                      :path []
+                                      :schema items-schema))]
                   (-> acc
                       (update :node-ops (fn [node-ops]
                                           (set/union
@@ -475,7 +479,8 @@
                                            (xf-op-paths
                                             {:array? true
                                              :prefix node-id
-                                             :ops node-ret}))))
+                                             :i (count (:new-node-ids acc))
+                                             :ops add-ops}))))
                       (update :new-node-ids conj node-id))))
               {:new-node-ids []
                :node-ops #{}}
@@ -611,7 +616,7 @@
 (defn clean-path* [path]
   (case (first path)
     :zeno/crdt (recur (-> path rest))
-    (vec path)))
+    path))
 
 (defn process-cmd [{:keys [cmd] :as arg}]
   (let [path (-> cmd :zeno/path clean-path*)]
@@ -626,13 +631,14 @@
 (defn process-cmds [{:keys [cmds make-id]
                      :or {make-id u/compact-random-uuid}
                      :as arg}]
-  (reduce (fn [acc cmd]
-            (let [ret (process-cmd (assoc acc
-                                          :cmd cmd
-                                          :make-id make-id))]
-              (-> acc
-                  (assoc :crdt (:crdt ret))
-                  (update :ops set/union (:ops ret))
-                  (update :update-infos conj (:update-info ret)))))
-          arg
-          cmds))
+  (let [ret* (reduce (fn [acc cmd]
+                      (let [ret (process-cmd (assoc acc
+                                                    :cmd cmd
+                                                    :make-id make-id))]
+                        (-> acc
+                            (assoc :crdt (:crdt ret))
+                            (update :ops set/union (:ops ret))
+                            (update :update-infos conj (:update-info ret)))))
+                    arg
+                    cmds)]
+    ret*))
