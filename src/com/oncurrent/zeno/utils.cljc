@@ -48,9 +48,15 @@
             (.write *out* s))
      :cljs (pprint/pprint x)))
 
-(defn pprint-str [x]
-  #?(:clj (puget/with-color (puget/pprint-str x))
+(defn pprint-str* [x]
+  #?(:clj (puget/pprint-str x)
      :cljs (with-out-str (pprint/pprint x))))
+
+(defn pprint-str [x]
+  #?(:clj (puget/with-color (pprint-str*))
+     :cljs (pprint-str*)))
+
+
 
 (defn int-pow [base exp]
   (int (Math/pow base exp)))
