@@ -39,6 +39,14 @@
   [:name l/string-schema]
   [:pets (l/array-schema pet-schema)])
 
+(l/def-record-schema specialties-schema
+  [:aggression l/boolean-schema]
+  [:barking l/boolean-schema])
+
+(l/def-record-schema pet-trainer-schema
+  [:name l/string-schema]
+  [:specialties specialties-schema])
+
 (comment (krun #'test-crdt-set))
 (deftest test-crdt-set
   (let [sys-time-ms (u/str->long "1643061294782")
@@ -141,6 +149,32 @@
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:crdt-schema arg)})))))
+
+(comment (krun #'test-crdt-nested-record-set-and-remove))
+(deftest test-crdt-nested-record-set-and-remove
+  (let [sys-time-ms (u/str->long "1643061294782")
+        arg {:cmds [{:zeno/arg [{:name "Bill"
+                                 :specialties {:aggression true
+                                               :barking false}}]
+                     :zeno/op :zeno/set
+                     :zeno/path [:zeno/crdt]}
+                    {:zeno/op :zeno/remove
+                     :zeno/path [:zeno/crdt 0 :specialties :barking]}]
+             :crdt-schema (l/array-schema pet-trainer-schema)
+             :sys-time-ms sys-time-ms}
+        {:keys [crdt ops]} (commands/process-cmds arg)
+        del-norm-paths (op-type->norm-paths :delete-value ops)
+        add-norm-paths (op-type->norm-paths :add-value ops)
+        expected-value [{:name "Bill"
+                         :specialties {:aggression true}}]]
+    (is (= expected-value (crdt/get-value {:crdt crdt
+                                           :path []
+                                           :schema (:crdt-schema arg)})))
+    (is (= #{'(0 :specialties :barking)} del-norm-paths))
+    (is (= #{'(0 :name)
+             '(0 :specialties :aggression)
+             '(0 :specialties :barking)}
+           add-norm-paths))))
 
 (comment (krun #'test-crdt-union-set-and-reset))
 (deftest test-crdt-union-set-and-reset
@@ -281,7 +315,6 @@
                                            :path []
                                            :schema (:crdt-schema arg)})))))
 
-;; Broken
 (comment (krun #'test-crdt-nested-maps-set-and-remove))
 (deftest test-crdt-nested-maps-set-and-remove
   (let [sys-time-ms (u/str->long "1643061294999")
@@ -295,12 +328,21 @@
              :crdt-schema (l/map-schema (l/map-schema l/int-schema))
              :sys-time-ms sys-time-ms}
         {:keys [crdt ops]} (commands/process-cmds arg)
-        expected-value ["j" {"a" 1 "b" 2}
+        del-norm-paths (op-type->norm-paths :delete-value ops)
+        add-norm-paths (op-type->norm-paths :add-value ops)
+        expected-value {"j" {"a" 1 "b" 2}
                         "k" {"z" 20}
-                        "l" {"c" 3}]]
+                        "l" {"c" 3}}]
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
-                                           :schema (:crdt-schema arg)})))))
+                                           :schema (:crdt-schema arg)})))
+    (is (= #{'("k" "y")} del-norm-paths))
+    (is (= #{'("j" "a")
+             '("j" "b")
+             '("k" "y")
+             '("k" "z")
+             '("l" "c")}
+           add-norm-paths))))
 
 (comment (krun #'test-crdt-array-of-maps-set-and-remove))
 (deftest test-crdt-array-of-maps-set-and-remove
