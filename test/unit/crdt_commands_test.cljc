@@ -14,8 +14,22 @@
 
 (comment (kaocha.repl/run))
 
-(defn krun [sym opts]
-  (kaocha.repl/run sym (merge {:color? false :capture-output? false} opts)))
+(defn krun
+  ([sym] (krun sym nil))
+  ([sym opts]
+   (kaocha.repl/run sym (merge {:color? false :capture-output? false} opts))))
+
+(defn ->norm-paths [ops]
+  (->> ops
+       (map :norm-path)
+       (remove nil?)
+       (into #{})))
+
+(defn op-type->norm-paths [op-type ops]
+  (->> ops
+       (filter #(= op-type (:op-type %)))
+       (->norm-paths)))
+
 
 (l/def-record-schema pet-schema
   [:name l/string-schema]
@@ -836,7 +850,7 @@
                                   :path []
                                   :schema (:crdt-schema arg)})))))
 
-(comment (krun #'test-crdt-nested-arrays-set))
+(comment (krun #'test-crdt-nested-arrays-set {:capture-output? true}))
 (deftest test-crdt-nested-arrays-set
   (let [sys-time-ms (u/str->long "1643061294782")
         value [[[[[1 2]]]] [[[[3]] [[4]]]] [[[[5]]] [[[6 7]]]]]
@@ -848,24 +862,18 @@
                               l/array-schema l/array-schema l/array-schema)
              :sys-time-ms sys-time-ms}
         {:keys [crdt ops]} (commands/process-cmds arg)
-        norm-paths (into #{} (map :norm-path ops))]
-    (log/info norm-paths)
+        norm-paths (->norm-paths ops)]
     (is (= value (crdt/get-value {:crdt crdt
                                   :path []
                                   :schema (:crdt-schema arg)})))
-    (is (contains? norm-paths '(0 0 0 0 0)))
-    (is (contains? norm-paths '(0 0 0 0 1)))
-    (is (contains? norm-paths '(1 0 0 0 0)))
-    (is (contains? norm-paths '(1 0 1 0 0)))
-    (is (contains? norm-paths '(2 0 0 0 0)))
-    (is (contains? norm-paths '(2 1 0 0 0)))
-    (is (contains? norm-paths '(2 1 0 0 1)))))
-
-(defn op-type->norm-paths [op-type ops]
-  (->> ops
-       (filter #(= op-type (:op-type %)))
-       (map :norm-path)
-       (into #{})))
+    (is (= #{'(0 0 0 0 0)
+             '(0 0 0 0 1)
+             '(1 0 0 0 0)
+             '(1 0 1 0 0)
+             '(2 0 0 0 0)
+             '(2 1 0 0 0)
+             '(2 1 0 0 1)}
+           norm-paths))))
 
 (comment (krun #'test-crdt-nested-arrays-set-index))
 (deftest test-crdt-nested-arrays-set-index
@@ -904,8 +912,7 @@
          #"Index .* into array .* is out of bounds"
          (commands/process-cmds arg)))))
 
-(comment (krun #'test-set-nested-map-of-two-nested-arrays
-                          {:capture-output? false}))
+(comment (krun #'test-set-nested-map-of-two-nested-arrays))
 (deftest test-set-nested-map-of-two-nested-arrays
   (let [sys-time-ms (u/str->long "1643061294782")
         value {"a" {"aa" [[1 2] [3]]}
@@ -919,13 +926,20 @@
                             (l/array-schema
                              (l/array-schema l/int-schema))))
              :sys-time-ms sys-time-ms}
-        {:keys [crdt]} (commands/process-cmds arg)]
+        {:keys [crdt ops]} (commands/process-cmds arg)
+        norm-paths (->norm-paths ops)]
     (is (= value (crdt/get-value {:crdt crdt
                                   :path []
-                                  :schema (:crdt-schema arg)})))))
+                                  :schema (:crdt-schema arg)})))
+    (is (= #{'("a" "aa" 0 0)
+             '("a" "aa" 0 1)
+             '("a" "aa" 1 0)
+             '("b" "bb" 0 0)
+             '("b" "bb" 0 1)
+             '("b" "bb" 1 0)}
+           norm-paths))))
 
-(comment (krun #'test-set-remove-nested-arrays
-                          {:capture-output? false}))
+(comment (krun #'test-set-remove-nested-arrays))
 (deftest test-set-remove-nested-arrays
   (let [sys-time-ms (u/str->long "1643061294782")
         value [[1 2] [3]]
