@@ -12,10 +12,10 @@
      (:import
       (clojure.lang ExceptionInfo))))
 
-(comment
- (kaocha.repl/run)
- (defn krun [sym]
-   (kaocha.repl/run sym {:color? false :capture-output? false})))
+(comment (kaocha.repl/run))
+
+(defn krun [sym opts]
+  (kaocha.repl/run sym (merge {:color? false :capture-output? false} opts)))
 
 (l/def-record-schema pet-schema
   [:name l/string-schema]
@@ -93,7 +93,7 @@
                                            :path []
                                            :schema (:crdt-schema arg)})))))
 
-(comment (kaocha.repl/run #'test-crdt-record-set-and-reset))
+(comment (krun #'test-crdt-record-set-and-reset))
 (deftest test-crdt-record-set-and-reset
   (let [sys-time-ms (u/str->long "1643061294782")
         arg {:cmds [{:zeno/arg "Lamby"
@@ -114,7 +114,7 @@
                                            :path []
                                            :schema (:crdt-schema arg)})))))
 
-(comment (kaocha.repl/run #'test-crdt-record-set-optional))
+(comment (krun #'test-crdt-record-set-optional))
 (deftest test-crdt-record-set-optional
   (let [sys-time-ms (u/str->long "1643061294782")
         arg {:cmds [{:zeno/arg "Sheepy"
@@ -128,7 +128,7 @@
                                            :path []
                                            :schema (:crdt-schema arg)})))))
 
-(comment (kaocha.repl/run #'test-crdt-union-set-and-reset))
+(comment (krun #'test-crdt-union-set-and-reset))
 (deftest test-crdt-union-set-and-reset
   (let [sys-time-ms (u/str->long "1643061294782")
         arg {:cmds [{:zeno/arg 3.14
@@ -159,7 +159,7 @@
                                            :schema (:crdt-schema arg)})))))
 
 
-(comment (kaocha.repl/run #'test-crdt-array-set-empty))
+(comment (krun #'test-crdt-array-set-empty))
 (deftest test-crdt-array-set-empty
   (let [sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg []
@@ -173,7 +173,7 @@
                                            :path []
                                            :schema (:crdt-schema arg)})))))
 
-(comment (kaocha.repl/run #'test-crdt-array-set-index-pos))
+(comment (krun #'test-crdt-array-set-index-pos))
 (deftest test-crdt-array-set-index-pos
   (let [sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg ["Hi" "there"]
@@ -190,7 +190,7 @@
                                            :path []
                                            :schema (:crdt-schema arg)})))))
 
-(comment (kaocha.repl/run #'test-crdt-array-set-index-neg))
+(comment (krun #'test-crdt-array-set-index-neg))
 (deftest test-crdt-array-set-index-neg
   (let [sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg ["Hi" "there"]
@@ -207,7 +207,7 @@
                                            :path []
                                            :schema (:crdt-schema arg)})))))
 
-(comment (kaocha.repl/run #'test-crdt-array-set-index-out-of-bounds-pos))
+(comment (krun #'test-crdt-array-set-index-out-of-bounds-pos))
 (deftest test-crdt-array-set-index-out-of-bounds-pos
   (let [sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg ["Hi" "there"]
@@ -223,7 +223,7 @@
          #"Index .* into array .* is out of bounds"
          (commands/process-cmds arg)))))
 
-(comment (kaocha.repl/run #'test-crdt-array-set-index-out-of-bounds-neg))
+(comment (krun #'test-crdt-array-set-index-out-of-bounds-neg))
 (deftest test-crdt-array-set-index-out-of-bounds-neg
   (let [sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg ["Hi" "there"]
@@ -239,7 +239,7 @@
          #"Index .* into array .* is out of bounds"
          (commands/process-cmds arg)))))
 
-(comment (kaocha.repl/run #'test-crdt-array-set-index-into-empty))
+(comment (krun #'test-crdt-array-set-index-into-empty))
 (deftest test-crdt-array-set-index-into-empty
   (let [sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg "Hi"
@@ -267,6 +267,28 @@
                                            :path []
                                            :schema (:crdt-schema arg)})))))
 
+;; Broken
+(comment (krun #'test-crdt-nested-maps-set-and-remove))
+(deftest test-crdt-nested-maps-set-and-remove
+  (let [sys-time-ms (u/str->long "1643061294999")
+        arg {:cmds [{:zeno/arg {"j" {"a" 1 "b" 2}
+                                "k" {"y" 10 "z" 20}
+                                "l" {"c" 3}}
+                     :zeno/op :zeno/set
+                     :zeno/path [:zeno/crdt]}
+                    {:zeno/op :zeno/remove
+                     :zeno/path [:zeno/crdt "k" "y"]}]
+             :crdt-schema (l/map-schema (l/map-schema l/int-schema))
+             :sys-time-ms sys-time-ms}
+        {:keys [crdt ops]} (commands/process-cmds arg)
+        expected-value ["j" {"a" 1 "b" 2}
+                        "k" {"z" 20}
+                        "l" {"c" 3}]]
+    (is (= expected-value (crdt/get-value {:crdt crdt
+                                           :path []
+                                           :schema (:crdt-schema arg)})))))
+
+(comment (krun #'test-crdt-array-of-maps-set-and-remove))
 (deftest test-crdt-array-of-maps-set-and-remove
   (let [sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg [{"a" 1 "b" 2}
@@ -348,7 +370,7 @@
                                :schema (:crdt-schema arg)})]
     (is (= expected-value value))))
 
-(comment (kaocha.repl/run #'test-crdt-array-insert-range-after-into-empty))
+(comment (krun #'test-crdt-array-insert-range-after-into-empty))
 (deftest test-crdt-array-insert-range-after-into-empty
   (let [sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg ["1" "2" "3"]
@@ -375,7 +397,7 @@
                                            :path []
                                            :schema (:crdt-schema arg)})))))
 
-(comment (kaocha.repl/run #'test-crdt-array-insert-range-before-into-front))
+(comment (krun #'test-crdt-array-insert-range-before-into-front))
 (deftest test-crdt-array-insert-range-before-into-front
   (let [arg {:cmds [{:zeno/arg ["4" "5"]
                      :zeno/op :zeno/set
@@ -503,8 +525,7 @@
                                            :path []
                                            :schema (:crdt-schema arg1)})))))
 
-(comment (kaocha.repl/run #'test-nested-merge-array-no-conflict
-                          {:color? false}))
+(comment (krun #'test-nested-merge-array-no-conflict))
 (deftest test-nested-merge-array-no-conflict
   (let [arg0 {:cmds [{:zeno/arg {:name "Bill"
                                  :pets [{:name "Pinky"
@@ -783,7 +804,7 @@
          #"arg is not sequential"
          (commands/process-cmds arg)))))
 
-(comment (kaocha.repl/run #'test-set-map-of-two-arrays))
+(comment (krun #'test-set-map-of-two-arrays))
 (deftest test-set-map-of-two-arrays
   (let [sys-time-ms (u/str->long "1643061294782")
         value {"a" [1]
@@ -799,7 +820,7 @@
                                   :path []
                                   :schema (:crdt-schema arg)})))))
 
-(comment (kaocha.repl/run #'test-set-nested-map-of-two-arrays))
+(comment (krun #'test-set-nested-map-of-two-arrays))
 (deftest test-set-nested-map-of-two-arrays
   (let [sys-time-ms (u/str->long "1643061294782")
         value {"a" {"aa" [1]}
@@ -818,7 +839,7 @@
 (comment (krun #'test-crdt-nested-arrays-set))
 (deftest test-crdt-nested-arrays-set
   (let [sys-time-ms (u/str->long "1643061294782")
-        value [[[[[1 2]]]]]
+        value [[[[[1 2]]]] [[[[3]] [[4]]]] [[[[5]]] [[[6 7]]]]]
         path [:zeno/crdt]
         arg {:cmds [{:zeno/arg value
                      :zeno/op :zeno/set
@@ -826,13 +847,27 @@
              :crdt-schema (-> l/int-schema l/array-schema l/array-schema
                               l/array-schema l/array-schema l/array-schema)
              :sys-time-ms sys-time-ms}
-        {:keys [crdt ops update-infos]} (commands/process-cmds arg)]
+        {:keys [crdt ops]} (commands/process-cmds arg)
+        norm-paths (into #{} (map :norm-path ops))]
+    (log/info norm-paths)
     (is (= value (crdt/get-value {:crdt crdt
                                   :path []
                                   :schema (:crdt-schema arg)})))
-    (is (= 1 1))))
+    (is (contains? norm-paths '(0 0 0 0 0)))
+    (is (contains? norm-paths '(0 0 0 0 1)))
+    (is (contains? norm-paths '(1 0 0 0 0)))
+    (is (contains? norm-paths '(1 0 1 0 0)))
+    (is (contains? norm-paths '(2 0 0 0 0)))
+    (is (contains? norm-paths '(2 1 0 0 0)))
+    (is (contains? norm-paths '(2 1 0 0 1)))))
 
-(comment (kaocha.repl/run #'test-crdt-nested-arrays-set-index))
+(defn op-type->norm-paths [op-type ops]
+  (->> ops
+       (filter #(= op-type (:op-type %)))
+       (map :norm-path)
+       (into #{})))
+
+(comment (krun #'test-crdt-nested-arrays-set-index))
 (deftest test-crdt-nested-arrays-set-index
   (let [sys-time-ms (u/str->long "1643061294782")
         arg {:cmds [{:zeno/arg [[1 2] [2]]
@@ -844,12 +879,16 @@
              :crdt-schema (l/array-schema (l/array-schema l/int-schema))
              :sys-time-ms sys-time-ms}
         expected-value [[1 2] [3]]
-        {:keys [crdt]} (commands/process-cmds arg)]
+        {:keys [crdt ops]} (commands/process-cmds arg)
+        del-norm-paths (op-type->norm-paths :delete-value ops)
+        add-norm-paths (op-type->norm-paths :add-value ops)]
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
-                                           :schema (:crdt-schema arg)})))))
+                                           :schema (:crdt-schema arg)})))
+    (is (= #{'(1 0)} del-norm-paths))
+    (is (= #{'(0 0) '(0 1) '(1 0)} add-norm-paths))))
 
-(comment (kaocha.repl/run #'test-crdt-nested-arrays-set-index-out-of-bounds))
+(comment (krun #'test-crdt-nested-arrays-set-index-out-of-bounds))
 (deftest test-crdt-nested-arrays-set-index-out-of-bounds
   (let [sys-time-ms (u/str->long "1643061294782")
         arg {:cmds [{:zeno/arg [[1 2]]
@@ -865,7 +904,7 @@
          #"Index .* into array .* is out of bounds"
          (commands/process-cmds arg)))))
 
-(comment (kaocha.repl/run #'test-set-nested-map-of-two-nested-arrays
+(comment (krun #'test-set-nested-map-of-two-nested-arrays
                           {:capture-output? false}))
 (deftest test-set-nested-map-of-two-nested-arrays
   (let [sys-time-ms (u/str->long "1643061294782")
@@ -885,7 +924,7 @@
                                   :path []
                                   :schema (:crdt-schema arg)})))))
 
-(comment (kaocha.repl/run #'test-set-remove-nested-arrays
+(comment (krun #'test-set-remove-nested-arrays
                           {:capture-output? false}))
 (deftest test-set-remove-nested-arrays
   (let [sys-time-ms (u/str->long "1643061294782")

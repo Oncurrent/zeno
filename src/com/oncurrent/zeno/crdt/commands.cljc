@@ -32,60 +32,73 @@
                              (c/schema->dispatch-type schema)))
 
 (defn xf-op-paths [{:keys [prefix i ops union? array?]}]
-  (reduce (fn [acc {:keys [norm-path] :as op}]
-            (conj acc
-                  (cond-> op
-                    true
-                    (update :path #(cons prefix %))
+  (log/info "before" (u/pprint-str* ops))
+  (let [x (reduce (fn [acc {:keys [norm-path] :as op}]
+                    (conj acc
+                          (cond-> op
+                            true
+                            (update :path #(cons prefix %))
 
-                    (and norm-path
-                         (not array?)
-                         (not union?))
-                    (update :norm-path #(cons prefix %))
+                            (and norm-path
+                                 (not array?)
+                                 (not union?))
+                            (update :norm-path #(cons prefix %))
 
-                    (and norm-path
-                         array?
-                         (not union?))
-                    (update :norm-path #(cons i %)))))
-          #{}
-          ops))
+                            (and norm-path
+                                 array?
+                                 (not union?))
+                            (update :norm-path #(cons i %)))))
+                  #{}
+                  ops)]
+    (log/info "after" (u/pprint-str* x))
+    x))
 
 (defmethod get-delete-ops :single-value
-  [{:keys [crdt norm-path]}]
+  [{:keys [crdt]}]
+  (log/info "del-single")
   (let [{:keys [current-add-id-to-value-info]} crdt]
     (reduce-kv (fn [acc add-id value-info]
                  (conj acc {:add-id add-id
                             :op-type :delete-value
                             :path '()
-                            :norm-path norm-path}))
+                            :norm-path '()}))
                #{}
                current-add-id-to-value-info)))
 
 (defn associative-get-delete-ops
-  [{:keys [crdt get-child-path-info get-child-schema norm-path path schema]
+  [{:keys [crdt get-child-path-info get-child-schema
+           norm-path path schema array?]
     :as arg}]
-  (let [get-child-ops (fn [{:keys [k sub-path]}]
-                             (-> (get-delete-ops
-                                  (assoc arg
-                                         :crdt (get-in crdt [:children k])
-                                         :path sub-path
-                                         :schema (get-child-schema k)))
-                                 ((fn [ops]
-                                    (xf-op-paths {:prefix k
-                                                  :ops ops})))))]
+  (log/info "assoc-del")
+  (let [get-child-ops (fn [{:keys [k i sub-path]}]
+                        (log/info "A" "i" i)
+                        (-> (get-delete-ops
+                             (assoc arg
+                                    :crdt (get-in crdt [:children k])
+                                    :path sub-path
+                                    :schema (get-child-schema k)))
+                            ((fn [ops]
+                               (log/info "xf-op-paths" 1 "i" i)
+                               (xf-op-paths
+                                (cond-> {:prefix k
+                                         :ops ops}
+                                  i (assoc :i i :array? true)))))))]
     (if (empty? path)
-      (reduce-kv (fn [acc k _]
-                   (let [ret (get-child-ops {:k k
-                                             :sub-path []})]
+      (do
+       (reduce-kv (fn [acc k _]
+                    (let [ret (get-child-ops (cond-> {:k k
+                                                      :sub-path []}
+                                               array? (assoc :i 0)))]
                      (set/union acc ret)))
                  #{}
-                 (:children crdt))
+                 (:children crdt)))
       (-> path
           (get-child-path-info)
           (get-child-ops)))))
 
 (defmethod get-delete-ops :map
   [{:keys [schema] :as arg}]
+  (log/info "del-map")
   (let [values-schema (l/schema-at-path schema ["x"])]
     (associative-get-delete-ops
      (assoc arg
@@ -95,6 +108,7 @@
 
 (defmethod get-delete-ops :record
   [{:keys [path schema] :as arg}]
+  (log/info "del-record")
   (associative-get-delete-ops
    (assoc arg
           :get-child-path-info (fn [[k & sub-path]]
@@ -143,10 +157,12 @@
 
 (defmethod get-delete-ops :array
   [{:keys [make-id cmd crdt path schema sys-time-ms] :as arg}]
+  (log/info "del-array")
   (let [items-schema (l/schema-at-path schema [0])
         ordered-node-ids (array/get-ordered-node-ids arg)
         node-ops (associative-get-delete-ops
                   (assoc arg
+                         :array? true
                          :get-child-path-info
                          (fn [[i & sub-path]]
                            (when-not (integer? i)
@@ -164,7 +180,9 @@
                                       ordered-node-ids "` is out of bounds.")
                                  (u/sym-map cmd path ordered-node-ids
                                             i sub-path))))
+                             (log/info "i" i)
                              {:k (nth ordered-node-ids ni)
+                              :i i
                               :sub-path sub-path}))
                          :get-child-schema (constantly items-schema)))
         {:keys [add-id-to-edge current-edge-add-ids]} crdt
@@ -198,6 +216,7 @@
 
 (defmethod get-delete-ops :union
   [{:keys [crdt norm-path path schema] :as arg}]
+  (log/info "del-union")
   (let [{:keys [union-branch]} crdt
         member-schema (when union-branch
                         (l/member-schema-at-branch schema union-branch))]
@@ -206,6 +225,7 @@
                                  :path path
                                  :schema member-schema))
           ((fn [ops]
+             (log/info "xf-op-paths" 2)
              (xf-op-paths {:prefix union-branch
                            :ops ops
                            :union? true}))))
@@ -231,6 +251,7 @@
                                 :path ks
                                 :schema values-schema))
             ((fn [ops]
+               (log/info "xf-op-paths" 3)
                (xf-op-paths {:prefix k
                              :ops ops})))))
       (let [edn-schema (l/edn schema)
@@ -248,6 +269,7 @@
                                            :crdt (get-in crdt [:children k])
                                            :path []
                                            :schema values-schema))]
+                       (log/info "xf-op-paths" 4)
                        (set/union acc
                                   (xf-op-paths {:prefix k
                                                 :ops add-ops}))))
@@ -264,6 +286,7 @@
                                    :path ks
                                    :schema (l/schema-at-path schema [k])))
           ((fn [ops]
+             (log/info "xf-op-paths" 5)
              (xf-op-paths {:prefix k
                            :ops ops})))))
     (do
@@ -283,6 +306,7 @@
                                   :norm-path (conj norm-path k)
                                   :path []
                                   :schema child-schema))]
+                  (log/info "xf-op-paths" 6)
                   (set/union acc
                              (xf-op-paths {:prefix k
                                            :ops add-ops}))))
@@ -303,6 +327,7 @@
                                  :path path
                                  :schema member-schema))
         ((fn [ops]
+           (log/info "xf-op-paths" 7)
            (xf-op-paths {:prefix union-branch
                          :ops ops
                          :union? true}))))))
@@ -329,6 +354,7 @@
                                         :crdt (get-in crdt [:children k])
                                         :path sub-path
                                         :schema items-schema))]
+        (log/info "xf-op-paths" 8)
         (xf-op-paths {:array? true
                       :prefix k
                       :i ni
@@ -352,6 +378,7 @@
                       (-> acc
                           (update :node-ops
                                   (fn [node-ops]
+                                    (log/info "xf-op-paths" 9)
                                     (set/union
                                      node-ops
                                      (xf-op-paths {:array? true
@@ -433,6 +460,7 @@
                          :i clamped-i
                          :new-node-id node-id
                          :ordered-node-ids ordered-node-ids))
+        _ (log/info "xf-op-paths" 10)
         ops (set/union edge-ops (xf-op-paths
                                  {:array? true
                                   :prefix node-id
@@ -474,6 +502,7 @@
                                       :schema items-schema))]
                   (-> acc
                       (update :node-ops (fn [node-ops]
+                                          (log/info "xf-op-paths" 11)
                                           (set/union
                                            node-ops
                                            (xf-op-paths
@@ -532,6 +561,7 @@
                               :path ks
                               :schema child-schema))
         new-crdt (assoc-in crdt [:children k] (:crdt ret))]
+    (log/info "xf-op-paths" 12)
     {:crdt new-crdt
      :ops (xf-op-paths {:prefix k
                         :ops (:ops ret)})
@@ -555,6 +585,7 @@
     (-> (assoc arg :schema member-schema)
         (do-insert)
         (update :ops (fn [ops]
+                       (log/info "xf-op-paths" 13)
                        (xf-op-paths {:prefix union-branch
                                      :ops ops
                                      :union? true}))))))
