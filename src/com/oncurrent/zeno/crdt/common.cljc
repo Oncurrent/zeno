@@ -10,6 +10,11 @@
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
+(defn chop-root [path]
+  (case (first path)
+    :zeno/crdt (recur (-> path rest))
+    path))
+
 (def container-types #{:array :map :record :union})
 
 (defn schema->dispatch-type [schema]
@@ -260,8 +265,7 @@
       (let [{:keys [norm-path value]} update-info
             value-schema (when-not (nil? value)
                            (l/schema-at-path crdt-schema
-                                             ;; Chop off the :zeno/crdt part
-                                             (rest norm-path)))
+                                             (chop-root norm-path)))
             range? (#{:zeno/insert-range-after
                       :zeno/insert-range-before} (:op update-info))
             range-schema (when range?
@@ -280,7 +284,7 @@
   (au/go
     (when update-info
       (let [{:keys [norm-path serialized-value]} update-info
-            value-schema (l/schema-at-path crdt-schema (rest norm-path))]
+            value-schema (l/schema-at-path crdt-schema (chop-root norm-path))]
         (-> update-info
             (dissoc :serialized-value)
             (assoc :value
@@ -289,9 +293,9 @@
                                   :reader-schema value-schema
                                   :serialized-value serialized-value)))))))))
 
-(defn <update-infos->serializable-update-infos [arg]
+(defn <update-infos->serializable-update-infos [{:keys [update-infos] :as arg}]
   (au/go
-    (let [infos (seq (:update-infos arg))
+    (let [infos (seq update-infos)
           last-i (count infos)]
       (if (zero? last-i)
         []
