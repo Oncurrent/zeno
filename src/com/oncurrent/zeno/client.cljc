@@ -14,18 +14,8 @@
   ([config]
    (impl/zeno-client config)))
 
-(defn admin-client
-  "Returns a Zeno admin client.
-   Required config keys:
-    - `:admin-password` - The admin password of the server
-    - `:get-server-url` - A fn that returns the server url as a string
-    "
-  [config]
-  (impl/zeno-client config))
-
 (defn stop!
   "Stop the client and its connection to the server.
-   Works with admin-clients as well as zeno-clients.
    Mostly useful in tests."
   [zc]
   (impl/stop! zc))
