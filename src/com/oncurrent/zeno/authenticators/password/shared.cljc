@@ -1,11 +1,11 @@
-(ns com.oncurrent.zeno.authenticators.identifier-secret.shared
+(ns com.oncurrent.zeno.authenticators.password.shared
   (:require
    [deercreeklabs.lancaster :as l]
    [com.oncurrent.zeno.schemas :as schemas]
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
-(def authenticator-name :com.oncurrent.zeno.authenticators/identifier-secret)
+(def authenticator-name :com.oncurrent.zeno.authenticators/password)
 (def identifier-schema l/string-schema)
 (def secret-schema l/string-schema)
 

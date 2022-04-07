@@ -8,7 +8,7 @@
    [com.oncurrent.zeno.authenticators.magic-token.shared :as shared]
    [com.oncurrent.zeno.common :as common]
    [com.oncurrent.zeno.schemas :as schemas]
-   [com.oncurrent.zeno.server.authentication :as za]
+   [com.oncurrent.zeno.server.authenticator-impl :as za]
    [com.oncurrent.zeno.server.utils :as su]
    [com.oncurrent.zeno.storage :as storage]
    [com.oncurrent.zeno.utils :as u]

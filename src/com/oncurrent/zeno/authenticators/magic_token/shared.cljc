@@ -38,5 +38,3 @@
 (l/def-record-schema create-actor-info-schema
   [:identifier identifier-schema]
   [:actor-id schemas/actor-id-schema])
-
-

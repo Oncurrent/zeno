@@ -2,14 +2,15 @@
   (:require
    [clojure.core.async :as ca]
    [clojure.string :as str]
-   [deercreeklabs.async-utils :as au]
-   [deercreeklabs.lancaster :as l]
-   [com.oncurrent.zeno.authenticators.identifier-secret.server :as is-auth]
    [com.oncurrent.zeno.authenticators.magic-token.server :as mt-auth]
+   [com.oncurrent.zeno.authenticators.password.server :as password]
    [com.oncurrent.zeno.authorizers.affirmative-authorizer.server :as authz]
    [com.oncurrent.zeno.server :as server]
    [com.oncurrent.zeno.storage :as storage]
    [com.oncurrent.zeno.utils :as u]
+   [deercreeklabs.async-utils :as au]
+   [deercreeklabs.lancaster :as l]
+   [integration.test-info :as ti]
    [integration.test-schemas :as test-schemas]
    [taoensso.timbre :as log]))
 
@@ -70,15 +71,12 @@
 
 (defn -main [port-str tls?-str]
   (let [tls? (#{"true" "1"} (str/lower-case tls?-str))
-        branch "integration-test"
-        identity-secret-auth (is-auth/make-authenticator)
+        password-auth (password/make-authenticator)
         magic-token-auth (mt-auth/make-authenticator {:mtas (make-mtas)})
-        authenticators [identity-secret-auth magic-token-auth]
+        authenticators [password-auth magic-token-auth]
         port (u/str->int port-str)
-        config #:zeno{:authenticators authenticators
-                      :crdt-authorizer (authz/make-affirmative-authorizer)
-                      :crdt-branch branch
-                      :crdt-schema test-schemas/crdt-schema
+        config #:zeno{:admin-password ti/admin-password
+                      :authenticators authenticators
                       :port port
                       :rpcs test-schemas/rpcs
                       :storage (storage/make-storage)}

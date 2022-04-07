@@ -1,4 +1,4 @@
-(ns com.oncurrent.zeno.client.authentication
+(ns com.oncurrent.zeno.client.authenticator-impl
   (:require
    [clojure.core.async :as ca]
    [com.deercreeklabs.talk2.client :as t2c]

@@ -6,7 +6,6 @@
    [deercreeklabs.baracus :as ba]
    [deercreeklabs.lancaster :as l]
    [com.oncurrent.zeno.authorizers.affirmative-authorizer.client :as aa]
-   [com.oncurrent.zeno.client.authorization :as client-authz]
    [com.oncurrent.zeno.client.state-subscriptions :as state-subscriptions]
    [com.oncurrent.zeno.client.client-commands :as client-commands]
    [com.oncurrent.zeno.client.storage :as client-storage]
@@ -26,33 +25,12 @@
    :zeno/crdt-branch "prod"
    :zeno/initial-client-state {}})
 
+;; TODO: Revise these
 (def client-config-rules
-  #:zeno{:crdt-authorizer
-         {:required? false
-          :checks [{:pred #(satisfies?
-                            client-authz/IClientAuthorizer %)
-                    :msg (str "must satisfy the IClientAuthorizer "
-                              "protocol")}]}
-
-         :crdt-branch
-         {:required? false
-          :checks [{:pred string?
-                    :msg "must be a string"}]}
-
-         :crdt-schema
-         {:required? false
-          :checks [{:pred l/schema?
-                    :msg "must be a valid Lancaster schema"}]}
-
-         :get-server-url
+  #:zeno{:get-server-url
          {:required? false
           :checks [{:pred ifn?
                     :msg "must be a function"}]}
-
-         :initial-client-state
-         {:required? false
-          :checks [{:pred associative?
-                    :msg "must be associative"}]}
 
          :storage
          {:required? false
@@ -193,106 +171,6 @@
         (when-not @*stop?
           (recur))))))
 
-(defn <sync-consumer-log! [{:keys [talk2-client] :as arg}]
-  (au/go
-    (let [server-ret (au/<? (t2c/<send-msg! talk2-client
-                                            :get-log-status
-                                            :consumer))
-          server-consumer-tx-i (:last-tx-i server-ret)
-          arg* (-> arg
-                   (assoc :segment-position :tail)
-                   (assoc :log-type :consumer))
-          segment-id-k (client-storage/get-log-segment-id-k arg*)
-          arg** (assoc arg*
-                       :get-log-segment-k client-storage/get-log-segment-k
-                       :segment-id-k segment-id-k)
-          consumer-tx-i (au/<? (log-storage/<get-last-log-tx-i arg**))]
-      (when (> server-consumer-tx-i consumer-tx-i)
-        (let [range-info {:start-tx-i consumer-tx-i
-                          :end-tx-i server-consumer-tx-i
-                          :log-type :consumer}
-              tx-ids (au/<? (t2c/<send-msg! talk2-client
-                                            :get-log-range
-                                            range-info))]
-          (doseq [tx-id tx-ids]
-            (when-not (au/<? (log-storage/<get-tx-info
-                              (assoc arg :tx-id tx-id)))
-              (let [tx-info (au/<? (t2c/<send-msg!
-                                    talk2-client :get-tx-info tx-id))]
-                (au/<? (log-storage/<write-tx-info!
-                        (assoc arg :tx-id tx-id :tx-info tx-info)))
-                (au/<? (log-storage/<write-tx-id-to-log!
-                        (assoc arg** :tx-id tx-id)))
-                (au/<? (<apply-tx! (assoc arg :tx-info tx-info)))))))))))
-
-(defn <set-sync-session-info
-  [{:keys [*client-id crdt-branch talk2-client] :as arg}]
-  (au/go
-    (loop []
-      (if-let [client-id @*client-id]
-        (au/<? (t2c/<send-msg! talk2-client :set-sync-session-info
-                               {:branch crdt-branch
-                                :client-id client-id}))
-        (do
-          (ca/<! (ca/timeout 50))
-          (recur))))))
-
-(defn start-sync-session-loop
-  [{:keys [*actor-id *stop? end-sync-session-ch talk2-client] :as arg}]
-  (ca/go
-    (try
-      (au/<? (<set-sync-session-info arg))
-      (catch #?(:clj Exception :cljs js/Error) e
-        (log/error "Error in setting sync session info"
-                   (u/ex-msg-and-stacktrace e))
-        (ca/<! (ca/timeout 1000))))
-    (loop []
-      (try
-        (let [p-tx-i (au/<? (<get-last-producer-log-tx-i arg))]
-          (au/<? (t2c/<send-msg! talk2-client
-                                 :publish-log-status
-                                 {:last-tx-i p-tx-i
-                                  :log-type :producer}))
-          (au/<? (<sync-consumer-log! arg)))
-        (catch #?(:clj Exception :cljs js/Error) e
-          (log/error "Error in sync-session-loop"
-                     (u/ex-msg-and-stacktrace e))
-          (ca/<! (ca/timeout 1000))))
-      (let [[v ch] (ca/alts! [end-sync-session-ch (ca/timeout 23000)])]
-        (when (and (not= end-sync-session-ch ch)
-                   (not @*stop?))
-          (recur))))))
-
-(defn make-on-connect
-  [{:keys [*talk2-client start-sync-session storage update-state-ch] :as arg}]
-  (fn [{:keys [protocol url]}]
-    (ca/go
-      (try
-        (let [login-session-token (au/<? (storage/<get
-                                          storage
-                                          client-storage/login-session-token-key
-                                          schemas/login-session-token-schema))]
-          (if-not login-session-token
-            (start-sync-session)
-            (if (au/<? (t2c/<send-msg! @*talk2-client
-                                       :resume-login-session
-                                       login-session-token))
-              (start-sync-session)
-              (ca/put! update-state-ch
-                       {:cb (fn [ret]
-                              (start-sync-session))
-                        :cmds [{:zeno/arg nil
-                                :zeno/op :zeno/set
-                                :zeno/path [:zeno/crdt]}]}))))
-        (catch #?(:clj Exception :cljs js/Error) e
-          (log/error "Error in on-connect:\n"
-                     (u/ex-msg-and-stacktrace e)))))))
-
-(defn make-on-disconnect
-  [{:keys [end-sync-session] :as arg}]
-  (fn [{:keys [protocol url]}]
-    (end-sync-session)))
-
 (defn make-talk2-client [{:keys [*talk2-client get-server-url storage] :as arg}]
   (let [handlers {:get-log-range
                   (fn [{fn-arg :arg}]
@@ -325,8 +203,8 @@
                     )}]
     (t2c/client {:get-url get-server-url
                  :handlers handlers
-                 :on-connect (make-on-connect arg)
-                 :on-disconnect (make-on-disconnect arg)
+                 :on-connect (constantly nil)
+                 :on-disconnect (constantly nil)
                  :protocol schemas/client-server-protocol})))
 
 (defn <get-client-id [storage]
@@ -350,12 +228,9 @@
         _ (u/check-config {:config config*
                            :config-type :client
                            :config-rules client-config-rules})
-        {:zeno/keys [client-name
-                     crdt-authorizer
-                     crdt-branch
-                     crdt-schema
+        {:zeno/keys [admin-password
+                     client-name
                      get-server-url
-                     initial-client-state
                      rpcs
                      storage]
          :or {storage (storage/make-storage
@@ -364,57 +239,33 @@
         *next-topic-sub-id (atom 0)
         *topic-name->sub-id->cb (atom {})
         *stop? (atom false)
-        *client-state (atom initial-client-state)
         ;; TODO: Load crdt-state from logs in IDB
         *crdt-state (atom nil)
         *state-sub-name->info (atom {})
         *actor-id (atom nil)
         *talk2-client (atom nil)
-        *end-sync-session-ch (atom nil)
-        end-sync-session #(when-let [ch @*end-sync-session-ch]
-                            (ca/put! ch true))
         *client-id (atom nil)
         _ (ca/take! (<get-client-id storage) #(reset! *client-id %))
         update-state-ch (ca/chan (ca/sliding-buffer 1000))
         arg (u/sym-map *actor-id
                        *client-id
                        *stop?
+                       admin-password
                        client-name
-                       crdt-authorizer
-                       crdt-branch
-                       crdt-schema
-                       end-sync-session
                        get-server-url
                        rpcs
                        storage
                        update-state-ch)
-        start-sync-session #(when (and crdt-branch crdt-schema)
-                              (let [end-sync-session-ch (ca/promise-chan)
-                                    talk2-client @*talk2-client]
-                                (reset! *end-sync-session-ch
-                                        end-sync-session-ch)
-                                (start-sync-session-loop
-                                 (assoc arg
-                                        :end-sync-session-ch end-sync-session-ch
-                                        :talk2-client talk2-client))))
-
         talk2-client (when (:zeno/get-server-url config*)
-                       (let [arg* (assoc arg
-                                         :*talk2-client *talk2-client
-                                         :start-sync-session start-sync-session)]
+                       (let [arg* (assoc arg :*talk2-client *talk2-client)]
                          (make-talk2-client arg*)))
         _ (reset! *talk2-client talk2-client)
         on-actor-id-change (fn [actor-id]
                              (ca/put! update-state-ch
-                                      {:cb (fn [ret]
-                                             (end-sync-session)
-                                             (start-sync-session))
-                                       :cmds [{:zeno/arg nil
+                                      {:cmds [{:zeno/arg nil
                                                :zeno/op :zeno/set
                                                :zeno/path [:zeno/crdt]}]}))
-        zc (merge arg (u/sym-map *client-state
-                                 *crdt-state
-                                 *next-instance-num
+        zc (merge arg (u/sym-map *next-instance-num
                                  *next-topic-sub-id
                                  *state-sub-name->info
                                  *topic-name->sub-id->cb

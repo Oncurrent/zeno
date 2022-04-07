@@ -1,10 +1,10 @@
-(ns com.oncurrent.zeno.authenticators.identifier-secret.client
+(ns com.oncurrent.zeno.authenticators.password.client
   (:require
    [clojure.core.async :as ca]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
-   [com.oncurrent.zeno.client.authentication :as za]
-   [com.oncurrent.zeno.authenticators.identifier-secret.shared :as shared]
+   [com.oncurrent.zeno.client.authenticator-impl :as za]
+   [com.oncurrent.zeno.authenticators.password.shared :as shared]
    [com.oncurrent.zeno.client :as zc]
    [com.oncurrent.zeno.schemas :as schemas]
    [com.oncurrent.zeno.utils :as u]

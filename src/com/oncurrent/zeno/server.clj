@@ -11,7 +11,7 @@
    [com.oncurrent.zeno.crdt :as crdt]
    [com.oncurrent.zeno.distributed-mutex :as dm]
    [com.oncurrent.zeno.schemas :as schemas]
-   [com.oncurrent.zeno.server.authentication :as authentication]
+   [com.oncurrent.zeno.server.authenticator-impl :as auth-impl]
    [com.oncurrent.zeno.server.log-sync :as log-sync]
    [com.oncurrent.zeno.server.utils :as su]
    [com.oncurrent.zeno.storage :as storage]
@@ -324,7 +324,7 @@
     :as arg}]
   (let [state-fns (make-state-fns arg)]
     {:handlers {:get-authenticator-state
-                #(authentication/<handle-get-authenticator-state
+                #(auth-impl/<handle-get-authenticator-state
                   (merge % arg state-fns))
 
                 :get-log-range
@@ -344,16 +344,16 @@
                 #(log-sync/<handle-get-tx-info (merge % arg))
 
                 :log-in
-                #(authentication/<handle-log-in (merge % arg state-fns))
+                #(auth-impl/<handle-log-in (merge % arg state-fns))
 
                 :log-out
-                #(authentication/<handle-log-out (merge % arg state-fns))
+                #(auth-impl/<handle-log-out (merge % arg state-fns))
 
                 :publish-log-status
                 #(log-sync/<handle-publish-log-status (merge % arg))
 
                 :resume-login-session
-                #(authentication/<handle-resume-login-session
+                #(auth-impl/<handle-resume-login-session
                   (merge % arg state-fns))
 
                 :rpc
@@ -364,7 +364,7 @@
                 #(log-sync/handle-set-sync-session-info (merge % arg))
 
                 :update-authenticator-state
-                #(authentication/<handle-update-authenticator-state
+                #(auth-impl/<handle-update-authenticator-state
                   (merge % arg state-fns))}
      :on-connect (fn [{:keys [conn-id] :as conn}]
                    (swap! *conn-id->auth-info assoc conn-id {})
@@ -403,7 +403,7 @@
 
 (defn xf-authenticator-info [{:keys [authenticators storage]}]
   (reduce (fn [acc* authenticator]
-            (let [authenticator-name (authentication/get-name
+            (let [authenticator-name (auth-impl/get-name
                                       authenticator)
                   storage-name (:storage-name authenticator)
                   authenticator-storage (make-authenticator-storage
