@@ -4,7 +4,7 @@
    [clojure.test :refer [deftest is]]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
-   [com.oncurrent.zeno.authenticators.identifier-secret.client :as isa]
+   [com.oncurrent.zeno.authenticators.password.client :as password-client]
    [com.oncurrent.zeno.authorizers.affirmative-authorizer.client :as authz]
    [com.oncurrent.zeno.client :as zc]
    [com.oncurrent.zeno.utils :as u]

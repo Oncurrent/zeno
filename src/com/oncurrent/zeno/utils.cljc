@@ -351,6 +351,9 @@
                  "map is invalid. It " msg ". Got `" (or v "nil") "`.")
             (sym-map k v config))))))))
 
+(defn env-name->client-path-name [env-name]
+  (str "/client/" env-name))
+
 ;;;;;;;;;;;;;;;;;;;; Platform detection ;;;;;;;;;;;;;;;;;;;;
 
 (defn jvm? []

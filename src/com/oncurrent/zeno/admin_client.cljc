@@ -8,6 +8,8 @@
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
+(def default-max-login-wait-ms 20000)
+
 (defn check-authenticator-infos [authenticator-infos]
   (doseq [{:zeno/keys [authenticator-name
                        authenticator-branch]
@@ -36,7 +38,9 @@
   (when-not (string? env-name)
     (throw (ex-info (str "`:zeno/env-name` must be a string. "
                          "Got `" (or env-name "nil") "`.")
-                    (u/sym-map env-name)))))
+                    (u/sym-map env-name))))
+  ;; TODO: Check that env-name is URL safe
+  )
 
 (defn check-state-provider-infos [state-provider-infos]
   (doseq [{:zeno/keys [path-root
@@ -74,9 +78,10 @@
                          "Got `" (or admin-client "nil") "`.")
                     (u/sym-map admin-client talk2-client)))))
 
-(defn <check-login [{:keys [*login-status max-wait-ms]}]
+(defn <check-login [{:keys [*login-status max-login-wait-ms]}]
   (au/go
-    (let [expiry-ms (+ max-wait-ms (u/current-time-ms))]
+    (let [expiry-ms (+ (or max-login-wait-ms default-max-login-wait-ms)
+                       (u/current-time-ms))]
       (loop []
         (case @*login-status
           :logged-in
@@ -105,11 +110,16 @@
           (log/error "Error in on-connect:\n"
                      (u/ex-msg-and-stacktrace e)))))))
 
-(defn make-admin-client [{:zeno/keys [admin-password get-server-url]}]
+(defn make-admin-client
+  [{:zeno/keys [admin-password get-server-base-url max-login-wait-ms]}]
   (when-not (string? admin-password)
     (throw (ex-info (str "`:zeno/admin-password` must be a string. Got `"
                          (or admin-password "nil") "`.")
                     (u/sym-map admin-password))))
+  (when-not (ifn? get-server-base-url)
+    (throw (ex-info (str "`:zeno/get-server-base-url` must be a function. Got `"
+                         (or get-server-base-url "nil") "`.")
+                    (u/sym-map get-server-base-url))))
   (let [*talk2-client (atom nil)
         *login-status (atom :waiting)
         on-connect (make-on-connect
@@ -118,12 +128,12 @@
                         (when (= :logged-in @*login-status)
                           (reset! *login-status :waiting)))
         talk2-client (t2c/client
-                      {:get-url get-server-url
+                      {:get-url get-server-base-url
                        :on-connect on-connect
                        :on-disconnect on-disconnect
                        :protocol schemas/admin-client-server-protocol})]
     (reset! *talk2-client talk2-client)
-    (u/sym-map talk2-client)))
+    (u/sym-map *login-status max-login-wait-ms talk2-client)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;; Public API ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -131,7 +141,7 @@
   "Returns a Zeno admin client.
    Required config keys:
     - `:zeno/admin-password` - The admin password of the server
-    - `:zeno/get-server-url` - A fn that returns the server url as a string
+    - `:zeno/get-server-base-url` - A fn that returns the server base url
     "
   [config]
   (make-admin-client config))
@@ -152,7 +162,7 @@
     (check-env-name env-name)
     (check-state-provider-infos state-provider-infos)
     (check-admin-client admin-client)
-    (au/<? (<check-login))
+    (au/<? (<check-login admin-client))
     (au/<? (t2c/<send-msg! (:talk2-client admin-client)
                            :create-env
                            (u/sym-map authenticator-infos
@@ -176,21 +186,16 @@
       (throw (ex-info (str "`:zeno/source-env-name` must be a string. "
                            "Got `" source-env-name "`.")
                       (u/sym-map arg source-env-name))))
-    (au/<? (<check-login))
-    (au/<? (t2c/<send-msg! admin-client
+    (au/<? (<check-login admin-client))
+    (au/<? (t2c/<send-msg! (:talk2-client admin-client)
                            :create-env
                            (u/sym-map env-name
                                       lifetime-mins
                                       source-env-name)))))
 
-(defn <delete-env! [{:keys [admin-client
-                            env-name]}]
+(defn <delete-env! [{:zeno/keys [admin-client
+                                 env-name]}]
   (au/go
     (check-env-name env-name)
-    (au/<? (<check-login))
-    (au/<? (t2c/<send-msg! admin-client :delete-env env-name))))
-
-(defn <get-env-names [{:keys [admin-client]}]
-  (au/go
-    (au/<? (<check-login))
-    (au/<? (t2c/<send-msg! admin-client :get-env-names nil))))
+    (au/<? (<check-login admin-client))
+    (au/<? (t2c/<send-msg! (:talk2-client admin-client) :delete-env env-name))))

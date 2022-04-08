@@ -28,6 +28,7 @@
 ;;;;;;;;;;;;; Storage Keys & Prefixes ;;;;;;;;;;;;;;;;;;;
 
 (def cluster-membership-list-reference-key "_CLUSTER-MEMBERSHIP-LIST")
+(def env-info-key-prefix "ENV-INFO-")
 (def member-info-key-prefix "MEMBER-INFO-")
 (def mutex-reference-key-prefix "_MUTEX-")
 (def login-session-token-to-token-info-key-prefix

@@ -61,7 +61,7 @@
   l/long-schema)
 
 (l/def-array-schema path-schema
-  path-item-schema)
+  path-item-schema)3
 
 ;;;;;;;;;;;;;;;;; CRDT Schemas ;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -163,12 +163,9 @@
 (l/def-record-schema env-info-schema
   [:authenticator-infos (l/array-schema authenticator-info-schema)]
   [:env-name env-name-schema]
-  [:state-provider-infos (l/array-schema state-provider-info-schema)])
-
-(l/def-record-schema temp-env-info-schema
-  [:env-name env-name-schema]
   [:lifetime-mins l/int-schema]
-  [:source-env-name env-name-schema])
+  [:source-env-name env-name-schema]
+  [:state-provider-infos (l/array-schema state-provider-info-schema)])
 
 ;;;;;;;;;;;;;;; RPCs ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -188,8 +185,6 @@
 (def admin-client-server-protocol
   {:create-env {:arg-schema env-info-schema
                 :ret-schema l/boolean-schema}
-   :create-temporary-env {:arg-schema temp-env-info-schema
-                          :ret-schema l/boolean-schema}
    :delete-env {:arg-schema env-name-schema
                 :ret-schema l/boolean-schema}
    :get-env-names {:arg-schema l/null-schema

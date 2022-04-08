@@ -6,7 +6,6 @@
    [taoensso.timbre :as log]))
 
 (def authenticator-name :com.oncurrent.zeno.authenticators/password)
-(def identifier-schema l/string-schema)
 (def password-schema l/string-schema)
 
 (l/def-record-schema add-actor-and-password-info-schema

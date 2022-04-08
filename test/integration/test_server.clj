@@ -2,7 +2,6 @@
   (:require
    [clojure.core.async :as ca]
    [clojure.string :as str]
-   [com.oncurrent.zeno.authenticators.magic-token.server :as mt-auth]
    [com.oncurrent.zeno.authenticators.password.server :as password]
    [com.oncurrent.zeno.authorizers.affirmative-authorizer.server :as authz]
    [com.oncurrent.zeno.server :as server]
@@ -25,27 +24,6 @@
       (throw (ex-info "Failed to load private key file" {})))
     #:zeno{:certificate-str certificate-str
            :private-key-str private-key-str}))
-
-(defrecord MagicTokenApplicationServer
-  [mins-valid number-of-uses]
-  mt-auth/IMagicTokenApplicationServer
-  (get-extra-info-schema [this] l/string-schema)
-  (get-params-schema [this] l/string-schema)
-  (<handle-request-magic-token! [this arg]
-    (au/go
-     (spit (-> arg :token-info :extra-info)
-           (prn-str (select-keys arg [:actor-id :token :token-info :params]))
-           :append true)))
-  (<handle-redeem-magic-token! [this arg]
-    (au/go
-     (spit (-> arg :token-info :extra-info)
-           (prn-str (select-keys arg [:token :token-info]))
-           :append true))))
-
-(defn make-mtas
-  ([] (make-mtas {}))
-  ([{:keys [mins-valid number-of-uses]}]
-   (->MagicTokenApplicationServer mins-valid number-of-uses)))
 
 (defn add-nums
   [{:zeno/keys [arg]}]
@@ -72,8 +50,7 @@
 (defn -main [port-str tls?-str]
   (let [tls? (#{"true" "1"} (str/lower-case tls?-str))
         password-auth (password/make-authenticator)
-        magic-token-auth (mt-auth/make-authenticator {:mtas (make-mtas)})
-        authenticators [password-auth magic-token-auth]
+        authenticators [password-auth]
         port (u/str->int port-str)
         config #:zeno{:admin-password ti/admin-password
                       :authenticators authenticators

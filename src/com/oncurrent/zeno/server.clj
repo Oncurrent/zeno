@@ -21,7 +21,12 @@
 (def server-config-rules
   ;; TODO: Check that authenticators satisfy protocol
   ;; TODO: Check rpcs
-  #:zeno{:authenticators
+  #:zeno{:admin-password
+         {:required? true
+          :checks [{:pred string?
+                    :msg "must be a string"}]}
+
+         :authenticators
          {:required? true
           :checks [{:pred sequential?
                     :msg "must be a sequence of authenticators"}]}
@@ -71,6 +76,9 @@
 
 (defn member-id->member-info-key [member-id]
   (str storage/member-info-key-prefix member-id))
+
+(defn env-name->env-info-key [env-name]
+  (str storage/env-info-key-prefix env-name))
 
 (defn <store-member-info [storage member-id ws-url]
   (let [info (u/sym-map ws-url)
@@ -320,8 +328,11 @@
   [{:keys [*conn-id->auth-info
            *conn-id->sync-session-info
            *connected-actor-id->conn-ids
+           env-name
            storage]
     :as arg}]
+  (when-not env-name
+    (throw (ex-info "`:env-name` is nil" {})))
   (let [state-fns (make-state-fns arg)]
     {:handlers {:get-authenticator-state
                 #(auth-impl/<handle-get-authenticator-state
@@ -334,11 +345,10 @@
                 #(log-sync/<handle-get-log-status (merge % arg))
 
                 :get-schema-pcf-for-fingerprint
-                (fn [{:keys [arg]}]
-                  (au/go
-                    (-> (storage/<fp->schema storage arg)
-                        (au/<?)
-                        (l/json))))
+                #(au/go
+                   (-> (storage/<fp->schema storage (:arg %))
+                       (au/<?)
+                       (l/json)))
 
                 :get-tx-info
                 #(log-sync/<handle-get-tx-info (merge % arg))
@@ -366,13 +376,13 @@
                 :update-authenticator-state
                 #(auth-impl/<handle-update-authenticator-state
                   (merge % arg state-fns))}
-     :on-connect (fn [{:keys [conn-id] :as conn}]
+     :on-connect (fn [{:keys [conn-id remote-address] :as conn}]
                    (swap! *conn-id->auth-info assoc conn-id {})
                    (swap! *conn-id->sync-session-info assoc conn-id {})
                    (log/info
                     (str "Client connection opened:\n"
                          (u/pprint-str
-                          (select-keys conn [:conn-id :remote-address])))))
+                          (u/sym-map conn-id env-name remote-address)))))
      :on-disconnect (fn [{:keys [conn-id]}]
                       (when-let [actor-id (some-> @*conn-id->auth-info
                                                   (get conn-id)
@@ -383,15 +393,68 @@
                       (swap! *conn-id->sync-session-info dissoc conn-id)
                       (log/info
                        (str "Client connection closed:\n"
-                            (u/pprint-str (u/sym-map conn-id)))))
+                            (u/pprint-str (u/sym-map conn-id env-name)))))
+     :path (u/env-name->client-path-name env-name)
      :protocol schemas/client-server-protocol}))
 
+(defn <handle-create-env [{:keys [server storage] :as arg}]
+  (au/go
+    (let [{:keys [env-name]} (:arg arg)
+          ep-info (make-client-ep-info (assoc arg :env-name env-name))
+          k (env-name->env-info-key env-name)]
+      (au/<? (storage/<add! storage k schemas/env-info-schema (:arg arg)))
+      ;; TODO: Figure out how this works in a multi-server setup
+      (t2s/add-endpoint! (assoc ep-info :server server))
+      true)))
+
+(defn <handle-delete-env [{:keys [conn-id server storage] :as arg}]
+  (au/go
+    (let [env-name (:arg arg)
+          k (env-name->env-info-key env-name)
+          path (u/env-name->client-path-name env-name)]
+      (au/<? (storage/<delete! storage k))
+      ;; TODO: Figure out how this works in a multi-server setup
+      (t2s/remove-endpoint! (u/sym-map path server))
+      true)))
+
+(defn handle-admin-log-in
+  [{:keys [*logged-in-admin-conn-ids admin-password arg conn-id]}]
+  (if-not (= admin-password arg)
+    false
+    (do
+      (swap! *logged-in-admin-conn-ids conj conn-id)
+      true)))
+
+(defn make-admin-client-ep-info [{:keys [*logged-in-admin-conn-ids] :as arg}]
+  (let [make-handler (fn [f]
+                       #(let [{:keys [conn-id]} %]
+                          (if (@*logged-in-admin-conn-ids conn-id)
+                            (f (merge % arg))
+                            (throw (ex-info (str "Connection `" conn-id "` is "
+                                                 "not logged in")
+                                            %)))))]
+    {:handlers {:create-env (make-handler <handle-create-env)
+                :delete-env (make-handler <handle-delete-env)
+                :log-in #(handle-admin-log-in (merge % arg))}
+     :on-connect (fn [{:keys [conn-id] :as conn}]
+                   (log/info
+                    (str "Admin client connection opened:\n"
+                         (u/pprint-str
+                          (select-keys conn [:conn-id :remote-address])))))
+     :on-disconnect (fn [{:keys [conn-id]}]
+                      (swap! *logged-in-admin-conn-ids disj conn-id)
+                      (log/info
+                       (str "Admin client connection closed:\n"
+                            (u/pprint-str (u/sym-map conn-id)))))
+     :path "/admin"
+     :protocol schemas/admin-client-server-protocol}))
+
 (defn make-talk2-server [{:keys [port] :as arg}]
-  (let [client-ep-info (make-client-ep-info arg)
-        config (merge arg
-                      {:path->endpoint-info {"/client" client-ep-info}
-                       :port port})]
-    (t2s/server config)))
+  (let [server (t2s/server (assoc arg :port port))
+        admin-client-ep-info (make-admin-client-ep-info
+                              (assoc arg :server server))]
+    (t2s/add-endpoint! (assoc admin-client-ep-info :server server))
+    server))
 
 (defn make-authenticator-storage [authenticator-name storage]
   (let [str-ns (namespace authenticator-name)
@@ -423,6 +486,7 @@
                    :config-rules server-config-rules})
   (let [{:zeno/keys [<get-published-member-urls
                      <publish-member-urls
+                     admin-password
                      authenticators
                      crdt-authorizer
                      certificate-str
@@ -438,6 +502,7 @@
         *connected-actor-id->conn-ids (atom {})
         *consumer-actor-id->last-branch-log-tx-i (atom {})
         *rpc-name-kw->handler (atom {})
+        *logged-in-admin-conn-ids (atom #{})
         authenticator-name->info (xf-authenticator-info
                                   (u/sym-map authenticators storage))
         arg (u/sym-map *branch->crdt-store
@@ -445,7 +510,9 @@
                        *conn-id->sync-session-info
                        *connected-actor-id->conn-ids
                        *consumer-actor-id->last-branch-log-tx-i
+                       *logged-in-admin-conn-ids
                        *rpc-name-kw->handler
+                       admin-password
                        authenticator-name->info
                        crdt-authorizer
                        crdt-schema

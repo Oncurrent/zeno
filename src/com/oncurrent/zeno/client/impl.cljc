@@ -7,9 +7,7 @@
    [deercreeklabs.lancaster :as l]
    [com.oncurrent.zeno.authorizers.affirmative-authorizer.client :as aa]
    [com.oncurrent.zeno.client.state-subscriptions :as state-subscriptions]
-   [com.oncurrent.zeno.client.client-commands :as client-commands]
    [com.oncurrent.zeno.client.storage :as client-storage]
-   [com.oncurrent.zeno.crdt :as crdt]
    [com.oncurrent.zeno.crdt.apply-ops-impl :as apply-ops]
    [com.oncurrent.zeno.crdt.commands :as crdt-commands]
    [com.oncurrent.zeno.crdt.common :as crdt-common]
@@ -20,17 +18,26 @@
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
+;; TODO: Fill this in
 (def default-config
-  {:zeno/crdt-authorizer (aa/make-affirmative-authorizer)
-   :zeno/crdt-branch "prod"
-   :zeno/initial-client-state {}})
+  {})
 
 ;; TODO: Revise these
 (def client-config-rules
-  #:zeno{:get-server-url
+  #:zeno{:get-server-base-url
          {:required? false
           :checks [{:pred ifn?
                     :msg "must be a function"}]}
+
+         :env-name
+         {:required? false
+          :checks [{:pred string?
+                    :msg "must be a string"}]}
+
+         :root->state-provider
+         {:required? false
+          :checks [{:pred associative?
+                    :msg "must be a associative"}]}
 
          :storage
          {:required? false
@@ -84,23 +91,23 @@
 (defn <apply-tx! [{:keys [*crdt-state crdt-schema tx-info talk2-client]
                    :as arg}]
   (au/go
-    (let [<request-schema (make-schema-requester talk2-client)
-          ops (au/<? (crdt-common/<serializable-crdt-ops->crdt-ops
-                      (assoc arg
-                             :<request-schema <request-schema
-                             :ops (:crdt-ops tx-info))))
-          update-infos (au/<?
-                        (crdt-common/<serializable-update-infos->update-infos
-                         (assoc arg
-                                :<request-schema <request-schema
-                                :update-infos (:update-infos tx-info))))]
-      (swap! *crdt-state (fn [old-crdt]
-                           (apply-ops/apply-ops
-                            (assoc arg
-                                   :crdt old-crdt
-                                   :schema crdt-schema
-                                   :ops ops))))
-      (state-subscriptions/do-subscription-updates! arg update-infos))))
+    #_(let [<request-schema (make-schema-requester talk2-client)
+            ops (au/<? (crdt-common/<serializable-crdt-ops->crdt-ops
+                        (assoc arg
+                               :<request-schema <request-schema
+                               :ops (:crdt-ops tx-info))))
+            update-infos (au/<?
+                          (crdt-common/<serializable-update-infos->update-infos
+                           (assoc arg
+                                  :<request-schema <request-schema
+                                  :update-infos (:update-infos tx-info))))]
+        (swap! *crdt-state (fn [old-crdt]
+                             (apply-ops/apply-ops
+                              (assoc arg
+                                     :crdt old-crdt
+                                     :schema crdt-schema
+                                     :ops ops))))
+        (state-subscriptions/do-subscription-updates! arg update-infos))))
 
 (defn <get-last-producer-log-tx-i [arg]
   (let [arg* (-> arg
@@ -112,6 +119,33 @@
             :get-log-segment-k client-storage/get-log-segment-k
             :segment-id-k segment-id-k))))
 
+(defn <do-state-updates!*
+  [{:keys [root->state-provider root->cmds]}]
+  (au/go
+    (let [roots (keys root->cmds)
+          last-i (dec (count roots))]
+      (if (empty? roots)
+        []
+        (loop [i 0
+               out []]
+          (let [root (nth roots i)
+                state-provider (root->state-provider root)
+                _ (when-not state-provider
+                    (throw
+                     (ex-info (str "No state provider found "
+                                   "for root `" (or root "nil")
+                                   "`.")
+                              {:root root
+                               :known-roots (keys root->state-provider)})))
+                {:keys [<update-state!]} state-provider
+                cmds (root->cmds root)
+                update-infos (au/<? (<update-state! {:zeno/cmds cmds}))
+                new-out (concat out update-infos)]
+            (if (= last-i i)
+              new-out
+              (recur (inc i)
+                     new-out))))))))
+
 (defn <do-update-state! [zc cmds]
   ;; This is called serially from the update-state loop.
   ;; We can rely on there being no concurrent updates.
@@ -119,35 +153,10 @@
   ;; all commit or none commit. A transaction may include  many kinds of
   ;; updates.
   (au/go
-    (let [{:keys [crdt-schema talk2-client *client-state *crdt-state]} zc
-          root->cmds (split-cmds cmds)
-          ;; When we support :zeno/online, do those cmds first and fail the txn
-          ;; if the online cmds fail.
-          crdt-ret (crdt-commands/process-cmds {:cmds (:zeno/crdt root->cmds)
-                                                :crdt @*crdt-state
-                                                :crdt-schema crdt-schema})
-          ;; TODO: Log the crdt update infos and ops
-          cur-client-state @*client-state
-          client-ret (client-commands/eval-cmds cur-client-state
-                                                (:zeno/client root->cmds)
-                                                :zeno/client)
-          update-infos (concat (:update-infos crdt-ret)
-                               (:update-infos client-ret))]
-      ;; We can use reset! here because we know this is called seriallly
-      ;; with no concurrent updates.
-      (reset! *client-state (:state client-ret))
-      (reset! *crdt-state (:crdt crdt-ret))
-      (when crdt-schema
-        (au/<? (<log-tx! {:ops (:ops crdt-ret)
-                          :update-infos (:update-infos crdt-ret)
-                          :zc zc})))
+    (let [{:keys [talk2-client]} zc
+          update-infos (au/<? (<do-state-updates!*
+                               (assoc zc :root->cmds (split-cmds cmds))))]
       (state-subscriptions/do-subscription-updates! zc update-infos)
-      (when (and crdt-schema talk2-client)
-        (let [p-tx-i (au/<? (<get-last-producer-log-tx-i zc))]
-          (au/<? (t2c/<send-msg! talk2-client
-                                 :publish-log-status
-                                 {:last-tx-i p-tx-i
-                                  :log-type :producer}))))
       true)))
 
 (defn <set-sync-session-info
@@ -186,28 +195,28 @@
 (defn start-sync-session-loop
   [{:keys [*actor-id *stop? end-sync-session-ch talk2-client] :as arg}]
   (ca/go
-    (try
-      (au/<? (<set-sync-session-info arg))
-      (catch #?(:clj Exception :cljs js/Error) e
-        (log/error "Error in setting sync session info"
-                   (u/ex-msg-and-stacktrace e))
-        (ca/<! (ca/timeout 1000))))
-    (loop []
-      (try
-        (let [p-tx-i (au/<? (<get-last-producer-log-tx-i arg))]
-          (au/<? (t2c/<send-msg! talk2-client
-                                 :publish-log-status
-                                 {:last-tx-i p-tx-i
-                                  :log-type :producer}))
-          #_(au/<? (<sync-consumer-log! arg)))
+    #_(try
+        (au/<? (<set-sync-session-info arg))
         (catch #?(:clj Exception :cljs js/Error) e
-          (log/error "Error in sync-session-loop"
+          (log/error "Error in setting sync session info"
                      (u/ex-msg-and-stacktrace e))
           (ca/<! (ca/timeout 1000))))
-      (let [[v ch] (ca/alts! [end-sync-session-ch (ca/timeout 23000)])]
-        (when (and (not= end-sync-session-ch ch)
-                   (not @*stop?))
-          (recur))))))
+    #_(loop []
+        (try
+          (let [p-tx-i (au/<? (<get-last-producer-log-tx-i arg))]
+            (au/<? (t2c/<send-msg! talk2-client
+                                   :publish-log-status
+                                   {:last-tx-i p-tx-i
+                                    :log-type :producer}))
+            #_(au/<? (<sync-consumer-log! arg)))
+          (catch #?(:clj Exception :cljs js/Error) e
+            (log/error "Error in sync-session-loop"
+                       (u/ex-msg-and-stacktrace e))
+            (ca/<! (ca/timeout 1000))))
+        (let [[v ch] (ca/alts! [end-sync-session-ch (ca/timeout 23000)])]
+          (when (and (not= end-sync-session-ch ch)
+                     (not @*stop?))
+            (recur))))))
 
 (defn make-on-connect
   [{:keys [*talk2-client start-sync-session storage update-state-ch] :as arg}]
@@ -218,18 +227,19 @@
                                           storage
                                           client-storage/login-session-token-key
                                           schemas/login-session-token-schema))]
-          (if-not login-session-token
-            (start-sync-session)
-            (if (au/<? (t2c/<send-msg! @*talk2-client
-                                       :resume-login-session
-                                       login-session-token))
+          ;; TODO: Revise this for all state providers
+          #_(if-not login-session-token
               (start-sync-session)
-              (ca/put! update-state-ch
-                       {:cb (fn [ret]
-                              (start-sync-session))
-                        :cmds [{:zeno/arg nil
-                                :zeno/op :zeno/set
-                                :zeno/path [:zeno/crdt]}]}))))
+              (if (au/<? (t2c/<send-msg! @*talk2-client
+                                         :resume-login-session
+                                         login-session-token))
+                (start-sync-session)
+                (ca/put! update-state-ch
+                         {:cb (fn [ret]
+                                (start-sync-session))
+                          :cmds [{:zeno/arg nil
+                                  :zeno/op :zeno/set
+                                  :zeno/path [:zeno/crdt]}]}))))
         (catch #?(:clj Exception :cljs js/Error) e
           (log/error "Error in on-connect:\n"
                      (u/ex-msg-and-stacktrace e)))))))
@@ -239,7 +249,8 @@
   (fn [{:keys [code url]}]
     (end-sync-session)))
 
-(defn make-talk2-client [{:keys [*talk2-client get-server-url storage] :as arg}]
+(defn make-talk2-client
+  [{:keys [*talk2-client env-name get-server-base-url storage] :as arg}]
   (let [handlers {:get-log-range
                   (fn [{fn-arg :arg}]
                     (when-not (= :producer (:log-type fn-arg))
@@ -269,7 +280,8 @@
                   (fn [{fn-arg :arg}]
                     ;; TODO: Implement
                     )}]
-    (t2c/client {:get-url get-server-url
+    (t2c/client {:get-url #(str (get-server-base-url)
+                                (u/env-name->client-path-name env-name))
                  :handlers handlers
                  :on-connect (make-on-connect arg)
                  :on-disconnect (make-on-disconnect arg)
@@ -298,7 +310,9 @@
                            :config-rules client-config-rules})
         {:zeno/keys [admin-password
                      client-name
-                     get-server-url
+                     env-name
+                     get-server-base-url
+                     root->state-provider
                      rpcs
                      storage]
          :or {storage (storage/make-storage
@@ -307,8 +321,6 @@
         *next-topic-sub-id (atom 0)
         *topic-name->sub-id->cb (atom {})
         *stop? (atom false)
-        ;; TODO: Load crdt-state from logs in IDB
-        *crdt-state (atom nil)
         *state-sub-name->info (atom {})
         *actor-id (atom nil)
         *talk2-client (atom nil)
@@ -324,7 +336,9 @@
                        admin-password
                        client-name
                        end-sync-session
-                       get-server-url
+                       env-name
+                       get-server-base-url
+                       root->state-provider
                        rpcs
                        storage
                        update-state-ch)
@@ -336,13 +350,14 @@
                                (assoc arg
                                       :end-sync-session-ch end-sync-session-ch
                                       :talk2-client talk2-client)))
-        talk2-client (when (:zeno/get-server-url config*)
+        talk2-client (when (:zeno/get-server-base-url config*)
                        (let [arg* (assoc arg
                                          :*talk2-client *talk2-client
                                          :start-sync-session start-sync-session)]
                          (make-talk2-client arg*)))
         _ (reset! *talk2-client talk2-client)
         on-actor-id-change (fn [actor-id]
+                             ;; TODO: Pass this to all state providers
                              (ca/put! update-state-ch
                                       {:cmds [{:zeno/arg nil
                                                :zeno/op :zeno/set

@@ -6,24 +6,28 @@
    [deercreeklabs.async-utils :as au]
    [com.oncurrent.zeno.client.client-commands :as client-commands]
    [com.oncurrent.zeno.client.react.impl :as react-impl]
-   [com.oncurrent.zeno.crdt :as crdt]
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]
    [weavejester.dependency :as dep]))
 
-(defmulti get-in-state :prefix)
-
+#_
 (defmethod get-in-state :zeno/client
   [{:keys [state path prefix]}]
   (client-commands/get-in-state state path prefix))
 
-(defmethod get-in-state :zeno/crdt
-  [{:keys [path zc] :as arg}]
-  (let [{:keys [crdt-schema *crdt-state]} zc]
-    (crdt/get-value-info (assoc arg
-                                :crdt @*crdt-state
-                                :path (rest path)
-                                :schema crdt-schema))))
+(defn get-in-state [{root :prefix
+                     zc :zc
+                     :as arg}]
+  (let [{:keys [root->state-provider]} zc
+        state-provider (root->state-provider root)
+        _ (when-not state-provider
+            (throw (ex-info (str "No state provider found "
+                                 "for root `" (or root "nil")
+                                 "`.")
+                            {:root root
+                             :known-roots (keys root->state-provider)})))
+        {:keys [get-in-state]} state-provider]
+    (get-in-state arg)))
 
 (defn get-non-numeric-part [path]
   (take-while #(not (number? %)) path))
@@ -79,7 +83,7 @@
    (fn [acc sub-path]
      (when-not (sequential? sub-path)
        (throw (ex-info (str "`sub-path` must be seqential. Got: `"
-                            sub-path "`.")
+                            (or sub-path "nil") "`.")
                        (u/sym-map sub-path))))
      (if (update-sub?* update-infos (transform-operators-in-sub-path sub-path))
        (reduced true)
@@ -93,7 +97,8 @@
                  (if (update-sub? update-infos expanded-paths)
                    (conj acc state-sub-name)
                    acc)))
-             #{} @*state-sub-name->info))
+             #{}
+             @*state-sub-name->info))
 
 (defn order-by-lineage [state-sub-names-to-update *state-sub-name->info]
   (let [g (reduce
@@ -269,24 +274,30 @@
             path)))
 
 (defn get-path-info [zc acc-state path resolve-path?]
-  (let [resolved-path (if resolve-path?
+  (let [{:keys [root->state-provider]} zc
+        resolved-path (if resolve-path?
                         (resolve-symbols-in-path {:path path
                                                   :state acc-state})
                         path)
-        [head & tail] resolved-path
-        state-src (case head
-                    :zeno/actor-id @(:*actor-id zc)
-                    :zeno/client @(:*client-state zc)
-                    :zeno/crdt @(:*crdt-state zc))]
-    (u/sym-map state-src resolved-path head)))
+        [root & tail] resolved-path
+        state-provider (root->state-provider root)
+        _ (when-not state-provider
+            (throw (ex-info (str "No state provider found "
+                                 "for root `" (or root "nil")
+                                 "`.")
+                            {:root root
+                             :known-roots (keys root->state-provider)})))
+        {:keys [get-state-atom]} state-provider
+        state-src (get-state-atom)]
+    (u/sym-map state-src resolved-path root)))
 
 (defn get-state-and-expanded-paths
   [zc independent-pairs ordered-dependent-pairs]
   (let [reducer* (fn [resolve-path? acc [sym path]]
                    (let [info (get-path-info zc (:state acc) path resolve-path?)
-                         {:keys [state-src resolved-path head]} info
+                         {:keys [state-src resolved-path root]} info
                          [v xps] (get-value-and-expanded-paths
-                                  zc state-src resolved-path head)]
+                                  zc state-src resolved-path root)]
                      (-> acc
                          (update :state assoc sym v)
                          (update :expanded-paths concat xps))))

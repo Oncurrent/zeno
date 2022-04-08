@@ -82,8 +82,10 @@
       (or (:login-session-info ret)
           false))))
 
-(defn <log-out! [zc]
-  (ai/<client-log-out zc))
+(defn <log-out!
+  "Returns a boolean success value."
+  [{:zeno/keys [zeno-client]}]
+  (ai/<client-log-out zeno-client))
 
 (defn <resume-login-session! [zc login-session-token]
   (au/go
