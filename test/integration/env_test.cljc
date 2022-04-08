@@ -22,11 +22,12 @@
 ;;;; You must start the integration test server for these tests to work.
 ;;;; $ bin/run-test-server
 
-(def get-server-url  (constantly "ws://localhost:8080/client"))
-
 (defn make-zc [{:keys [env]}]
-  (let [config #:zeno{:env env
-                      :get-server-url get-server-url}]
+  (let [config #:zeno{:env
+                      env
+
+                      :get-server-url
+                      (constantly "ws://localhost:8080/client")}]
     (zc/zeno-client config)))
 
 (def ex #?(:clj Exception :cljs js/Error))
@@ -41,7 +42,8 @@
    (au/go
      (let [admin (admin/admin-client
                   #:zeno{:admin-password ti/admin-password
-                         :get-server-url get-server-url})
+                         :get-server-url
+                         (constantly "ws://localhost:8080/admin")})
            ;; Create a permanent env to use as a base
            perm-env-name "test-env-perm"
            envs (au/<? (admin/<get-env-names {:zeno/admin-client admin}))
