@@ -13,9 +13,11 @@
 (def chunk-id-schema l/string-schema)
 (def client-id-schema l/string-schema)
 (def cluster-member-id-schema l/string-schema)
+(def env-name-schema l/string-schema)
 (def fingerprint-schema l/bytes-schema)
 (def login-session-token-schema l/string-schema)
 (def node-id-schema l/string-schema)
+(def state-provider-name-schema l/keyword-schema)
 (def timestamp-ms-schema l/long-schema)
 (def tx-i-schema l/long-schema)
 (def tx-id-schema l/string-schema)
@@ -33,8 +35,6 @@
   [:chunk-i l/int-schema])
 
 ;;;;;;;;;;;;;;;; Server Schemas ;;;;;;;;;;;;;;;;;;;;;;
-
-;; TODO: Authenticators are global, not per branch
 
 (def cluster-membership-list-schema
   (l/array-schema cluster-member-id-schema))
@@ -149,6 +149,27 @@
   [:serialized-get-info serialized-value-schema]
   [:get-type l/keyword-schema])
 
+;;;;;;;;;;;;;;; Envs ;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(l/def-record-schema authenticator-info-schema
+  [:authenticator-name authenticator-name-schema]
+  [:authenticator-branch branch-schema])
+
+(l/def-record-schema state-provider-info-schema
+  [:path-root l/keyword-schema]
+  [:state-provider-name state-provider-name-schema]
+  [:state-provider-branch branch-schema])
+
+(l/def-record-schema env-info-schema
+  [:authenticator-infos (l/array-schema authenticator-info-schema)]
+  [:env-name env-name-schema]
+  [:state-provider-infos (l/array-schema state-provider-info-schema)])
+
+(l/def-record-schema temp-env-info-schema
+  [:env-name env-name-schema]
+  [:lifetime-mins l/int-schema]
+  [:source-env-name env-name-schema])
+
 ;;;;;;;;;;;;;;; RPCs ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (l/def-enum-schema unauthorized-schema
@@ -163,6 +184,18 @@
   (l/union-schema [l/null-schema unauthorized-schema serialized-value-schema]))
 
 ;;;;;;;;;;;;;;; Talk2 Protocols ;;;;;;;;;;;;;;;;;;;;;
+
+(def admin-client-server-protocol
+  {:create-env {:arg-schema env-info-schema
+                :ret-schema l/boolean-schema}
+   :create-temporary-env {:arg-schema temp-env-info-schema
+                          :ret-schema l/boolean-schema}
+   :delete-env {:arg-schema env-name-schema
+                :ret-schema l/boolean-schema}
+   :get-env-names {:arg-schema l/null-schema
+                   :ret-schema (l/array-schema env-name-schema)}
+   :log-in {:arg-schema l/string-schema
+            :ret-schema l/boolean-schema}})
 
 (def client-server-protocol
   {:get-log-range {:arg-schema tx-log-range-info-schema

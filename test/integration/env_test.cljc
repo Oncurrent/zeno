@@ -22,9 +22,11 @@
 ;;;; You must start the integration test server for these tests to work.
 ;;;; $ bin/run-test-server
 
+(def get-server-url  (constantly "ws://localhost:8080/client"))
+
 (defn make-zc [{:keys [env]}]
   (let [config #:zeno{:env env
-                      :get-server-url (constantly "ws://localhost:8080/client")}]
+                      :get-server-url get-server-url}]
     (zc/zeno-client config)))
 
 (def ex #?(:clj Exception :cljs js/Error))
@@ -39,7 +41,7 @@
    (au/go
      (let [admin (admin/admin-client
                   #:zeno{:admin-password ti/admin-password
-                         :get-server-url (constantly "ws://localhost:8080/admin")})
+                         :get-server-url get-server-url})
            ;; Create a permanent env to use as a base
            perm-env-name "test-env-perm"
            envs (au/<? (admin/<get-env-names {:zeno/admin-client admin}))
@@ -48,20 +50,18 @@
            auth-infos [#:zeno{:authenticator-name
                               password-shared/authenticator-name
                               ;; If :authenticator-branch is nil, Zeno will use
-                              ;; the :env-name as the branch, creating it if
-                              ;; necessary
+                              ;; the :env-name as the branch
                               :authenticator-branch nil}]
-           crdt-info #:zeno{:state-provider-name crdt-shared/state-provider-name
-                            ;; If :state-provider-branch is nil, Zeno will use
-                            ;; the :env-name as the branch, creating it if
-                            ;; necessary
-                            :state-provider-branch nil}
-           root->spi {:zeno/crdt crdt-info}
-           env-arg #:zeno{:admin-client admin
-                          :authenticator-infos auth-infos
-                          :env-name perm-env-name
-                          :root->state-provider-info root->spi}
-           _ (is (= true (au/<? (admin/<create-env! env-arg))))
+           spis [#:zeno{:path-root :zeno/crdt
+                        :state-provider-name crdt-shared/state-provider-name
+                        ;; If :state-provider-branch is nil, Zeno will use
+                        ;; the :env-name as the branch
+                        :state-provider-branch nil}]
+           _ (is (= true (au/<? (admin/<create-env!
+                                 #:zeno{:admin-client admin
+                                        :authenticator-infos auth-infos
+                                        :env-name perm-env-name
+                                        :state-provider-infos spis}))))
            envs1 (au/<? (admin/<get-env-names {:zeno/admin-client admin}))
            _ (is (= true (some #(= perm-env-name %) envs1)))
            ;; Connect to the permanent env and set some state
