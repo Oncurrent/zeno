@@ -150,6 +150,18 @@
                                   :log-type :producer}))))
       true)))
 
+(defn <set-sync-session-info
+  [{:keys [*client-id crdt-branch talk2-client] :as arg}]
+  (au/go
+    (loop []
+      (if-let [client-id @*client-id]
+        (au/<? (t2c/<send-msg! talk2-client :set-sync-session-info
+                               {:branch crdt-branch
+                                :client-id client-id}))
+        (do
+          (ca/<! (ca/timeout 50))
+          (recur))))))
+
 (defn start-update-state-loop! [zc]
   (ca/go
     (let [{:keys [*stop? update-state-ch]} zc]
@@ -170,6 +182,62 @@
                        (u/ex-msg-and-stacktrace e))))
         (when-not @*stop?
           (recur))))))
+
+(defn start-sync-session-loop
+  [{:keys [*actor-id *stop? end-sync-session-ch talk2-client] :as arg}]
+  (ca/go
+    (try
+      (au/<? (<set-sync-session-info arg))
+      (catch #?(:clj Exception :cljs js/Error) e
+        (log/error "Error in setting sync session info"
+                   (u/ex-msg-and-stacktrace e))
+        (ca/<! (ca/timeout 1000))))
+    (loop []
+      (try
+        (let [p-tx-i (au/<? (<get-last-producer-log-tx-i arg))]
+          (au/<? (t2c/<send-msg! talk2-client
+                                 :publish-log-status
+                                 {:last-tx-i p-tx-i
+                                  :log-type :producer}))
+          #_(au/<? (<sync-consumer-log! arg)))
+        (catch #?(:clj Exception :cljs js/Error) e
+          (log/error "Error in sync-session-loop"
+                     (u/ex-msg-and-stacktrace e))
+          (ca/<! (ca/timeout 1000))))
+      (let [[v ch] (ca/alts! [end-sync-session-ch (ca/timeout 23000)])]
+        (when (and (not= end-sync-session-ch ch)
+                   (not @*stop?))
+          (recur))))))
+
+(defn make-on-connect
+  [{:keys [*talk2-client start-sync-session storage update-state-ch] :as arg}]
+  (fn [{:keys [protocol url]}]
+    (ca/go
+      (try
+        (let [login-session-token (au/<? (storage/<get
+                                          storage
+                                          client-storage/login-session-token-key
+                                          schemas/login-session-token-schema))]
+          (if-not login-session-token
+            (start-sync-session)
+            (if (au/<? (t2c/<send-msg! @*talk2-client
+                                       :resume-login-session
+                                       login-session-token))
+              (start-sync-session)
+              (ca/put! update-state-ch
+                       {:cb (fn [ret]
+                              (start-sync-session))
+                        :cmds [{:zeno/arg nil
+                                :zeno/op :zeno/set
+                                :zeno/path [:zeno/crdt]}]}))))
+        (catch #?(:clj Exception :cljs js/Error) e
+          (log/error "Error in on-connect:\n"
+                     (u/ex-msg-and-stacktrace e)))))))
+
+(defn make-on-disconnect
+  [{:keys [end-sync-session] :as arg}]
+  (fn [{:keys [code url]}]
+    (end-sync-session)))
 
 (defn make-talk2-client [{:keys [*talk2-client get-server-url storage] :as arg}]
   (let [handlers {:get-log-range
@@ -203,8 +271,8 @@
                     )}]
     (t2c/client {:get-url get-server-url
                  :handlers handlers
-                 :on-connect (constantly nil)
-                 :on-disconnect (constantly nil)
+                 :on-connect (make-on-connect arg)
+                 :on-disconnect (make-on-disconnect arg)
                  :protocol schemas/client-server-protocol})))
 
 (defn <get-client-id [storage]
@@ -247,17 +315,31 @@
         *client-id (atom nil)
         _ (ca/take! (<get-client-id storage) #(reset! *client-id %))
         update-state-ch (ca/chan (ca/sliding-buffer 1000))
+        *end-sync-session-ch (atom nil)
+        end-sync-session #(when-let [ch @*end-sync-session-ch]
+                            (ca/put! ch true))
         arg (u/sym-map *actor-id
                        *client-id
                        *stop?
                        admin-password
                        client-name
+                       end-sync-session
                        get-server-url
                        rpcs
                        storage
                        update-state-ch)
+        start-sync-session #(let [end-sync-session-ch (ca/promise-chan)
+                                  talk2-client @*talk2-client]
+                              (reset! *end-sync-session-ch
+                                      end-sync-session-ch)
+                              (start-sync-session-loop
+                               (assoc arg
+                                      :end-sync-session-ch end-sync-session-ch
+                                      :talk2-client talk2-client)))
         talk2-client (when (:zeno/get-server-url config*)
-                       (let [arg* (assoc arg :*talk2-client *talk2-client)]
+                       (let [arg* (assoc arg
+                                         :*talk2-client *talk2-client
+                                         :start-sync-session start-sync-session)]
                          (make-talk2-client arg*)))
         _ (reset! *talk2-client talk2-client)
         on-actor-id-change (fn [actor-id]
