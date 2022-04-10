@@ -187,8 +187,6 @@
                 :ret-schema l/boolean-schema}
    :delete-env {:arg-schema env-name-schema
                 :ret-schema l/boolean-schema}
-   :get-env-names {:arg-schema l/null-schema
-                   :ret-schema (l/array-schema env-name-schema)}
    :log-in {:arg-schema l/string-schema
             :ret-schema l/boolean-schema}})
 

@@ -115,9 +115,6 @@
                                                     "` in path `"
                                                     path "`.")
                                                (u/sym-map path k)))))]
-    (log/info (str "3333:\n"
-                   (u/pprint-str
-                    (u/sym-map path))))
     (associative-get-value-info
      (assoc arg :get-child-schema get-child-schema))))
 
@@ -185,10 +182,6 @@
 
 (defmethod get-value-info :union
   [{:keys [crdt path] :as arg}]
-  (when (empty? path)
-    (log/info (str "9999:\n"
-                   (u/pprint-str
-                    (u/sym-map path)))))
   (if (empty? crdt)
     {:norm-path path
      :value nil}

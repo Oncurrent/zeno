@@ -28,9 +28,6 @@
   (let [*crdt-state (atom nil)
         arg (u/sym-map *crdt-state authorizer crdt-schema)
         get-in-state (fn [{:keys [path] :as arg}]
-                       (log/info (str "1111:\n"
-                                      (u/pprint-str
-                                       (u/sym-map path))))
                        (crdt/get-value-info (assoc arg
                                                    :crdt @*crdt-state
                                                    :path (rest path)

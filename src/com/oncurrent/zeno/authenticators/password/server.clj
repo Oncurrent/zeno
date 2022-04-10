@@ -99,8 +99,7 @@
       :set-password shared/set-password-info-schema))
   (get-update-state-ret-schema [this update-type]
     (case update-type
-      :add-actor-and-password shared/add-actor-and-password-info-schema
-      :create-actor l/boolean-schema
+      :add-actor-and-password l/boolean-schema
       :set-password l/boolean-schema))
   (get-get-state-info-schema [this get-type]
     )

@@ -328,21 +328,26 @@
   [{:keys [*conn-id->auth-info
            *conn-id->sync-session-info
            *connected-actor-id->conn-ids
+           authenticator-name->info
            env-name
            storage]
     :as arg}]
   (when-not env-name
     (throw (ex-info "`:env-name` is nil" {})))
-  (let [state-fns (make-state-fns arg)]
+  (let [base-info (u/sym-map env-name storage)
+        auth-info (u/sym-map *conn-id->auth-info
+                             *connected-actor-id->conn-ids
+                             authenticator-name->info)
+        state-fns (make-state-fns arg)]
     {:handlers {:get-authenticator-state
                 #(auth-impl/<handle-get-authenticator-state
-                  (merge % arg state-fns))
+                  (merge base-info auth-info state-fns %))
 
                 :get-log-range
-                #(log-sync/<handle-get-log-range (merge % arg))
+                #(log-sync/<handle-get-log-range (merge base-info %))
 
                 :get-log-status
-                #(log-sync/<handle-get-log-status (merge % arg))
+                #(log-sync/<handle-get-log-status (merge base-info %))
 
                 :get-schema-pcf-for-fingerprint
                 #(au/go
@@ -351,31 +356,31 @@
                        (l/json)))
 
                 :get-tx-info
-                #(log-sync/<handle-get-tx-info (merge % arg))
+                #(log-sync/<handle-get-tx-info (merge base-info %))
 
                 :log-in
-                #(auth-impl/<handle-log-in (merge % arg state-fns))
+                #(auth-impl/<handle-log-in
+                  (merge base-info auth-info state-fns %))
 
                 :log-out
-                #(auth-impl/<handle-log-out (merge % arg state-fns))
+                #(auth-impl/<handle-log-out (merge base-info state-fns %))
 
                 :publish-log-status
-                #(log-sync/<handle-publish-log-status (merge % arg))
+                #(log-sync/<handle-publish-log-status (merge base-info %))
 
                 :resume-login-session
                 #(auth-impl/<handle-resume-login-session
-                  (merge % arg state-fns))
+                  (merge base-info auth-info state-fns %))
 
                 :rpc
-                #(<do-rpc!
-                  (-> (merge % arg state-fns)))
+                #(<do-rpc! (merge base-info state-fns %))
 
                 :set-sync-session-info
-                #(log-sync/handle-set-sync-session-info (merge % arg))
+                #(log-sync/handle-set-sync-session-info (merge base-info %))
 
                 :update-authenticator-state
                 #(auth-impl/<handle-update-authenticator-state
-                  (merge % arg state-fns))}
+                  (merge base-info auth-info state-fns %))}
      :on-connect (fn [{:keys [conn-id remote-address] :as conn}]
                    (swap! *conn-id->auth-info assoc conn-id {})
                    (swap! *conn-id->sync-session-info assoc conn-id {})
@@ -400,7 +405,9 @@
 (defn <handle-create-env [{:keys [server storage] :as arg}]
   (au/go
     (let [{:keys [env-name]} (:arg arg)
-          ep-info (make-client-ep-info (assoc arg :env-name env-name))
+          ep-info (make-client-ep-info (-> arg
+                                           (dissoc :arg)
+                                           (assoc :env-name env-name)))
           k (env-name->env-info-key env-name)]
       (au/<? (storage/<add! storage k schemas/env-info-schema (:arg arg)))
       ;; TODO: Figure out how this works in a multi-server setup
