@@ -54,7 +54,7 @@
 
 (defn pprint-str [x]
   #?(:clj (puget/with-color (pprint-str* x))
-     :cljs (pprint-str*)))
+     :cljs (pprint-str* x)))
 
 
 
