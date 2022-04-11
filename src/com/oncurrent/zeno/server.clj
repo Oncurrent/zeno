@@ -7,8 +7,6 @@
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
    [com.oncurrent.zeno.common :as common]
-   [com.oncurrent.zeno.crdt.commands :as commands]
-   [com.oncurrent.zeno.crdt :as crdt]
    [com.oncurrent.zeno.distributed-mutex :as dm]
    [com.oncurrent.zeno.schemas :as schemas]
    [com.oncurrent.zeno.server.authenticator-impl :as auth-impl]
@@ -76,9 +74,6 @@
 
 (defn member-id->member-info-key [member-id]
   (str storage/member-info-key-prefix member-id))
-
-(defn env-name->env-info-key [env-name]
-  (str storage/env-info-key-prefix env-name))
 
 (defn <store-member-info [storage member-id ws-url]
   (let [info (u/sym-map ws-url)
@@ -228,48 +223,57 @@
                         *rpc-name-kw->handler
                         authenticator-name->info
                         conn-id
+                        env-name
                         <get-state
                         <set-state!
                         <update-state!
                         rpcs
                         storage]
                  :as orig-arg}]
+  ;; TODO: Add authorization
   (au/go
-    (let [{:keys [arg rpc-name-kw-name rpc-name-kw-ns]} (:arg orig-arg)
-          rpc-name-kw (keyword rpc-name-kw-ns rpc-name-kw-name)
-          handler (get @*rpc-name-kw->handler rpc-name-kw)
-          <request-schema (su/make-schema-requester orig-arg)
-          _ (when-not handler
-              (throw (ex-info (str "No handler found for RPC `"
-                                   rpc-name-kw "`.")
-                              (u/sym-map rpc-name-kw arg))))
-          {:keys [arg-schema ret-schema]} (get rpcs rpc-name-kw)
-          deser-arg (au/<? (common/<serialized-value->value
-                            {:<request-schema <request-schema
-                             :reader-schema arg-schema
-                             :serialized-value (-> orig-arg :arg :arg)
-                             :storage storage}))
-          actor-id (some-> @*conn-id->auth-info
-                           (get conn-id)
-                           (:actor-id))
-          branch (some-> @*conn-id->sync-session-info
-                         (get conn-id)
-                         (:branch))
-          ret (handler #:zeno{:<get-state #(<get-state
-                                            (merge {:zeno/branch branch} %))
-                              :<set-state! #(<set-state!
+    (let [{:keys [arg rpc-id rpc-name-kw-name rpc-name-kw-ns]} (:arg orig-arg)
+          rpc-name-kw (keyword rpc-name-kw-ns rpc-name-kw-name)]
+      (try
+        (log/info (str "DDDD:\n"
+                       (u/pprint-str
+                        (keys orig-arg))))
+        (let [handler (get @*rpc-name-kw->handler rpc-name-kw)
+              <request-schema (su/make-schema-requester orig-arg)
+              _ (when-not handler
+                  (throw (ex-info (str "No handler found for RPC `"
+                                       rpc-name-kw "`.")
+                                  (u/sym-map rpc-name-kw arg))))
+              {:keys [arg-schema ret-schema]} (get rpcs rpc-name-kw)
+              deser-arg (au/<? (common/<serialized-value->value
+                                {:<request-schema <request-schema
+                                 :reader-schema arg-schema
+                                 :serialized-value (-> orig-arg :arg :arg)
+                                 :storage storage}))
+              actor-id (some-> @*conn-id->auth-info
+                               (get conn-id)
+                               (:actor-id))
+              h-arg #:zeno{:<get-state #(<get-state
+                                         (merge {:zeno/branch branch} %))
+                           :<set-state! #(<set-state!
+                                          (merge {:zeno/branch branch} %))
+                           :<update-state! #(<update-state!
                                              (merge {:zeno/branch branch} %))
-                              :<update-state! #(<update-state!
-                                                (merge {:zeno/branch branch} %))
-                              :authenticator-name->info authenticator-name->info
-                              :arg deser-arg
-                              :actor-id actor-id
-                              :branch branch
-                              :conn-id conn-id})
-          val (if (au/channel? ret)
-                (au/<? ret)
-                ret)]
-      (au/<? (storage/<value->serialized-value storage ret-schema val)))))
+                           :authenticator-name->info authenticator-name->info
+                           :arg deser-arg
+                           :actor-id actor-id
+                           :branch branch
+                           :conn-id conn-id}
+              ret (handler h-arg)
+              val (if (au/channel? ret)
+                    (au/<? ret)
+                    ret)]
+          (au/<? (storage/<value->serialized-value storage ret-schema val)))
+        (catch Exception e
+          (log/error (str "RPC failed. rpc-name-kw: `" rpc-name-kw "` "
+                          "rpc-id: `" rpc-id "`.\n\n"
+                          (u/ex-msg-and-stacktrace e)))
+          :zeno/rpc-error)))))
 
 (defmulti get-state* (fn [{:keys [path]}]
                        (first path)))
@@ -280,14 +284,14 @@
                                      (conj acc (first path)))
                                    #{}
                                    cmds)))
-
+#_
 (defmethod get-state* :zeno/crdt
   [{:keys [*branch->crdt-store branch crdt-schema path]}]
   (crdt/get-value {:crdt (get @*branch->crdt-store branch)
                    :path (rest path)
                    :prefix :zeno/crdt
                    :schema crdt-schema}))
-
+#_
 (defmethod update-state!* #{:zeno/crdt}
   [{:keys [*branch->crdt-store branch cmds crdt-schema] :as fn-arg}]
   (swap! *branch->crdt-store
@@ -328,8 +332,10 @@
   [{:keys [*conn-id->auth-info
            *conn-id->sync-session-info
            *connected-actor-id->conn-ids
+           *rpc-name-kw->handler
            authenticator-name->info
            env-name
+           rpcs
            storage]
     :as arg}]
   (when-not env-name
@@ -338,6 +344,7 @@
         auth-info (u/sym-map *conn-id->auth-info
                              *connected-actor-id->conn-ids
                              authenticator-name->info)
+        rpc-info (u/sym-map *rpc-name-kw->handler rpcs)
         state-fns (make-state-fns arg)]
     {:handlers {:get-authenticator-state
                 #(auth-impl/<handle-get-authenticator-state
@@ -373,7 +380,7 @@
                   (merge base-info auth-info state-fns %))
 
                 :rpc
-                #(<do-rpc! (merge base-info state-fns %))
+                #(<do-rpc! (merge auth-info base-info rpc-info state-fns %))
 
                 :set-sync-session-info
                 #(log-sync/handle-set-sync-session-info (merge base-info %))
@@ -407,22 +414,40 @@
     (let [{:keys [env-name]} (:arg arg)
           ep-info (make-client-ep-info (-> arg
                                            (dissoc :arg)
-                                           (assoc :env-name env-name)))
-          k (env-name->env-info-key env-name)]
-      (au/<? (storage/<add! storage k schemas/env-info-schema (:arg arg)))
+                                           (assoc :env-name env-name)))]
+      (au/<? (storage/<swap! storage
+                             storage/env-name-to-info-key
+                             schemas/env-name-to-info-schema
+                             (fn [env-name->info]
+                               (when (contains? env-name->info env-name)
+                                 (throw (ex-info (str "Env `" env-name "` "
+                                                      "already exists.")
+                                                 (u/sym-map env-name))))
+                               (assoc env-name->info env-name (:arg arg)))))
       ;; TODO: Figure out how this works in a multi-server setup
       (t2s/add-endpoint! (assoc ep-info :server server))
       true)))
 
-(defn <handle-delete-env [{:keys [conn-id server storage] :as arg}]
+(defn <handle-delete-env [{:keys [server storage] :as arg}]
   (au/go
     (let [env-name (:arg arg)
-          k (env-name->env-info-key env-name)
           path (u/env-name->client-path-name env-name)]
-      (au/<? (storage/<delete! storage k))
+      (au/<? (storage/<swap! storage
+                             storage/env-name-to-info-key
+                             schemas/env-name-to-info-schema
+                             (fn [env-name->info]
+                               (dissoc env-name->info env-name))))
       ;; TODO: Figure out how this works in a multi-server setup
       (t2s/remove-endpoint! (u/sym-map path server))
       true)))
+
+(defn <handle-get-env-names [{:keys [server storage] :as arg}]
+  (au/go
+    (let [env-name->info (au/<? (storage/<get storage
+                                              storage/env-name-to-info-key
+                                              schemas/env-name-to-info-schema))]
+      (or (keys env-name->info)
+          []))))
 
 (defn handle-admin-log-in
   [{:keys [*logged-in-admin-conn-ids admin-password arg conn-id]}]
@@ -442,6 +467,7 @@
                                             %)))))]
     {:handlers {:create-env (make-handler <handle-create-env)
                 :delete-env (make-handler <handle-delete-env)
+                :get-env-names (make-handler <handle-get-env-names)
                 :log-in #(handle-admin-log-in (merge % arg))}
      :on-connect (fn [{:keys [conn-id] :as conn}]
                    (log/info
@@ -459,8 +485,11 @@
 (defn make-talk2-server [{:keys [port] :as arg}]
   (let [server (t2s/server (assoc arg :port port))
         admin-client-ep-info (make-admin-client-ep-info
-                              (assoc arg :server server))]
+                              (assoc arg :server server))
+        default-env-ep-info (make-client-ep-info
+                             (assoc arg :env-name u/default-env-name))]
     (t2s/add-endpoint! (assoc admin-client-ep-info :server server))
+    (t2s/add-endpoint! (assoc default-env-ep-info :server server))
     server))
 
 (defn make-authenticator-storage [authenticator-name storage]
@@ -495,9 +524,7 @@
                      <publish-member-urls
                      admin-password
                      authenticators
-                     crdt-authorizer
                      certificate-str
-                     crdt-schema
                      port
                      private-key-str
                      rpcs
@@ -505,15 +532,13 @@
                      ws-url]} config
         *conn-id->auth-info (atom {})
         *conn-id->sync-session-info (atom {})
-        *branch->crdt-store (atom {})
         *connected-actor-id->conn-ids (atom {})
         *consumer-actor-id->last-branch-log-tx-i (atom {})
         *rpc-name-kw->handler (atom {})
         *logged-in-admin-conn-ids (atom #{})
         authenticator-name->info (xf-authenticator-info
                                   (u/sym-map authenticators storage))
-        arg (u/sym-map *branch->crdt-store
-                       *conn-id->auth-info
+        arg (u/sym-map *conn-id->auth-info
                        *conn-id->sync-session-info
                        *connected-actor-id->conn-ids
                        *consumer-actor-id->last-branch-log-tx-i
@@ -521,8 +546,6 @@
                        *rpc-name-kw->handler
                        admin-password
                        authenticator-name->info
-                       crdt-authorizer
-                       crdt-schema
                        certificate-str
                        port
                        private-key-str
@@ -538,7 +561,6 @@
                                             <get-published-member-urls
                                             <publish-member-urls))]
     (u/sym-map *rpc-name-kw->handler
-               crdt-schema
                member-id
                mutex-clients
                rpcs

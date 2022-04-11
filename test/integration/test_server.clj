@@ -47,14 +47,21 @@
                                          :zeno/path [:zeno/crdt :name]}]}))
     true))
 
+(defn throw-if-even [{:zeno/keys [arg]}]
+  (if (even? arg)
+    (throw (ex-info "Even!" {}))
+    false))
+
 (defn -main [port-str tls?-str]
   (let [tls? (#{"true" "1"} (str/lower-case tls?-str))
         password-auth (password/make-authenticator)
         authenticators [password-auth]
         port (u/str->int port-str)
+        root->sp {:zeno/crdt }
         config #:zeno{:admin-password ti/admin-password
                       :authenticators authenticators
                       :port port
+                      :root->state-provider root->sp
                       :rpcs test-schemas/rpcs
                       :storage (storage/make-storage)}
         _ (log/info (str "Starting Zeno integration test server on port "
@@ -63,8 +70,9 @@
                                  tls? (merge (get-tls-configs))))]
     (server/set-rpc-handler! zs :add-nums add-nums)
     (server/set-rpc-handler! zs :get-name <get-name)
-    (server/set-rpc-handler! zs :set-name <set-name!)
     (server/set-rpc-handler! zs :remove-name <remove-name!)
+    (server/set-rpc-handler! zs :set-name <set-name!)
+    (server/set-rpc-handler! zs :throw-if-even throw-if-even)
     zs))
 
 (comment

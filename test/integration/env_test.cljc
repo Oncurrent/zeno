@@ -31,13 +31,7 @@
                       :get-server-base-url (constantly "ws://localhost:8080")}]
     (zc/zeno-client config)))
 
-(def ex #?(:clj Exception :cljs js/Error))
-
-(defn catcher [e]
-  (log/error (u/ex-msg-and-stacktrace e))
-  (is (= :threw :but-should-not-have)))
-
-(deftest ^:this test-envs
+(deftest test-envs
   (au/test-async
    10000
    (au/go
@@ -47,6 +41,11 @@
                          (constantly "ws://localhost:8080/admin")})
            ;; Create a permanent env to use as a base
            perm-env-name "test-env-perm"
+           envs (au/<? (admin/<get-env-names {:zeno/admin-client admin}))
+           _ (when (= true (some #(= perm-env-name %) envs))
+               #_(au/<? (admin/<delete-env!
+                         #:zeno{:admin-client admin
+                                :env-name perm-env-name})))
            auth-infos [#:zeno{:authenticator-name
                               password-shared/authenticator-name
                               ;; If :authenticator-branch is nil, Zeno will use
@@ -91,29 +90,31 @@
            _ (is (= '{name "base"} (get-state zc-perm)))
            ;; Add an actor to the temp env
            actor-id "actor1"
-           actor-pwd "adslfkjfads1541l2hnjmlas 1q2k34213lk,sASrwqfsad  dasf"]
-       (log/info "AAAAAA")
-       (is (= true (au/<? (password-client/<add-actor-and-password!
-                           {:zeno/actor-id actor-id
-                            :zeno/zeno-client zc-temp
-                            :password actor-pwd}))))
-       (log/info "BBBBB")
-       ;; Log in as the new actor
-       (is (= true (au/<? (password-client/<log-in!
-                           {:zeno/actor-id actor-id
-                            :zeno/zeno-client zc-temp
-                            :password actor-pwd}))))
-       (log/info "CCCCC")
-       ;; Try to log in on the perm env as the new actor - Should fail
-       (is (= false (au/<? (password-client/<log-in!
+           actor-pwd "adslfkjfads1541l2hnjmlas 1q2k34213lk,sASrwqfsad  dasf"
+           aaap-ret (au/<? (password-client/<add-actor-and-password!
                             {:zeno/actor-id actor-id
-                             :zeno/zeno-client zc-perm
-                             :password actor-pwd}))))
-       (log/info "DDDDD")
-       ;; Remove the perm env
-       (is (= true (au/<? (admin/<delete-env!
-                           #:zeno{:admin-client admin
-                                  :env-name perm-env-name}))))
+                             :zeno/zeno-client zc-temp
+                             :password actor-pwd}))
+           _ (log/info "AAAAAA")
+           _ (is (= true aaap-ret))
+           _ (log/info "BBBBB")
+           ;; Log in as the new actor
+           login-ret (au/<? (password-client/<log-in!
+                             {:zeno/actor-id actor-id
+                              :zeno/zeno-client zc-temp
+                              :password actor-pwd}))
+           _ (is (= actor-id (:actor-id login-ret)))
+           _ (log/info "CCCCC")
+           ;; Try to log in on the perm env as the new actor - Should fail
+           _ (is (= false (au/<? (password-client/<log-in!
+                                  {:zeno/actor-id actor-id
+                                   :zeno/zeno-client zc-perm
+                                   :password actor-pwd}))))
+           _ (log/info "DDDDD")
+           ;; Remove the perm env
+           #_ (is (= true (au/<? (admin/<delete-env!
+                                  #:zeno{:admin-client admin
+                                         :env-name perm-env-name}))))]
        (admin/stop! admin)
        (zc/stop! zc-perm)
        (zc/stop! zc-temp)))))

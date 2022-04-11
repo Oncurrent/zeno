@@ -1,10 +1,10 @@
-(ns com.oncurrent.zeno.crdt.array
+(ns com.oncurrent.zeno.state-providers.crdt.array
   (:require
    [clojure.set :as set]
    [clojure.string :as str]
    [deercreeklabs.lancaster :as l]
-   [com.oncurrent.zeno.crdt.apply-ops-impl :as apply-ops]
-   [com.oncurrent.zeno.crdt.common :as c]
+   [com.oncurrent.zeno.state-providers.crdt.apply-ops-impl :as apply-ops]
+   [com.oncurrent.zeno.state-providers.crdt.common :as c]
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 

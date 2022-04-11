@@ -193,6 +193,13 @@
                                       lifetime-mins
                                       source-env-name)))))
 
+(defn <get-env-names
+  [{:zeno/keys [admin-client]}]
+  (au/go
+    (check-admin-client admin-client)
+    (au/<? (<check-login admin-client))
+    (au/<? (t2c/<send-msg! (:talk2-client admin-client) :get-env-names nil))))
+
 (defn <delete-env! [{:zeno/keys [admin-client
                                  env-name]}]
   (au/go

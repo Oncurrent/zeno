@@ -4,6 +4,7 @@
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
    [com.oncurrent.zeno.client.authenticator-impl :as ai]
+   [com.oncurrent.zeno.authenticators.password :as-alias pwd-auth]
    [com.oncurrent.zeno.authenticators.password.shared :as shared]
    [com.oncurrent.zeno.client :as zc]
    [com.oncurrent.zeno.schemas :as schemas]
@@ -25,7 +26,7 @@
 (defn <add-actor-and-password!
   "Returns a boolean success value."
   [{:zeno/keys [actor-id zeno-client]
-    :keys [password]
+    ::pwd-auth/keys [password]
     :as arg}]
   (check-actor-id actor-id)
   (check-zeno-client zeno-client)
@@ -44,7 +45,7 @@
 (defn <set-password!
   "Returns a boolean success value."
   [{:zeno/keys [actor-id zeno-client]
-    :keys [new-password old-password]}]
+    ::pwd-auth/keys [new-password old-password]}]
   (check-actor-id actor-id)
   (check-zeno-client zeno-client)
   (when-not (string? old-password)
@@ -66,7 +67,7 @@
 (defn <log-in!
   "Returns a boolean success value."
   [{:zeno/keys [actor-id zeno-client]
-    :keys [password]}]
+    ::pwd-auth/keys [password]}]
   (au/go
     (check-actor-id actor-id)
     (check-zeno-client zeno-client)

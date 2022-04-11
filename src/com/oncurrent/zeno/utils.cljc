@@ -23,6 +23,7 @@
 
 #?(:clj (set! *warn-on-reflection* true))
 
+(def default-env-name "main")
 (def terminal-kw-ops #{:zeno/keys :zeno/count :zeno/concat})
 (def kw-ops (conj terminal-kw-ops :zeno/*))
 (def valid-path-roots #{:zeno/actor-id
@@ -352,6 +353,8 @@
             (sym-map k v config))))))))
 
 (defn env-name->client-path-name [env-name]
+  (when (empty? env-name)
+    (throw (ex-info "`env-name` must be non-empty." (sym-map env-name))))
   (str "/client/" env-name))
 
 ;;;;;;;;;;;;;;;;;;;; Platform detection ;;;;;;;;;;;;;;;;;;;;

@@ -48,14 +48,15 @@
   (au/go
     (let [{:keys [actor-id password]} update-info
           actor-id (or (:actor-id update-info) (u/compact-random-uuid))
-          sk (str actor-id-to-hashed-password-key-prefix actor-id)]
+          sk (str actor-id-to-hashed-password-key-prefix actor-id)
+          pwd-fn (fn [old-hashed-password]
+                   (when old-hashed-password
+                     (throw (ex-info
+                             (str"Actor `" actor-id "` already exists")
+                             {})))
+                   (bcrypt/encrypt password work-factor))]
       (au/<? (storage/<swap! authenticator-storage sk shared/password-schema
-                             (fn [old-hashed-password]
-                               (when old-hashed-password
-                                 (throw (ex-info
-                                         "Actor `" actor-id "` already exists"
-                                         {})))
-                               (bcrypt/encrypt password work-factor))))
+                             pwd-fn))
       true)))
 
 (defmethod <update-authenticator-state!* :set-password
@@ -106,9 +107,9 @@
   (get-get-state-ret-schema [this get-type]
     ))
 
-(defn make-authenticator
+(defn password-authenticator
   ([]
-   (make-authenticator {}))
+   (password-authenticator {}))
   ([{:keys [login-lifetime-mins storage-name]
      :or {login-lifetime-mins (* 14 24 60)}}]
    (when-not (or (nil? storage-name) (keyword? storage-name))

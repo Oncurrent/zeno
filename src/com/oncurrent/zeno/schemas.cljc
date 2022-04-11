@@ -167,18 +167,22 @@
   [:source-env-name env-name-schema]
   [:state-provider-infos (l/array-schema state-provider-info-schema)])
 
+(def env-name-to-info-schema (l/map-schema env-info-schema))
+
 ;;;;;;;;;;;;;;; RPCs ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(l/def-enum-schema unauthorized-schema
-  :zeno/unauthorized)
+(l/def-enum-schema rpc-anomaly-schema
+  :zeno/rpc-error
+  :zeno/rpc-unauthorized)
 
 (l/def-record-schema rpc-arg-schema
+  [:rpc-id l/string-schema]
   [:rpc-name-kw-ns l/string-schema]
   [:rpc-name-kw-name l/string-schema]
   [:arg serialized-value-schema])
 
 (def rpc-ret-schema
-  (l/union-schema [l/null-schema unauthorized-schema serialized-value-schema]))
+  (l/union-schema [rpc-anomaly-schema serialized-value-schema]))
 
 ;;;;;;;;;;;;;;; Talk2 Protocols ;;;;;;;;;;;;;;;;;;;;;
 
@@ -187,6 +191,8 @@
                 :ret-schema l/boolean-schema}
    :delete-env {:arg-schema env-name-schema
                 :ret-schema l/boolean-schema}
+   :get-env-names {:arg-schema l/null-schema
+                   :ret-schema (l/array-schema env-name-schema)}
    :log-in {:arg-schema l/string-schema
             :ret-schema l/boolean-schema}})
 

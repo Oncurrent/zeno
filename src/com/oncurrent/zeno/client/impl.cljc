@@ -20,7 +20,7 @@
 
 ;; TODO: Fill this in
 (def default-config
-  {})
+  {:zeno/env-name u/default-env-name})
 
 ;; TODO: Revise these
 (def client-config-rules
@@ -181,6 +181,9 @@
                 {:keys [cmds cb]} update-info]
             (try
               (when (= update-state-ch ch)
+                (log/info (str "UUUUUUU:\n"
+                               (u/pprint-str
+                                (u/sym-map update-info))))
                 (-> (<do-update-state! zc cmds)
                     (au/<?)
                     (cb)))
@@ -415,24 +418,55 @@
 (defn <rpc! [{:keys [arg cb rpc-name-kw timeout-ms zc]
               :or {timeout-ms default-rpc-timeout-ms}}]
   (au/go
+    (when-not (:talk2-client zc)
+      (throw
+       (ex-info (str "Can't call `<rpc!` because "
+                     "`:zeno/get-server-base-url` was not provided in "
+                     "the client configuration.")
+                {})))
     (when-not (keyword? rpc-name-kw)
       (throw (ex-info (str "The `rpc-name-kw` parameter must be a keyword. "
                            "Got `" (or rpc-name-kw "nil") "`.")
                       (u/sym-map rpc-name-kw arg))))
     (let [{:keys [rpcs storage talk2-client]} zc
           {:keys [arg-schema ret-schema]} (get rpcs rpc-name-kw)
+          rpc-id (u/compact-random-uuid)
           s-arg (au/<? (storage/<value->serialized-value
                         storage arg-schema arg))
-          rpc-arg {:rpc-name-kw-ns (namespace rpc-name-kw)
+          rpc-arg {:rpc-id rpc-id
+                   :rpc-name-kw-ns (namespace rpc-name-kw)
                    :rpc-name-kw-name (name rpc-name-kw)
                    :arg s-arg}
-          sv (au/<? (t2c/<send-msg! talk2-client :rpc rpc-arg))
+          _ (log/info "RRRRRR:\n"
+                      (u/pprint-str
+                       (u/sym-map rpc-arg arg)))
+          rpc-ch (t2c/<send-msg! talk2-client :rpc rpc-arg)
+          timeout-ch (ca/timeout timeout-ms)
+          [ret ch] (au/alts? [rpc-ch timeout-ch])
           <request-schema (make-schema-requester talk2-client)]
-      (when sv
+      (cond
+        (= timeout-ch ch)
+        (throw (ex-info (str "RPC timed out. rpc-name-kw: `" rpc-name-kw "` "
+                             "rpc-id: `" rpc-id "`.\n")
+                        (u/sym-map rpc-id rpc-name-kw timeout-ms)))
+
+        (= :zeno/rpc-error ret)
+        (throw (ex-info (str "RPC failed. rpc-name-kw: `" rpc-name-kw "` "
+                             "rpc-id: `" rpc-id "`.\n See server log for "
+                             "more information.\n")
+                        (u/sym-map rpc-id rpc-name-kw)))
+
+        (= :zeno/rpc-unauthorized ret)
+        (throw (ex-info (str "Unauthorized RPC. rpc-name-kw: `" rpc-name-kw "` "
+                             "rpc-id: `" rpc-id "`.\n See server log for "
+                             "more information.\n")
+                        (u/sym-map rpc-id rpc-name-kw)))
+
+        :else
         (au/<? (common/<serialized-value->value
                 {:<request-schema <request-schema
                  :reader-schema ret-schema
-                 :serialized-value sv
+                 :serialized-value ret
                  :storage storage}))))))
 
 (defn rpc! [{:keys [cb] :as arg}]

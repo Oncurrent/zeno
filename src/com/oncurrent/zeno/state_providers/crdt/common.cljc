@@ -1,4 +1,4 @@
-(ns com.oncurrent.zeno.crdt.common
+(ns com.oncurrent.zeno.state-providers.crdt.common
   (:require
    [clojure.core.async :as ca]
    [deercreeklabs.async-utils :as au]
