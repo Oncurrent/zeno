@@ -357,6 +357,37 @@
     (throw (ex-info "`env-name` must be non-empty." (sym-map env-name))))
   (str "/client/" env-name))
 
+(defn get-normalized-array-index
+  "Translates relative indexing (e.g. using negative numbers to index from the
+   end) into absolute indexing. Returns nil if out of bounds."
+  [{:keys [array-len i]}]
+  (let [max-i (if (pos? array-len)
+                (dec array-len)
+                0)
+        norm-i (if (nat-int? i)
+                 i
+                 (+ array-len i))]
+    (cond
+      (neg? norm-i) nil
+      (> norm-i max-i) nil
+      :else norm-i)))
+
+(defn get-clamped-array-index
+  "Translates relative indexing (e.g. using negative numbers to index from the
+   end) into absolute indexing. Returns the first or last element if out of
+   bounds (depending on which end it's out)."
+  [{:keys [array-len i]}]
+  (let [max-i (if (pos? array-len)
+                (dec array-len)
+                0)
+        norm-i (if (nat-int? i)
+                 i
+                 (+ array-len i))]
+    (cond
+      (neg? norm-i) 0
+      (> norm-i max-i) max-i
+      :else norm-i)))
+
 ;;;;;;;;;;;;;;;;;;;; Platform detection ;;;;;;;;;;;;;;;;;;;;
 
 (defn jvm? []

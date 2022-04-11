@@ -7,12 +7,7 @@
    [deercreeklabs.lancaster :as l]
    [com.oncurrent.zeno.authorizers.affirmative-authorizer.client :as aa]
    [com.oncurrent.zeno.client.state-subscriptions :as state-subscriptions]
-   [com.oncurrent.zeno.client.storage :as client-storage]
-   [com.oncurrent.zeno.crdt.apply-ops-impl :as apply-ops]
-   [com.oncurrent.zeno.crdt.commands :as crdt-commands]
-   [com.oncurrent.zeno.crdt.common :as crdt-common]
    [com.oncurrent.zeno.common :as common]
-   [com.oncurrent.zeno.log-storage :as log-storage]
    [com.oncurrent.zeno.schemas :as schemas]
    [com.oncurrent.zeno.storage :as storage]
    [com.oncurrent.zeno.utils :as u]
@@ -60,65 +55,6 @@
    {}
    cmds))
 
-(defn <log-tx! [{:keys [zc ops update-infos] :as arg}]
-  (au/go
-    (let [{:keys [*actor-id client-name storage]} zc
-          actor-id @*actor-id
-          crdt-ops (au/<? (crdt-common/<crdt-ops->serializable-crdt-ops
-                           (assoc zc :ops ops)))
-          sys-time-ms (u/current-time-ms)
-          update-infos (au/<?
-                        (crdt-common/<update-infos->serializable-update-infos
-                         (assoc zc :update-infos update-infos)))
-          tx-info (u/sym-map actor-id crdt-ops sys-time-ms update-infos)
-          tx-id (u/compact-random-uuid)
-          arg* (-> zc
-                   (assoc :segment-position :tail)
-                   (assoc :log-type :producer))
-          tail-segment-id-k (client-storage/get-log-segment-id-k arg*)
-          head-segment-id-k (client-storage/get-log-segment-id-k
-                             (assoc arg* :segment-position :head))]
-      (au/<? (log-storage/<write-tx-info!
-              (u/sym-map storage tx-id tx-info)))
-      (au/<? (log-storage/<write-tx-id-to-log!
-              {:get-log-segment-k client-storage/get-log-segment-k
-               :head-segment-id-k head-segment-id-k
-               :log-type :producer
-               :storage storage
-               :tail-segment-id-k tail-segment-id-k
-               :tx-id tx-id})))))
-
-(defn <apply-tx! [{:keys [*crdt-state crdt-schema tx-info talk2-client]
-                   :as arg}]
-  (au/go
-    #_(let [<request-schema (make-schema-requester talk2-client)
-            ops (au/<? (crdt-common/<serializable-crdt-ops->crdt-ops
-                        (assoc arg
-                               :<request-schema <request-schema
-                               :ops (:crdt-ops tx-info))))
-            update-infos (au/<?
-                          (crdt-common/<serializable-update-infos->update-infos
-                           (assoc arg
-                                  :<request-schema <request-schema
-                                  :update-infos (:update-infos tx-info))))]
-        (swap! *crdt-state (fn [old-crdt]
-                             (apply-ops/apply-ops
-                              (assoc arg
-                                     :crdt old-crdt
-                                     :schema crdt-schema
-                                     :ops ops))))
-        (state-subscriptions/do-subscription-updates! arg update-infos))))
-
-(defn <get-last-producer-log-tx-i [arg]
-  (let [arg* (-> arg
-                 (assoc :segment-position :tail)
-                 (assoc :log-type :producer))
-        segment-id-k (client-storage/get-log-segment-id-k arg*)]
-    (log-storage/<get-last-log-tx-i
-     (assoc arg*
-            :get-log-segment-k client-storage/get-log-segment-k
-            :segment-id-k segment-id-k))))
-
 (defn <do-state-updates!*
   [{:keys [root->state-provider root->cmds]}]
   (au/go
@@ -159,18 +95,6 @@
       (state-subscriptions/do-subscription-updates! zc update-infos)
       true)))
 
-(defn <set-sync-session-info
-  [{:keys [*client-id crdt-branch talk2-client] :as arg}]
-  (au/go
-    (loop []
-      (if-let [client-id @*client-id]
-        (au/<? (t2c/<send-msg! talk2-client :set-sync-session-info
-                               {:branch crdt-branch
-                                :client-id client-id}))
-        (do
-          (ca/<! (ca/timeout 50))
-          (recur))))))
-
 (defn start-update-state-loop! [zc]
   (ca/go
     (let [{:keys [*stop? update-state-ch]} zc]
@@ -181,9 +105,6 @@
                 {:keys [cmds cb]} update-info]
             (try
               (when (= update-state-ch ch)
-                (log/info (str "UUUUUUU:\n"
-                               (u/pprint-str
-                                (u/sym-map update-info))))
                 (-> (<do-update-state! zc cmds)
                     (au/<?)
                     (cb)))
@@ -195,112 +116,35 @@
         (when-not @*stop?
           (recur))))))
 
-(defn start-sync-session-loop
-  [{:keys [*actor-id *stop? end-sync-session-ch talk2-client] :as arg}]
-  (ca/go
-    #_(try
-        (au/<? (<set-sync-session-info arg))
-        (catch #?(:clj Exception :cljs js/Error) e
-          (log/error "Error in setting sync session info"
-                     (u/ex-msg-and-stacktrace e))
-          (ca/<! (ca/timeout 1000))))
-    #_(loop []
-        (try
-          (let [p-tx-i (au/<? (<get-last-producer-log-tx-i arg))]
-            (au/<? (t2c/<send-msg! talk2-client
-                                   :publish-log-status
-                                   {:last-tx-i p-tx-i
-                                    :log-type :producer}))
-            #_(au/<? (<sync-consumer-log! arg)))
-          (catch #?(:clj Exception :cljs js/Error) e
-            (log/error "Error in sync-session-loop"
-                       (u/ex-msg-and-stacktrace e))
-            (ca/<! (ca/timeout 1000))))
-        (let [[v ch] (ca/alts! [end-sync-session-ch (ca/timeout 23000)])]
-          (when (and (not= end-sync-session-ch ch)
-                     (not @*stop?))
-            (recur))))))
-
 (defn make-on-connect
-  [{:keys [*talk2-client start-sync-session storage update-state-ch] :as arg}]
+  [{:keys [*talk2-client storage update-state-ch] :as arg}]
   (fn [{:keys [protocol url]}]
     (ca/go
       (try
-        (let [login-session-token (au/<? (storage/<get
-                                          storage
-                                          client-storage/login-session-token-key
-                                          schemas/login-session-token-schema))]
-          ;; TODO: Revise this for all state providers
-          #_(if-not login-session-token
-              (start-sync-session)
-              (if (au/<? (t2c/<send-msg! @*talk2-client
-                                         :resume-login-session
-                                         login-session-token))
-                (start-sync-session)
-                (ca/put! update-state-ch
-                         {:cb (fn [ret]
-                                (start-sync-session))
-                          :cmds [{:zeno/arg nil
-                                  :zeno/op :zeno/set
-                                  :zeno/path [:zeno/crdt]}]}))))
+        (let [])
         (catch #?(:clj Exception :cljs js/Error) e
           (log/error "Error in on-connect:\n"
                      (u/ex-msg-and-stacktrace e)))))))
 
 (defn make-on-disconnect
-  [{:keys [end-sync-session] :as arg}]
+  [{:keys [] :as arg}]
   (fn [{:keys [code url]}]
-    (end-sync-session)))
+    ))
 
 (defn make-talk2-client
   [{:keys [*talk2-client env-name get-server-base-url storage] :as arg}]
-  (let [handlers {:get-log-range
-                  (fn [{fn-arg :arg}]
-                    (when-not (= :producer (:log-type fn-arg))
-                      (throw (ex-info "Bad log-range request"
-                                      (u/sym-map fn-arg))))
-                    (let [arg* (-> (merge arg fn-arg)
-                                   (assoc :segment-position :head))
-                          segment-id-k (client-storage/get-log-segment-id-k
-                                        arg*)]
-                      (log-storage/<get-log-range
-                       (assoc arg*
-                              :get-log-segment-k client-storage/get-log-segment-k
-                              :segment-id-k segment-id-k))))
-
-                  :get-schema-pcf-for-fingerprint
+  (let [handlers {:get-schema-pcf-for-fingerprint
                   (fn [{:keys [arg]}]
                     (au/go
                       (-> (storage/<fp->schema storage arg)
                           (au/<?)
-                          (l/json))))
-
-                  :get-tx-info
-                  (fn [{tx-id :arg}]
-                    (log-storage/<get-tx-info (assoc arg :tx-id tx-id)))
-
-                  :publish-log-status
-                  (fn [{fn-arg :arg}]
-                    ;; TODO: Implement
-                    )}]
+                          (l/json))))}]
     (t2c/client {:get-url #(str (get-server-base-url)
                                 (u/env-name->client-path-name env-name))
                  :handlers handlers
                  :on-connect (make-on-connect arg)
                  :on-disconnect (make-on-disconnect arg)
                  :protocol schemas/client-server-protocol})))
-
-(defn <get-client-id [storage]
-  (au/go
-    (or (au/<? (storage/<get storage
-                             client-storage/client-id-key
-                             schemas/client-id-schema))
-        (let [client-id (u/compact-random-uuid)]
-          (storage/<add! storage
-                         client-storage/client-id-key
-                         schemas/client-id-schema
-                         client-id)
-          client-id))))
 
 (defn update-state! [zc cmds cb]
   ;; We put the updates on a channel to guarantee serial update order
@@ -327,44 +171,25 @@
         *state-sub-name->info (atom {})
         *actor-id (atom nil)
         *talk2-client (atom nil)
-        *client-id (atom nil)
-        _ (ca/take! (<get-client-id storage) #(reset! *client-id %))
         update-state-ch (ca/chan (ca/sliding-buffer 1000))
-        *end-sync-session-ch (atom nil)
-        end-sync-session #(when-let [ch @*end-sync-session-ch]
-                            (ca/put! ch true))
         arg (u/sym-map *actor-id
-                       *client-id
                        *stop?
                        admin-password
                        client-name
-                       end-sync-session
                        env-name
                        get-server-base-url
                        root->state-provider
                        rpcs
                        storage
                        update-state-ch)
-        start-sync-session #(let [end-sync-session-ch (ca/promise-chan)
-                                  talk2-client @*talk2-client]
-                              (reset! *end-sync-session-ch
-                                      end-sync-session-ch)
-                              (start-sync-session-loop
-                               (assoc arg
-                                      :end-sync-session-ch end-sync-session-ch
-                                      :talk2-client talk2-client)))
         talk2-client (when (:zeno/get-server-base-url config*)
                        (let [arg* (assoc arg
-                                         :*talk2-client *talk2-client
-                                         :start-sync-session start-sync-session)]
+                                         :*talk2-client *talk2-client)]
                          (make-talk2-client arg*)))
         _ (reset! *talk2-client talk2-client)
         on-actor-id-change (fn [actor-id]
                              ;; TODO: Pass this to all state providers
-                             (ca/put! update-state-ch
-                                      {:cmds [{:zeno/arg nil
-                                               :zeno/op :zeno/set
-                                               :zeno/path [:zeno/crdt]}]}))
+                             )
         zc (merge arg (u/sym-map *next-instance-num
                                  *next-topic-sub-id
                                  *state-sub-name->info
@@ -437,9 +262,6 @@
                    :rpc-name-kw-ns (namespace rpc-name-kw)
                    :rpc-name-kw-name (name rpc-name-kw)
                    :arg s-arg}
-          _ (log/info "RRRRRR:\n"
-                      (u/pprint-str
-                       (u/sym-map rpc-arg arg)))
           rpc-ch (t2c/<send-msg! talk2-client :rpc rpc-arg)
           timeout-ch (ca/timeout timeout-ms)
           [ret ch] (au/alts? [rpc-ch timeout-ch])

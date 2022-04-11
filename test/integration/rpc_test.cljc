@@ -13,7 +13,7 @@
 ;;;; You must start the integration test server for these tests to work.
 ;;;; $ bin/run-test-server
 
-(deftest ^:this test-rpc
+(deftest test-rpc
   (au/test-async
    10000
    (ca/go
@@ -37,7 +37,6 @@
              (au/<? (zc/<rpc! zc :throw-if-even 42))
              (is (= :should-have-thrown :but-didnt))
              (catch #?(:clj Exception :cljs js/Error) e
-               (log/info "XXXX")
                (is (= :should-throw :should-throw)))))
          (catch #?(:clj Exception :cljs js/Error) e
            (log/error (u/ex-msg-and-stacktrace e))

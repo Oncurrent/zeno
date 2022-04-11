@@ -8,6 +8,7 @@
    [com.oncurrent.zeno.authenticators.password.client :as password-client]
    [com.oncurrent.zeno.authenticators.password.shared :as password-shared]
    [com.oncurrent.zeno.client :as zc]
+   [com.oncurrent.zeno.state-providers.crdt :as-alias crdt]
    [com.oncurrent.zeno.state-providers.crdt.client :as crdt-client]
    [com.oncurrent.zeno.state-providers.crdt.shared :as crdt-shared]
    [com.oncurrent.zeno.utils :as u]
@@ -23,9 +24,9 @@
 ;;;; $ bin/run-test-server
 
 (defn make-zc [{:keys [env-name]}]
-  (let [crdt-sp (crdt-client/state-provider
-                 {:authorizer nil ; TODO: Fill this in
-                  :crdt-schema ts/crdt-schema})
+  (let [crdt-sp (crdt-client/->state-provider
+                 #::crdt{:authorizer nil ; TODO: Fill this in
+                         :schema ts/crdt-schema})
         config #:zeno{:env-name env-name
                       :root->state-provider {:zeno/crdt crdt-sp}
                       :get-server-base-url (constantly "ws://localhost:8080")}]

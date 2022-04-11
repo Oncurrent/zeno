@@ -5,7 +5,6 @@
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
    [com.oncurrent.zeno.client.impl :as cimpl]
-   [com.oncurrent.zeno.client.storage :as client-storage]
    [com.oncurrent.zeno.common :as common]
    [com.oncurrent.zeno.schemas :as schemas]
    [com.oncurrent.zeno.storage :as storage]
@@ -15,17 +14,6 @@
 (defn set-actor-id! [{:keys [*actor-id actor-id on-actor-id-change]}]
   (reset! *actor-id actor-id)
   (on-actor-id-change actor-id))
-
-(defn <process-login-session-info!
-  [{:keys [login-session-info storage] :as arg}]
-  (au/go
-    (let [{:keys [actor-id login-session-token]} login-session-info]
-      (set-actor-id! (assoc arg :actor-id actor-id))
-      (when login-session-token
-        (au/<? (storage/<swap! storage
-                               client-storage/login-session-token-key
-                               schemas/login-session-token-schema
-                               (constantly login-session-token)))))))
 
 (defn <client-log-in
   [{:keys [authenticator-name
@@ -52,15 +40,12 @@
                                 :reader-schema login-ret-extra-info-schema
                                 :serialized-value serialized-extra-info
                                 :storage storage})))]
-      (au/<? (<process-login-session-info!
-              (assoc zeno-client :login-session-info login-session-info)))
       (u/sym-map extra-info login-session-info))))
 
 (defn <client-log-out [{:keys [*actor-id storage talk2-client] :as zeno-client}]
   ;; TODO: Delete stored transaction log data
   ;; TODO: Update subscribers that actor-id has changed
   (set-actor-id! (assoc zeno-client :actor-id nil))
-  (storage/<delete! storage client-storage/login-session-token-key)
   (t2c/<send-msg! talk2-client :log-out nil))
 
 (defn <client-update-authenticator-state
@@ -150,10 +135,6 @@
 
 (defn <client-resume-login-session
   [{:keys [login-session-token zeno-client]}]
-  (au/go
-    (let [login-session-info (au/<? (t2c/<send-msg! (:talk2-client zeno-client)
-                                                    :resume-login-session
-                                                    login-session-token))]
-      (au/<? (<process-login-session-info!
-              (assoc zeno-client :login-session-info login-session-info)))
-      login-session-info)))
+  (t2c/<send-msg! (:talk2-client zeno-client)
+                  :resume-login-session
+                  login-session-token))

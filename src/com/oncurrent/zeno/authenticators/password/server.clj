@@ -107,12 +107,13 @@
   (get-get-state-ret-schema [this get-type]
     ))
 
-(defn password-authenticator
+(defn ->authenticator
   ([]
-   (password-authenticator {}))
+   (->authenticator {}))
   ([{:keys [login-lifetime-mins storage-name]
      :or {login-lifetime-mins (* 14 24 60)}}]
    (when-not (or (nil? storage-name) (keyword? storage-name))
-     (throw (ex-info (str "The supplied storage-name must be a keyword or nil. Got "
-                          storage-name " which is a " (type storage-name) ". "))))
+     (throw (ex-info
+             (str "The supplied storage-name must be a keyword or nil. Got "
+                  storage-name " which is a " (type storage-name) ". "))))
    (->PasswordAuthenticator login-lifetime-mins storage-name)))

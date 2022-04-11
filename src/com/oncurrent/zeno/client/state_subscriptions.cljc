@@ -6,14 +6,10 @@
    [deercreeklabs.async-utils :as au]
    [com.oncurrent.zeno.client.client-commands :as client-commands]
    [com.oncurrent.zeno.client.react.impl :as react-impl]
+   [com.oncurrent.zeno.client.state-provider-impl :as sp-impl]
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]
    [weavejester.dependency :as dep]))
-
-#_
-(defmethod get-in-state :zeno/client
-  [{:keys [state path prefix]}]
-  (client-commands/get-in-state state path prefix))
 
 (defn get-in-state [{root :prefix
                      zc :zc
@@ -26,7 +22,7 @@
                                  "`.")
                             {:root root
                              :known-roots (keys root->state-provider)})))
-        {:keys [get-in-state]} state-provider]
+        {::sp-impl/keys [get-in-state]} state-provider]
     (get-in-state arg)))
 
 (defn get-non-numeric-part [path]
@@ -287,7 +283,7 @@
                                  "`.")
                             {:root root
                              :known-roots (keys root->state-provider)})))
-        {:keys [get-state-atom]} state-provider
+        {::sp-impl/keys [get-state-atom]} state-provider
         state-src (get-state-atom)]
     (u/sym-map state-src resolved-path root)))
 
@@ -320,7 +316,8 @@
                 new-sub-info (-> old-sub-info
                                  (assoc :state state)
                                  (assoc :expanded-paths expanded-paths))]
-            (swap! (:*state-sub-name->info zc) assoc state-sub-name new-sub-info)
+            (swap! (:*state-sub-name->info zc)
+                   assoc state-sub-name new-sub-info)
             (update-fn state)))))))
 
 (defn get-update-fn-info [zc state-sub-names]

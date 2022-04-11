@@ -10,7 +10,6 @@
    [com.oncurrent.zeno.distributed-mutex :as dm]
    [com.oncurrent.zeno.schemas :as schemas]
    [com.oncurrent.zeno.server.authenticator-impl :as auth-impl]
-   [com.oncurrent.zeno.server.log-sync :as log-sync]
    [com.oncurrent.zeno.server.state-provider-impl :as sp-impl]
    [com.oncurrent.zeno.server.utils :as su]
    [com.oncurrent.zeno.storage :as storage]
@@ -243,9 +242,6 @@
     (let [{:keys [arg rpc-id rpc-name-kw-name rpc-name-kw-ns]} (:arg orig-arg)
           rpc-name-kw (keyword rpc-name-kw-ns rpc-name-kw-name)]
       (try
-        (log/info (str "DDDD:\n"
-                       (u/pprint-str
-                        (keys orig-arg))))
         (let [handler (get @*rpc-name-kw->handler rpc-name-kw)
               <request-schema (su/make-schema-requester orig-arg)
               _ (when-not handler
@@ -261,17 +257,14 @@
               actor-id (some-> @*conn-id->auth-info
                                (get conn-id)
                                (:actor-id))
-              h-arg #:zeno{:<get-state #(<get-state
-                                         (merge {:zeno/branch branch} %))
-                           :<set-state! #(<set-state!
-                                          (merge {:zeno/branch branch} %))
-                           :<update-state! #(<update-state!
-                                             (merge {:zeno/branch branch} %))
+              h-arg #:zeno{:<get-state <get-state
+                           :<set-state! <set-state!
+                           :<update-state! <update-state!
                            :authenticator-name->info authenticator-name->info
                            :arg deser-arg
                            :actor-id actor-id
-                           :branch branch
-                           :conn-id conn-id}
+                           :conn-id conn-id
+                           :env-name env-name}
               ret (handler h-arg)
               val (if (au/channel? ret)
                     (au/<? ret)
@@ -299,17 +292,17 @@
           (:state-provider-infos env-info)))
 
 (defn check-sp-spi-match [{:keys [env-name root sp spi]}]
-  (let [{sp-get-name :get-name} sp
+  (let [{sp-get-name ::sp-impl/get-name} sp
         {spi-name :state-provider-name} spi
         sp-name (sp-get-name)]
-    (when-not (= sp-name spi-name)
+    (when (and spi-name sp-name (not= sp-name spi-name))
       (throw (ex-info
               (str "State provider names do not match. The state provider "
                    "configured at server startup (via the "
                    "`root->state-provider` map) for this path root (`" root
-                   "`)  is named `" sp-name "`. "
-                   "The state provider named by the env `" env-name "` is `"
-                   spi-name "`.")
+                   "`)  is named `" (or sp-name "nil") "`. "
+                   "The state provider named by the env `" (or env-name "nil")
+                   "` is `" (or spi-name "nil") "`.")
               (u/sym-map env-name root sp-name spi-name))))))
 
 (defn get-state-branch
@@ -324,7 +317,7 @@
   ;; TODO: Implement
   )
 
-(defn check-update-state-arg [{:keys [cmds]}]
+(defn check-update-state-arg [{:zeno/keys [cmds]}]
   (when-not (sequential? cmds)
     (throw (ex-info
             (str "<update-state! must be called with a `:zeno/cmds` value that "
@@ -346,7 +339,7 @@
   (au/go
     (let [env-info (au/<? (<get-env-info arg))
           root->spis (make-root->state-provider-infos env-info)
-          <update-state! (fn [{:keys [cmds] :as us-arg}]
+          <update-state! (fn [{:zeno/keys [branch cmds] :as us-arg}]
                            (check-update-state-arg us-arg)
                            (let [root (-> cmds first :zeno/path first)
                                  sp (root->state-provider root)
@@ -395,20 +388,11 @@
                   #(auth-impl/<handle-get-authenticator-state
                     (merge base-info auth-info state-fns %))
 
-                  :get-log-range
-                  #(log-sync/<handle-get-log-range (merge base-info %))
-
-                  :get-log-status
-                  #(log-sync/<handle-get-log-status (merge base-info %))
-
                   :get-schema-pcf-for-fingerprint
                   #(au/go
                      (-> (storage/<fp->schema storage (:arg %))
                          (au/<?)
                          (l/json)))
-
-                  :get-tx-info
-                  #(log-sync/<handle-get-tx-info (merge base-info %))
 
                   :log-in
                   #(auth-impl/<handle-log-in
@@ -417,18 +401,12 @@
                   :log-out
                   #(auth-impl/<handle-log-out (merge base-info state-fns %))
 
-                  :publish-log-status
-                  #(log-sync/<handle-publish-log-status (merge base-info %))
-
                   :resume-login-session
                   #(auth-impl/<handle-resume-login-session
                     (merge base-info auth-info state-fns %))
 
                   :rpc
                   #(<do-rpc! (merge auth-info base-info rpc-info state-fns %))
-
-                  :set-sync-session-info
-                  #(log-sync/handle-set-sync-session-info (merge base-info %))
 
                   :update-authenticator-state
                   #(auth-impl/<handle-update-authenticator-state
@@ -528,14 +506,22 @@
      :path "/admin"
      :protocol schemas/admin-client-server-protocol}))
 
+(defn <add-default-env [{:keys [server] :as arg}]
+  (ca/go
+    (try
+      (let [arg* (assoc arg :env-name u/default-env-name)
+            default-env-ep-info (au/<? (<make-client-ep-info arg*))]
+        (t2s/add-endpoint! (assoc default-env-ep-info :server server)))
+      (catch Exception e
+        (log/error (str "Error adding default env:\n"
+                        (u/ex-msg-and-stacktrace e)))))))
+
 (defn make-talk2-server [{:keys [port] :as arg}]
   (let [server (t2s/server (assoc arg :port port))
         admin-client-ep-info (make-admin-client-ep-info
-                              (assoc arg :server server))
-        default-env-ep-info (make-client-ep-info
-                             (assoc arg :env-name u/default-env-name))]
+                              (assoc arg :server server))]
+    (<add-default-env (assoc arg :server server))
     (t2s/add-endpoint! (assoc admin-client-ep-info :server server))
-    (t2s/add-endpoint! (assoc default-env-ep-info :server server))
     server))
 
 (defn make-authenticator-storage [authenticator-name storage]
