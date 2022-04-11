@@ -3,9 +3,8 @@
    [clojure.core.async :as ca]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
-   [com.oncurrent.zeno.crdt :as crdt]
-   [com.oncurrent.zeno.crdt.commands :as crdt-commands]
    [com.oncurrent.zeno.schemas :as schemas]
+   [com.oncurrent.zeno.state-providers.crdt.common :as crdt]
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 

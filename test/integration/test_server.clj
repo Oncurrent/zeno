@@ -5,6 +5,7 @@
    [com.oncurrent.zeno.authenticators.password.server :as password]
    [com.oncurrent.zeno.authorizers.affirmative-authorizer.server :as authz]
    [com.oncurrent.zeno.server :as server]
+   [com.oncurrent.zeno.state-providers.crdt :as-alias crdt]
    [com.oncurrent.zeno.storage :as storage]
    [com.oncurrent.zeno.utils :as u]
    [deercreeklabs.async-utils :as au]
@@ -54,12 +55,12 @@
 
 (defn -main [port-str tls?-str]
   (let [tls? (#{"true" "1"} (str/lower-case tls?-str))
-        password-auth (password/make-authenticator)
-        authenticators [password-auth]
         port (u/str->int port-str)
-        root->sp {:zeno/crdt }
+        crdt-sp (->state-provider #::crdt{:authorizer (authz/->authorizer)
+                                          :schema test-schemas/crdt-schema})
+        root->sp {:zeno/crdt crdt-sp}
         config #:zeno{:admin-password ti/admin-password
-                      :authenticators authenticators
+                      :authenticators [(password/make-authenticator)]
                       :port port
                       :root->state-provider root->sp
                       :rpcs test-schemas/rpcs

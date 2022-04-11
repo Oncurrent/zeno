@@ -326,3 +326,7 @@
             (if (= last-i new-i)
               new-out
               (recur new-i new-out))))))))
+
+(defn get-value [{:keys [crdt make-id path schema] :as arg}]
+  (-> (get-value-info arg)
+      (:value)))
