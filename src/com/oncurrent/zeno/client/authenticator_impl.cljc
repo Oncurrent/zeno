@@ -80,9 +80,6 @@
                :branch crdt-branch
                :serialized-update-info ser-info
                :update-type update-type}
-          _  (log/info (str "****:\n"
-                            (u/pprint-str
-                             (u/sym-map arg))))
           s-val (au/<? (t2c/<send-msg! talk2-client
                                        :update-authenticator-state
                                        arg))]

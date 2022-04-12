@@ -7,10 +7,10 @@
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
-(defn zeno-client
+(defn ->zeno-client
   "Returns a Zeno client."
   ([]
-   (zeno-client {}))
+   (->zeno-client {}))
   ([config]
    (impl/zeno-client config)))
 

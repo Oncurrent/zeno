@@ -21,7 +21,7 @@
 (defn make-zc [{:keys [env-name]}]
   (let [config #:zeno{:env-name env-name
                       :get-server-base-url (constantly "ws://localhost:8080")}]
-    (zc/zeno-client config)))
+    (zc/->zeno-client config)))
 
 
 (def ex #?(:clj Exception :cljs js/Error))

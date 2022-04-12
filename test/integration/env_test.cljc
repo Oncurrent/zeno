@@ -5,8 +5,9 @@
    #?(:clj [clojure.java.io :as io])
    [clojure.test :refer [deftest is]]
    [com.oncurrent.zeno.admin-client :as admin]
-   [com.oncurrent.zeno.authenticators.password.client :as password-client]
-   [com.oncurrent.zeno.authenticators.password.shared :as password-shared]
+   [com.oncurrent.zeno.authenticators.password :as-alias pwd-auth]
+   [com.oncurrent.zeno.authenticators.password.client :as pwd-client]
+   [com.oncurrent.zeno.authenticators.password.shared :as pwd-shared]
    [com.oncurrent.zeno.client :as zc]
    [com.oncurrent.zeno.state-providers.crdt :as-alias crdt]
    [com.oncurrent.zeno.state-providers.crdt.client :as crdt-client]
@@ -30,9 +31,9 @@
         config #:zeno{:env-name env-name
                       :root->state-provider {:zeno/crdt crdt-sp}
                       :get-server-base-url (constantly "ws://localhost:8080")}]
-    (zc/zeno-client config)))
+    (zc/->zeno-client config)))
 
-(deftest test-envs
+(deftest ^:this test-envs
   (au/test-async
    10000
    (au/go
@@ -44,11 +45,11 @@
            perm-env-name "test-env-perm"
            envs (au/<? (admin/<get-env-names {:zeno/admin-client admin}))
            _ (when (= true (some #(= perm-env-name %) envs))
-               #_(au/<? (admin/<delete-env!
-                         #:zeno{:admin-client admin
-                                :env-name perm-env-name})))
+               (au/<? (admin/<delete-env!
+                       #:zeno{:admin-client admin
+                              :env-name perm-env-name})))
            auth-infos [#:zeno{:authenticator-name
-                              password-shared/authenticator-name
+                              pwd-shared/authenticator-name
                               ;; If :authenticator-branch is nil, Zeno will use
                               ;; the :env-name as the branch
                               :authenticator-branch nil}]
@@ -92,25 +93,25 @@
            ;; Add an actor to the temp env
            actor-id "actor1"
            actor-pwd "adslfkjfads1541l2hnjmlas 1q2k34213lk,sASrwqfsad  dasf"
-           aaap-ret (au/<? (password-client/<add-actor-and-password!
+           aaap-ret (au/<? (pwd-client/<add-actor-and-password!
                             {:zeno/actor-id actor-id
                              :zeno/zeno-client zc-temp
-                             :password actor-pwd}))
+                             ::pwd-auth/password actor-pwd}))
            _ (log/info "AAAAAA")
            _ (is (= true aaap-ret))
            _ (log/info "BBBBB")
            ;; Log in as the new actor
-           login-ret (au/<? (password-client/<log-in!
+           login-ret (au/<? (pwd-client/<log-in!
                              {:zeno/actor-id actor-id
                               :zeno/zeno-client zc-temp
-                              :password actor-pwd}))
+                              ::pwd-auth/password actor-pwd}))
            _ (is (= actor-id (:actor-id login-ret)))
            _ (log/info "CCCCC")
            ;; Try to log in on the perm env as the new actor - Should fail
-           _ (is (= false (au/<? (password-client/<log-in!
+           _ (is (= false (au/<? (pwd-client/<log-in!
                                   {:zeno/actor-id actor-id
                                    :zeno/zeno-client zc-perm
-                                   :password actor-pwd}))))
+                                   ::pwd-auth/password actor-pwd}))))
            _ (log/info "DDDDD")
            ;; Remove the perm env
            #_ (is (= true (au/<? (admin/<delete-env!

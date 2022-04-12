@@ -34,11 +34,11 @@
                                                      :crdt @*crdt-state
                                                      :path (rest path)
                                                      :schema schema)))]
-    ::sp-impl{:<update-state! (make-<update-state!
-                               (u/sym-map *crdt-state schema))
-              :get-in-state get-in-state
-              :get-name (constantly shared/state-provider-name)
-              :get-state-atom (constantly *crdt-state)}))
+    #::sp-impl{:<update-state! (make-<update-state!
+                                (u/sym-map *crdt-state schema))
+               :get-in-state get-in-state
+               :get-name (constantly shared/state-provider-name)
+               :get-state-atom (constantly *crdt-state)}))
 #_#_
 handlers  {:get-log-range
            (fn [{fn-arg :arg}]

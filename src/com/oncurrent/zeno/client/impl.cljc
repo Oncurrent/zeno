@@ -6,6 +6,7 @@
    [deercreeklabs.baracus :as ba]
    [deercreeklabs.lancaster :as l]
    [com.oncurrent.zeno.authorizers.affirmative-authorizer.client :as aa]
+   [com.oncurrent.zeno.client.state-provider-impl :as sp-impl]
    [com.oncurrent.zeno.client.state-subscriptions :as state-subscriptions]
    [com.oncurrent.zeno.common :as common]
    [com.oncurrent.zeno.schemas :as schemas]
@@ -73,7 +74,7 @@
                                    "`.")
                               {:root root
                                :known-roots (keys root->state-provider)})))
-                {:keys [<update-state!]} state-provider
+                {::sp-impl/keys [<update-state!]} state-provider
                 cmds (root->cmds root)
                 update-infos (au/<? (<update-state! {:zeno/cmds cmds}))
                 new-out (concat out update-infos)]

@@ -17,11 +17,10 @@
   (au/test-async
    10000
    (ca/go
-     (let [config #:zeno{:crdt-schema test-schemas/crdt-schema
-                         :get-server-base-url (constantly
+     (let [config #:zeno{:get-server-base-url (constantly
                                                "ws://localhost:8080")
                          :rpcs test-schemas/rpcs}
-           zc (zc/zeno-client config)]
+           zc (zc/->zeno-client config)]
        (try
          (let [arg [1 3 6]
                ret (au/<? (zc/<rpc! zc :add-nums arg))
