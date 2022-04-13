@@ -145,16 +145,16 @@
            (when-not (str/ends-with? base-url "/")
              "/")
            "client"
-           (when (not-empty? query-str)
+           (when (not-empty query-str)
              "?")
            query-str))))
 
 (defn make-talk2-client
   [{:keys [*talk2-client env-name get-server-base-url storage] :as arg}]
   (let [handlers {:get-schema-pcf-for-fingerprint
-                  (fn [{:keys [arg*]}]
+                  (fn [fn-arg]
                     (au/go
-                      (-> (storage/<fp->schema storage arg*)
+                      (-> (storage/<fp->schema storage (:arg fn-arg))
                           (au/<?)
                           (l/json))))}]
     (t2c/client {:get-url (make-get-url arg)
