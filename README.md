@@ -8,11 +8,12 @@ Zeno is a framework for building applications that are:
 * collaborative (with conflict resolution)
 * access controlled
 
-The offline and conflict resolution features are supported by first class CRDT
-data structures being used under the hood.
-
-[Authentication and authorization](#authentication-and-authorization) to
-certain data paths are both handled via a plugin pattern.
+Zeno is essentially a layer of plumbing and interfaces resulting in a plugin
+architecture. The above list of features could be expanded and/or altered
+should you implement one or more plugins as will be described. For example,
+the offline and conflict resolution capabilities are supported by first class
+CRDT data structures implemented in the CRDT State Provider, but more on that
+below.
 
 ***Zeno is in an experimental and rapidly-changing state. Use at your own
 risk.***
@@ -26,62 +27,65 @@ In deps.edn:
 
 # Zeno Concepts
 
-## Branches
-When you create a Zeno client you specify which branch it will use.
+## Chassis
+Zeno, in a large way, fills the role of a chassis for your application. It
+provides basic server capabilities like clustering, flexible environment
+support (think dev/test/prod), and communication layers for various parts of
+you application. It also exposes a number of interfaces that when satisfied are
+used to implement state providers, authenticators, and authorizers. Zeno ships
+with a number of such implementations but you may find that your specific needs
+can only be met with specific implementations which you can provide.
+
+Which combination of state providers, authenticators and authorizers you use
+and which data you are using is a runtime configuration (supposing you told
+your server about the various options at server start-up time). Such
+configuration happens via Environments.
+
+### Environments
 TODO
 
 ## Data
-Zeno stores all state in a tree. There is one schema for the tree, usually
-quite nested. The schema is created and passed to the Zeno server at creation
-time using [Lancaster Schemas](https://github.com/deercreeklabs/lancaster). The
-schema completely specifies what the shape of the tree is and what the valid
-[paths](#paths) in it are. The physical manifestation of the tree, the values
-at the nodes, can be distributed and not necessarily the same for everyone
-participating. For example, some [paths](#paths) of the tree are stored only on
-the local [client](#client), while others are stored only on the
-[server](#server) side, and [yet others continuously synced](#crdt) between the
-two and even multiple clients (through the server, not peer to peer).
+Zeno conceptualizes all state as a tree. The tree has a number of roots which
+correspond to the state providers that back the data beneath each root. The
+specification of what roots contain which state providers is up to you. There
+may or may not be a schema for any given root depending on whether or not the
+given state provider supports schemas but if there is it is specified via
+[Lancaster Schemas](https://github.com/deercreeklabs/lancaster). The schema
+completely specifies what the shape of the tree is at any given root for which
+it pertains and what the valid [paths](#paths) in it are. The physical
+manifestation of the tree, the values at the nodes, can be distributed and not
+necessarily the same for everyone participating. For example, some
+[paths](#paths) of the tree may be stored only in local memory, while others
+are stored only on the server (either persisted or not), and yet others
+continuously synced between the server and oner or more clients.
 
 ### Paths
 State paths are a sequence of keys that index into the state data structure.
 These keys can be keywords, strings, or integers, depending on the specific
 state data structure. Keyword keys may or may not have namespaces. A path must
-start with one of the built-in roots, each of which supplies a different set of
-storage and conflict resolution attributes and online/offline behavior:
-* `:zeno/client`
-  * see [Client](#client)
-* `:zeno/crdt`
-  * see [CRDT](#crdt)
-* `:zeno/online`
-  * name TDB
-  * not implemented
-  * see [Online](#online)
-* `:zeno/server`
-  * for storing data only the server can access
-  * useful for e.g. certain types of bookkeeping data
-  * assumes server is always online, data is strongly consistent
-* other roots could be created for different storage and conflict resolution
-  attributes or online/offline attributes/behaviors as
-  [described below](#other-types)
+start with one of the roots specified in the environment being used. You pick
+which root to use based on the desired attributes of the state provider at said
+root.
 
-Some examples:
-* `[:zeno/client :user-id]`
-* `[:zeno/client :score-info :high-score]`
-* `[:zeno/crdt :users "my-user-id" :user/name]`
-* `[:zeno/crdt :msgs 0]`
-* `[:zeno/online :users "my-user-id" :fastq]`
+For example, suppose you chose to use the client state provider at the root
+`:local`:
+* `[:local :user-id]`
+* `[:local :score-info :high-score]`
+Or perhaps you chose to use the CRDT state provider at the root `:crdt`:
+* `[:crdt :users "my-user-id" :user/name]`
+* `[:crdt :msgs 0]`
 
 #### End-relative Indexing (Sequences only)
 For paths referring to sequence data types, the path can use either
 front-relative indexing, .e.g.:
 
-* `[:zeno/crdt :msgs 0]` - Refers to the first msg in the list
-* `[:zeno/crdt :msgs 1]` - Refers to the second msg in the list
+* `[:crdt :msgs 0]` - Refers to the first msg in the list
+* `[:crdt :msgs 1]` - Refers to the second msg in the list
 
 or end-relative indexing, e.g.:
 
-* `[:zeno/crdt :msgs -1]` - Refers to the last msg in the list
-* `[:zeno/crdt :msgs -2]` - Refers to the penultimate msg in the list
+* `[:crdt :msgs -1]` - Refers to the last msg in the list
+* `[:crdt :msgs -2]` - Refers to the penultimate msg in the list
 
 #### Zeno Special Keywords
 Zeno provides a number of special paths and keywords to provide convenience and
@@ -95,24 +99,24 @@ the value is information about the book (book-info) such as title, author, etc.
 
 * `:zeno/keys`
   * If you want a list of ISBN's you could bind the map of books at path
-    `[:zeno/crdt :books]` to the symbol `books` in your subscription map and
+    `[:crdt :books]` to the symbol `books` in your subscription map and
     then on another line call `(keys books)`. `:zeno/keys` is a convenience you
     can put on the end of the data path to avoid the second step. Thus you can
-    bind `isbns` straight to the list via `[:zeno/crdt :books :zeno/keys]` and
+    bind `isbns` straight to the list via `[:crdt :books :zeno/keys]` and
     avoid the second step of calling `keys`.
   * `:zeno/keys` can only appear at the end of the path.
-  * The behavior matches Clojure's `keys`. Thus if you try `[:zeno/crdt :books
+  * The behavior matches Clojure's `keys`. Thus if you try `[:crdt :books
     isbn :author :zeno/keys]` you'll get an error as if you tried `(keys
     "Ernest Hemingway")` though Zeno does its own check so you get a more
     useful error.
 * `[:zeno/*]`
   * Used for joins across _all_ nodes at a given level in the state tree. See
     [Joins](#joins) to join across a subset of nodes at a given level.
-  * This allows you to get a list of all authors via `[:zeno/crdt :books
+  * This allows you to get a list of all authors via `[:crdt :books
     :zeno/* :author]`.
-  * Note the difference between `[:zeno/crdt :books]` which will return you a
+  * Note the difference between `[:crdt :books]` which will return you a
     map of ISBN's to book-info's (title, author, etc.) and
-    `[:zeno/crdt :books :zeno/*]` which will return you a list of book-info's
+    `[:crdt :books :zeno/*]` which will return you a list of book-info's
     thus dropping the ISBN info (unless you have redundantly stored ISBN in
     each book-info).
   * `:zeno/*` can appear anywhere in the path.
@@ -122,10 +126,10 @@ the value is information about the book (book-info) such as title, author, etc.
   * Used for count aggregations.
   * To get the count of any collection that may exist at some path simply add
     `:zeno/count` to the end. For example, to count how many books you have
-    you could use `[:zeno/crdt :books :zeno/count]`.
+    you could use `[:crdt :books :zeno/count]`.
   * `:zeno/count` can only appear at the end of the path.
   * It doesn't matter if the collection is associative or not, the behavior
-    matches Clojure's `count`. This also means that `[:zeno/crdt :books isbn
+    matches Clojure's `count`. This also means that `[:crdt :books isbn
     :page-count :zeno/count]` results in an error as if you tried `(count 42)`
     though Zeno does its own check so you get a more useful error.
 * `:zeno/actor-id`
@@ -143,119 +147,36 @@ the value is information about the book (book-info) such as title, author, etc.
       multiple authors and so you decide to store a list of authors rather than
       a single author.
     * You could access the list of authors of a single paper whose ID you have
-      already stored in the symbol `paper-id` via `[:zeno/crdt :papers paper-id
+      already stored in the symbol `paper-id` via `[:crdt :papers paper-id
       :authors]`.
     * If you want a list of all the authors for all papers you can use
-      `[:zeno/crdt :papers :zeno/* :authors]` but this returns a nested list.
-      You can conveniently concat them all into a flat list via `[:zeno/crdt
+      `[:crdt :papers :zeno/* :authors]` but this returns a nested list.
+      You can conveniently concat them all into a flat list via `[:crdt
       :papers :zeno/* :authors :zeno/concat]`
   * `:zeno/concat` can appear anywhere in the path.
   * The behavior matches Clojure's `concat`. It's up to you to ensure you don't
     use `:zeno/concat` on an invalid type e.g. and integer. Referring to our
-    books example again, `[:zeno/crdt :books isbn :author :zeno/concat]` will
+    books example again, `[:crdt :books isbn :author :zeno/concat]` will
     throw an error just like `(concat "Ernest Hemingway")` does though Zeno
     does its own check so you get a more useful error.
 
 ##### Quick reference:
 ```clojure
-[:zeno/crdt :books :zeno/keys] ; => list of ISBN's
-[:zeno/crdt :books :zeno/count] ; => 42
-[:zeno/crdt :books] ; => map of all books
-[:zeno/crdt :books :zeno/*] ; => list of all book-info's
-[:zeno/crdt :books :zeno/* :author] ; => list of authors (including duplicates)
-[:zeno/crdt :papers :zeno/* :authors :zeno/concat] ; => flat list of all authors of all papers
+[:crdt :books :zeno/keys] ; => list of ISBN's
+[:crdt :books :zeno/count] ; => 42
+[:crdt :books] ; => map of all books
+[:crdt :books :zeno/*] ; => list of all book-info's
+[:crdt :books :zeno/* :author] ; => list of authors (including duplicates)
+[:crdt :papers :zeno/* :authors :zeno/concat] ; => flat list of all authors of all papers
 ```
-
-### Types of State
-
-#### Client
-Client state is local to the client. This means that this data is not shared
-with the server nor any other clients. This data is ephemeral, meaning when
-the client session is closed the data is forgotten. If a user logs out and back
-in they are now a new client and do not retain any previous client data. The
-data may not be purged from memory, however, and so we still recommend users
-close their browser when they log out for maximum security.
-
-Zeno does not enforce any schema on this state.
-
-This state is used via the `[:zeno/client ...]` path.
-
-#### CRDT
-Aka "Online or Offline Data With Strong Eventual Consistency"
-
-See [Data Consistency Models](./data-consistency-models.md) for discussion on
-strong consistency vs eventual consistency vs strong eventual consistency.
-
-CRDT state is available for reading and writing whether the client is online or
-offline. While online, all the data available to the client (controlled via
-[authorization](#authorization)), is synced down to the client. Thus, while
-offline one can only access data that existed the last time they were
-connected. Any of said data can be edited while offline and when the client
-reconnects it is synced up to the server and any conflicts are merged via CRDT
-semantics before being materialized for access via subscriptions.
-
-This is the state we intend application developers to use the most often.
-
-Zeno requires and enforces a user provided schema on this state.
-
-This state is used via the `[:zeno/crdt ...]` path.
-
-#### Online
-Aka "Online Only Data With Strong Consistency"
-
-See [Data Consistency Models](./data-consistency-models.md) for discussion on
-strong consistency vs eventual consistency vs strong eventual consistency.
-
-Some state makes no sense in any eventually consistent paradigm or is
-unreasonable to use in such a way (based on Zeno's implementation, see the
-second example). Consider two examples:
-1. An e-commerce site selling popular items. When a user sees an item is in
-   stock and puts it in their cart the application should be able to guarantee
-   the item will be available when they check out (perhaps with a limit on how
-   long they have to checkout). Eventual consistency won't due here as it will
-   only guarantee that the users will eventually all have the same world view
-   undoubtedly leading to customers with false hopes for what is in their cart.
-   If I'm offline, the application can't tell the server I added the item to my
-   cart and to prevent others from adding it to theirs.
-1. An application dealing with genomic sequencing data, typically stored in a
-   file format called [FASTQ](https://en.wikipedia.org/wiki/FASTQ_format).
-   FASTQ files are frequently several GB's in size. The reason you would want
-   to use online only for this data is due to how the CRDT data is continuously
-   synced to the local client in order to read data on demand while offline.
-   Clearly such syncing only makes sense when the data is not very large. If
-   you want to access large data sets on demand it is reasonable to expect the
-   user to be online when they do so to avoid eagerly syncing that data down
-   and using up all the clients RAM (or more).
-
-Zeno will require a user provided schema on this state.
-
-This type of state has not been implemented and its name is TBD though we
-typically refer to it as `[:zeno/online ...]` in conversation.
-
-#### Other Types
-There are several other combinations data storage and conflict resolution
-attributes or online/offline behavior one might want. These use cases would be
-addressed by other root data paths not yet named or implemented.
-
-Consider, for example, a poll where users are voting on something. Let's say
-it's an open poll meaning users can see what votes have already been cast. When
-online the user can see what others have voted for as well as cast their own
-vote. When offline you will not be able to read new data for the other votes
-and you may decide you don't want to show what data you do have to the user to
-not mislead them (this might especially be the case if users can change their
-votes). After potentially notifying the user that they are offline and thus are
-not being shown the current votes, you can still allow the user to cast their
-vote for the application to sync up to the server in the background the next
-time the device is online. This application would have an online behavior of
-read and write but an offline behavior of write only.
 
 ### Subscription Maps
 Subscription maps are used to specify a subscription to Zeno state. Here is an
 example subscription map:
 ```clojure
 {isbn [:zeno/client :current-book]
- author [:zeno/crdt :books isbn :author]
- avatar-url [:zeno/crdt :avatars author :avatar-url]}
+ author [:crdt :books isbn :author]
+ avatar-url [:crdt :avatars author :avatar-url]}
 ```
 A subscription map's keys are Clojure symbols and the values are
 [paths](#paths). The paths are used to index into Zeno state. Zeno then binds
@@ -292,21 +213,21 @@ symbol bound to a list in a path to accomplish a join. Consider the same
 `:books` case as found in the [Zeno Special Keywords](#zeno-special-keywords)
 section. Suppose you wanted to get the authors of a subset of books rather than
 all of them. As discussed in the aforementioned section, `zeno/*` allows you to
-join across all books. To accomplish our subset join we can use `[:zeno/crdt
+join across all books. To accomplish our subset join we can use `[:crdt
 :books isbns :author]` where `isbns` is a symbol previously bound to a list of
 ISBN's.
 
 ### Update Commands
 An update command is a map with three keys:
 * `:path`: The [path](#paths) on which the update command will operate; e.g.
-  `[:zeno/crdt :books isbn :author]`
+  `[:crdt :books isbn :author]`
 * `:op`: One of the [supported update
   operations](#supported-update-operations); e.g. `:set`
 * `:arg`: The command's argument; e.g. `"Ernest Hemingway"`
 For example:
 ```clojure
 ;; Here zc is a preconfigured/created Zeno Client.
-(zeno/update-state! zc {:path [:zeno/crdt :books isbn :author]
+(zeno/update-state! zc {:path [:crdt :books isbn :author]
                         :op :set
                         :arg "Ernest Hemingway})
 ```
@@ -327,64 +248,183 @@ See [zeno-client](#zeno-client) for more details about `zc`.
   * TODO
 * `:add-to-set`
 * TODO
+### State Providers
+
+Zeno ships with two state providers:
+- Client State Provider
+- CRDT State Provider
+
+#### Client State Provider
+Client state is local to the client. This means that this data is not shared
+with the server nor any other clients. This data is ephemeral, meaning when
+the client session is closed the data is forgotten. If a user logs out and back
+in they are now a new client and do not retain any previous client data. The
+data may not be purged from memory, however, and so we still recommend users
+close their browser when they log out for maximum security.
+
+This state provider does not enforce any schema on this state.
+
+#### CRDT State Provider
+Aka "Online or Offline Data With Strong Eventual Consistency"
+
+See [Data Consistency Models](./data-consistency-models.md) for discussion on
+strong consistency vs eventual consistency vs strong eventual consistency.
+
+CRDT state is available for reading and writing whether the client is online or
+offline. While online, all the data available to the client (controlled via the
+authorizer specified in the environment), is synced down to the client. Thus,
+while offline one can only access data that existed the last time they were
+connected. Any of said data can be edited while offline and when the client
+reconnects it is synced up to the server and any conflicts are merged via CRDT
+semantics before being materialized for access via subscriptions.
+
+This is the state we intend application developers to use the most often.
+
+This state provider requires and enforces a user provided a schema for this
+state.
+
+#### Implementing your own state provider
+
+Unfortunate note, the above discussion about paths, joins, and special keys
+must currently be implemented by each state provider. We hope to abstract that
+out in the future, which may change the interface below, to provide them once
+and for all.
+
+You can implement your own state provider providing almost any behavior you
+want. A state provider is implemented in two parts, one on the client side and
+one on the server side. For each a state-provider is simply a map containing
+four keys, the value of each is a function that takes one argument which is a
+map.
+
+Client Side State Provider:
+TODO
+
+Server Side State Provider:
+1. `:<get-state`
+  - Given the keyword `:zeno/path` in the argument map, return the state at
+  that path.
+  - The argument may will also contain `:zeno/branch` which the state provider
+  can use to support branching.
+1. `:<update-state!`
+  - Given the keyword `:zeno/cmds` apply the commands to the state.
+  - See [Update Commands](#update-commands) for details on what commands look
+    like.
+  - The argument may will also contain `:zeno/branch` which the state provider
+  can use to support branching.
+1. `:<set-state!`
+  - Given the keywords `:zeno/path` and `:zeno/value` this function can just
+  call `<update-state` with `:zeno/op :zeno/set` and `:zeno/arg value`.
+  - The argument may will also contain `:zeno/branch` which the state provider
+  can use to support branching.
+1. `:get-name`
+  - Should return the name of your state provider which we
+  recommend to be a reverse domain name namespaced keyword.
+
+Here are some use cases for which you may want to implement your own state
+provider (or for which we may someday ship one for you):
+
+"Online Only Data With Strong Consistency"
+
+See [Data Consistency Models](./data-consistency-models.md) for discussion on
+strong consistency vs eventual consistency vs strong eventual consistency.
+
+Some state makes no sense in any eventually consistent paradigm or is
+unreasonable to use in such a way (based on Zeno's implementation, see the
+second example). Consider two examples:
+1. An e-commerce site selling popular items. When a user sees an item is in
+   stock and puts it in their cart the application should be able to guarantee
+   the item will be available when they check out (perhaps with a limit on how
+   long they have to checkout). Eventual consistency won't due here as it will
+   only guarantee that the users will eventually all have the same world view
+   undoubtedly leading to customers with false hopes for what is in their cart.
+   If I'm offline, the application can't tell the server I added the item to my
+   cart and to prevent others from adding it to theirs.
+1. An application dealing with genomic sequencing data, typically stored in a
+   file format called [FASTQ](https://en.wikipedia.org/wiki/FASTQ_format).
+   FASTQ files are frequently several GB's in size. The reason you would want
+   to use online only for this data is due to how the CRDT data is continuously
+   synced to the local client in order to read data on demand while offline.
+   Clearly such syncing only makes sense when the data is not very large. If
+   you want to access large data sets on demand it is reasonable to expect the
+   user to be online when they do so to avoid eagerly syncing that data down
+   and using up all the clients RAM (or more).
+
+We imagine such a state provider to be controlled via a schema.
+
+There are several other combinations data storage and conflict resolution
+attributes or online/offline behavior one might want.
+
+Consider, for example, a poll where users are voting on something. Let's say
+it's an open poll meaning users can see what votes have already been cast. When
+online the user can see what others have voted for as well as cast their own
+vote. When offline you will not be able to read new data for the other votes
+and you may decide you don't want to show what data you do have to the user to
+not mislead them (this might especially be the case if users can change their
+votes). After potentially notifying the user that they are offline and thus are
+not being shown the current votes, you can still allow the user to cast their
+vote for the application to sync up to the server in the background the next
+time the device is online. This application would have an online behavior of
+read and write but an offline behavior of write only.
 
 ## Authentication and Authorization
-Zeno is not able to provide an out of the box generalization for how any and
-every application may want to authenticate users or authorize their access to
-data. Thus, Zeno provides a plugin architecture to allow application developers
-to customize this behavior while providing them as much help as possible.
+Both authentication and authorization follow the same plugin pattern as state
+providers. You can use one shipped with Zeno or implement your own by following
+the prescribed interfaces. Which you use and when is specified in the
+environment.
 
-### Authentication
+### Authenticators
 
-#### Using an Authenticator
-When you create a Zeno client you can specify an authenticator to use. TODO:
-Show example. Your application can then call whatever functions it needs to
-that the authenticator provides. You'll need to reference the authenticator's
-documentation.
+Zeno Authenticators are intended to be a way to verify that someone is who they
+claim to be. One's identity in Zeno is called their actor-id.
 
-Zeno ships with one authentication plugin to support identifier/secret (e.g.
-username/password) authentication which you can use in your application. It's
-located at
-[src/com/oncurrent/zeno/authenticators/identifier_secret/](#src/com/oncurrent/zeno/authenticators/identifier_secret/)
+Zeno ships with one right now:
+- Password Authenticator
 
-#### Writing a Custom Authenticator
-The general idea is that an application developer can implement a client side
-and server side aspect of authentication while Zeno supplies the communication
-plumbing and storage for the plugin to use.
+#### Password Authenticator
+As simple as it sounds. Can verify that someone is who they say they are if
+they provide the correct password for the given actor-id.
 
-The authenticator's client side uses Zeno's provided client side authentication
-interface to send RPC's with arbitrary authentication data to the Zeno server
-which forwards them to the authenticator's server side implementation. The Zeno
-client/server authentication interface is intended to provide communication and
-storage plumbing to make the authenticator plugin author's job as easy as
-possible.
+#### Implementing your own authenticator
 
-The authentication plugin interface supports a number of operations namely
-log-in, log-out, resume-session, and update-authenticator-state. The job of the
-plugin author is to create client side functions for the application to call
-that implement any specifics of logging in/out, resuming a session, or any
-other arbitrary action like creating a user. The plugin author also writes the
-server side code to fulfill the requests to log in/out etc. The Zeno provided
-client/server side authentication code facilitates communication between
-the two and storage for the server side implementation.
+Unfortunate note, state providers are map a functions while authenticators
+currently use protocols/records, we hope to fix this inconsistency at some
+point.
 
-The client side interface is specified in the
-`com.oncurrent.zeno.client.authentication` namespace. You'll see the following
-functions available for an authentication plugin's client side to hook in to
-* `<client-log-in`
-* `<client-log-out`
-* `<client-resume-session`
-* `<client-update-authenticator-state`
-  * Used to perform arbitrary actions as implemented by the authenticator
-    plugin.
+You can implement your own authenticator providing almost any behavior you
+want. An authenticator is implemented in two parts, one on the client side and
+one on the server side.
 
-Both `<client-log-in` and `<client-update-authenticator-state` allow the
-authenticator's client side to pass arbitrary data to the authenticator's
-server side. While the data is arbitrary and opaque from Zeno's perspective
-the authenticator plugin must still define Lancaster Schema's for that data
-and provide the schemas to Zeno for serializing/deserializing.
+Client Side Authenticator:
+TODO
 
-### Authorization
+Server Side Authenticator:
+TODO
+
+### Authorizers
+
+Zeno Authorizers are intended to be a way to say whether or not someone should
+be able to read/write/share etc. data at a given path.
+
+Zeno ships with one right now:
+- Affirmative Authorizer
+
+#### Affirmative Authorizer
+Simply says yes all the time.
+
+#### Implementing your own authorizer
+
+Unfortunate note, state providers are map a functions while authorizers
+currently use protocols/records, we hope to fix this inconsistency at some
+point.
+
+You can implement your own authorizer providing almost any behavior you want.
+An authorizer is implemented in two parts, one on the client side and one on
+the server side.
+
+Client Side Authorizer:
+TODO
+
+Server Side Authorizer:
 TODO
 
 ## Async API
