@@ -1,6 +1,7 @@
 (ns com.oncurrent.zeno.client.impl
   (:require
    [clojure.core.async :as ca]
+   [clojure.string :as str]
    [com.deercreeklabs.talk2.client :as t2c]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.baracus :as ba]
@@ -122,6 +123,7 @@
   (fn [{:keys [protocol url]}]
     (ca/go
       (try
+        ;; TODO: Notify state providers and authenticators
         (let [])
         (catch #?(:clj Exception :cljs js/Error) e
           (log/error "Error in on-connect:\n"
@@ -130,18 +132,32 @@
 (defn make-on-disconnect
   [{:keys [] :as arg}]
   (fn [{:keys [code url]}]
+    ;; TODO: Notify state providers and authenticators
     ))
+
+(defn make-get-url [{:keys [get-server-base-url] :as arg}]
+  (fn []
+    (let [base-url (get-server-base-url)
+          ks [:env-name :source-env-name :env-lifetime-mins]
+          query-str (u/map->query-string {:ks ks
+                                          :m arg})]
+      (str base-url
+           (when-not (str/ends-with? base-url "/")
+             "/")
+           "client"
+           (when (not-empty? query-str)
+             "?")
+           query-str))))
 
 (defn make-talk2-client
   [{:keys [*talk2-client env-name get-server-base-url storage] :as arg}]
   (let [handlers {:get-schema-pcf-for-fingerprint
-                  (fn [{:keys [arg]}]
+                  (fn [{:keys [arg*]}]
                     (au/go
-                      (-> (storage/<fp->schema storage arg)
+                      (-> (storage/<fp->schema storage arg*)
                           (au/<?)
                           (l/json))))}]
-    (t2c/client {:get-url #(str (get-server-base-url)
-                                (u/env-name->client-path-name env-name))
+    (t2c/client {:get-url (make-get-url arg)
                  :handlers handlers
                  :on-connect (make-on-connect arg)
                  :on-disconnect (make-on-disconnect arg)
@@ -158,10 +174,12 @@
                            :config-rules client-config-rules})
         {:zeno/keys [admin-password
                      client-name
+                     env-lifetime-mins
                      env-name
                      get-server-base-url
                      root->state-provider
                      rpcs
+                     source-env-name
                      storage]
          :or {storage (storage/make-storage
                        (storage/make-mem-raw-storage))}} config*
@@ -177,11 +195,13 @@
                        *stop?
                        admin-password
                        client-name
+                       env-lifetime-mins
                        env-name
                        get-server-base-url
                        root->state-provider
                        rpcs
                        storage
+                       source-env-name
                        update-state-ch)
         talk2-client (when (:zeno/get-server-base-url config*)
                        (let [arg* (assoc arg

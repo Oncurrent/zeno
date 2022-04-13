@@ -24,13 +24,14 @@
 ;;;; You must start the integration test server for these tests to work.
 ;;;; $ bin/run-test-server
 
-(defn make-zc [{:keys [env-name]}]
+(defn make-zc [{:keys [env-name source-env-name]}]
   (let [crdt-sp (crdt-client/->state-provider
                  #::crdt{:authorizer nil ; TODO: Fill this in
                          :schema ts/crdt-schema})
         config #:zeno{:env-name env-name
+                      :get-server-base-url (constantly "ws://localhost:8080")
                       :root->state-provider {:zeno/crdt crdt-sp}
-                      :get-server-base-url (constantly "ws://localhost:8080")}]
+                      :source-env-name source-env-name}]
     (zc/->zeno-client config)))
 
 (deftest ^:this test-envs
@@ -73,16 +74,11 @@
                                           :zeno/op :zeno/set
                                           :zeno/path [:zeno/crdt :name]}]))
            _ (is (= '{name "base"} (get-state zc-perm)))
-           ;; Create a temporary env based on the permanent env
-           temp-env-name (u/compact-random-uuid)
-           _ (is (= true (au/<? (admin/<create-temporary-env!
-                                 #:zeno{:admin-client admin
-                                        :env-name temp-env-name
-                                        :lifetime-mins 5
-                                        :source-env-name perm-env-name}))))
-           ;; Connect to the temp env and set some state
-           zc-temp (make-zc {:env-name temp-env-name})
+           ;; Connect to a temp env based on the permanent env
+           zc-temp (make-zc {:source-env-name perm-env-name})
+           ;; Verify that the `:name` is "base"
            _ (is (= '{name "base"} (get-state zc-temp)))
+           ;; Set the `:name` to "temp" in this env
            r1 (au/<? (zc/<update-state! zc-temp
                                         [{:zeno/arg "temp"
                                           :zeno/op :zeno/set
@@ -97,26 +93,22 @@
                             {:zeno/actor-id actor-id
                              :zeno/zeno-client zc-temp
                              ::pwd-auth/password actor-pwd}))
-           _ (log/info "AAAAAA")
            _ (is (= true aaap-ret))
-           _ (log/info "BBBBB")
            ;; Log in as the new actor
            login-ret (au/<? (pwd-client/<log-in!
                              {:zeno/actor-id actor-id
                               :zeno/zeno-client zc-temp
-                              ::pwd-auth/password actor-pwd}))
-           _ (is (= actor-id (:actor-id login-ret)))
-           _ (log/info "CCCCC")
-           ;; Try to log in on the perm env as the new actor - Should fail
-           _ (is (= false (au/<? (pwd-client/<log-in!
-                                  {:zeno/actor-id actor-id
-                                   :zeno/zeno-client zc-perm
-                                   ::pwd-auth/password actor-pwd}))))
-           _ (log/info "DDDDD")
-           ;; Remove the perm env
-           #_ (is (= true (au/<? (admin/<delete-env!
-                                  #:zeno{:admin-client admin
-                                         :env-name perm-env-name}))))]
+                              ::pwd-auth/password actor-pwd}))]
+       (is (= actor-id (:actor-id login-ret)))
+       ;; Try to log in on the perm env as the new actor - Should fail
+       (is (= false (au/<? (pwd-client/<log-in!
+                            {:zeno/actor-id actor-id
+                             :zeno/zeno-client zc-perm
+                             ::pwd-auth/password actor-pwd}))))
+       ;; Remove the perm env
+       (is (= true (au/<? (admin/<delete-env!
+                           #:zeno{:admin-client admin
+                                  :env-name perm-env-name}))))
        (admin/stop! admin)
        (zc/stop! zc-perm)
        (zc/stop! zc-temp)))))

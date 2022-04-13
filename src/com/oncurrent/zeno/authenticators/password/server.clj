@@ -76,7 +76,6 @@
                                (bcrypt/encrypt new-password work-factor))))
       true)))
 
-
 (defrecord PasswordAuthenticator
     [login-lifetime-mins storage-name]
   za/IAuthenticator

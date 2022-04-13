@@ -14,11 +14,11 @@
    [com.oncurrent.zeno.server.utils :as su]
    [com.oncurrent.zeno.storage :as storage]
    [com.oncurrent.zeno.utils :as u]
+   [lambdaisland.uri :as uri]
    [taoensso.timbre :as log]))
 
 (def server-config-rules
-  ;; TODO: Check that authenticators satisfy protocol
-  ;; TODO: Check rpcs
+  ;; TODO: Flesh this out
   #:zeno{:admin-password
          {:required? true
           :checks [{:pred string?
@@ -218,15 +218,7 @@
               (dm/make-distributed-mutex-client mutex-name storage opts)))
           roles)))
 
-(defn <get-env-info [{:keys [env-name storage]}]
-  (au/go
-    (let [env-name->info (au/<? (storage/<get storage
-                                              storage/env-name-to-info-key
-                                              schemas/env-name-to-info-schema))]
-      (get env-name->info env-name))))
-
 (defn <do-rpc! [{:keys [*conn-id->auth-info
-                        *conn-id->sync-session-info
                         *rpc-name-kw->handler
                         authenticator-name->info
                         conn-id
@@ -276,46 +268,98 @@
                           (u/ex-msg-and-stacktrace e)))
           :zeno/rpc-error)))))
 
-(defmulti update-state!* (fn [{:keys [cmds]}]
-                           (reduce (fn [acc {:zeno/keys [path]}]
-                                     (conj acc (first path)))
-                                   #{}
-                                   cmds)))
-
-(defn make-root->state-provider-infos [env-info]
-  (reduce (fn [acc {:keys [path-root
-                           state-provider-name
-                           state-provider-branch]}]
-            (assoc acc path-root (u/sym-map state-provider-name
-                                            state-provider-branch)))
-          {}
-          (:state-provider-infos env-info)))
-
-(defn check-sp-spi-match [{:keys [env-name root sp spi]}]
-  (let [{sp-get-name ::sp-impl/get-name} sp
-        {spi-name :state-provider-name} spi
-        sp-name (sp-get-name)]
-    (when (and spi-name sp-name (not= sp-name spi-name))
-      (throw (ex-info
-              (str "State provider names do not match. The state provider "
-                   "configured at server startup (via the "
-                   "`root->state-provider` map) for this path root (`" root
-                   "`)  is named `" (or sp-name "nil") "`. "
-                   "The state provider named by the env `" (or env-name "nil")
-                   "` is `" (or spi-name "nil") "`.")
-              (u/sym-map env-name root sp-name spi-name))))))
-
 (defn get-state-branch
   [{:keys [branch env-name root root->spis sp]}]
   (let [spi (root->spis root)]
-    (check-sp-spi-match (u/sym-map env-name root sp spi))
     (or branch
         (:state-provider-branch spi)
         env-name)))
 
-(defn check-get-state-arg [arg]
-  ;; TODO: Implement
-  )
+(defn <get-env-info [{:keys [env-name storage]}]
+  (au/go
+    (let [env-name->info (au/<? (storage/<get storage
+                                              storage/env-name-to-info-key
+                                              schemas/env-name-to-info-schema))]
+      (get env-name->info env-name))))
+
+(defn xf-env-info
+  [{:keys [authenticator-name->authenticator env-info root->state-provider]}]
+  (let [{:keys [authenticator-infos state-provider-infos]} env-info
+        authenticator-name->info (reduce
+                                  (fn [acc {:keys [authenticator-name
+                                                   authenticator-branch]}]
+                                    (let [auth (authenticator-name->authenticator
+                                                authenticator-name)]
+                                      (assoc authenticator-name
+                                             {:authenticator auth
+                                              :branch authenticator-branch})))
+                                  {}
+                                  authenticator-infos)
+        sp-root->info (reduce
+                       (fn [acc spi]
+                         (let [{:keys [path-root
+                                       state-provider-name
+                                       state-provider-branch]} spi
+                               sp (root->state-provider path-root)]
+                           (assoc path-root {:state-provider sp
+                                             :branch state-provider-branch})))
+                       {}
+                       state-provider-infos)]
+    (u/sym-map authenticator-name->info sp-root->info)))
+
+(defn add-env!
+  [{:keys [*env-name->info env-info env-lifetime-mins] :as arg}]
+  (let [m-info (cond-> (xf-env-info arg)
+                 env-lifetime-mins (assoc :expiry-ms
+                                          (+ (u/current-time-ms)
+                                             (* 60000 env-lifetime-mins))))]
+    (swap! *env-name->info assoc (:env-name env-info) m-info)))
+
+(defn del-env! [{:keys [*env-name->info env-name]}]
+  (swap! *env-name->info dissoc env-name))
+
+(defn <handle-create-env [{:keys [server storage] :as arg}]
+  (au/go
+    (let [env-info (:arg arg)
+          {:keys [env-name]} env-info]
+      (au/<? (storage/<swap! storage
+                             storage/env-name-to-info-key
+                             schemas/env-name-to-info-schema
+                             (fn [env-name->info]
+                               (when (contains? env-name->info env-name)
+                                 (throw (ex-info (str "Env `" env-name "` "
+                                                      "already exists.")
+                                                 (u/sym-map env-name))))
+                               (assoc env-name->info env-name (:arg arg)))))
+      (add-env! (assoc arg :env-info env-info))
+      true)))
+
+(defn <handle-delete-env [{:keys [server storage] :as arg}]
+  (au/go
+    (let [env-name (:arg arg)]
+      (au/<? (storage/<swap! storage
+                             storage/env-name-to-info-key
+                             schemas/env-name-to-info-schema
+                             (fn [env-name->info]
+                               (dissoc env-name->info env-name))))
+      (del-env! (assoc arg :env-name env-name))
+      true)))
+
+(defn <handle-get-env-names [{:keys [server storage] :as arg}]
+  (au/go
+    (let [env-name->info (au/<? (storage/<get storage
+                                              storage/env-name-to-info-key
+                                              schemas/env-name-to-info-schema))]
+      (or (keys env-name->info)
+          []))))
+
+(defn handle-admin-log-in
+  [{:keys [*logged-in-admin-conn-ids admin-password arg conn-id]}]
+  (if-not (= admin-password arg)
+    false
+    (do
+      (swap! *logged-in-admin-conn-ids conj conn-id)
+      true)))
 
 (defn check-update-state-arg [{:zeno/keys [cmds]}]
   (when-not (sequential? cmds)
@@ -334,152 +378,148 @@
                    "this restriction may be lifted in the future.")
               (u/sym-map roots cmds))))))
 
-;; TODO: Add more parameter checks to these fns
-(defn <make-state-fns [{:keys [env-name root->state-provider] :as arg}]
-  (au/go
-    (let [env-info (au/<? (<get-env-info arg))
-          root->spis (make-root->state-provider-infos env-info)
-          <update-state! (fn [{:zeno/keys [branch cmds] :as us-arg}]
-                           (check-update-state-arg us-arg)
-                           (let [root (-> cmds first :zeno/path first)
-                                 sp (root->state-provider root)
-                                 branch* (get-state-branch
-                                          (u/sym-map branch env-name root
-                                                     root->spis sp))
-                                 <us! (::sp-impl/<update-state! sp)]
-                             (<us! (assoc us-arg :branch branch*))))]
-      {:<get-state (fn [{:zeno/keys [branch path] :as gs-arg}]
-                     (check-get-state-arg gs-arg)
-                     (let [root (first path)
-                           sp (root->state-provider root)
-                           branch* (get-state-branch
-                                    (u/sym-map branch env-name root
-                                               root->spis sp))
-                           <gs (::sp-impl/<get-state sp)]
-                       (<gs (assoc gs-arg :branch branch*))))
-       :<update-state! <update-state!
-       :<set-state! (fn [{:zeno/keys [branch path value]}]
-                      (<update-state!
-                       #:zeno{:branch branch
-                              :cmds [#:zeno{:arg value
-                                            :op :zeno/set
-                                            :path path}]}))})))
+(defn check-get-state-arg [arg]
+  ;; TODO: Implement
+  )
 
-(defn <make-client-ep-info
+(defn make-update-state [{:keys [env-name sp-root->info]}]
+  (fn [{:zeno/keys [cmds] :as fn-arg}]
+    (check-update-state-arg fn-arg)
+    (let [root (-> cmds first :zeno/path first)
+          sp-info (sp-root->info root)
+          branch (or (:branch fn-arg)
+                     (:branch sp-info)
+                     env-name)
+          f (-> sp-info :state-provider ::sp-impl/<update-state!)]
+      (f (assoc fn-arg :branch branch)))))
+
+(defn make-get-state [{:keys [env-name sp-root->info]}]
+  (fn [{:zeno/keys [path] :as fn-arg}]
+    (check-get-state-arg fn-arg)
+    (let [root (first path)
+          sp-info (sp-root->info root)
+          branch (or (:branch fn-arg)
+                     (:branch sp-info)
+                     env-name)
+          f (-> sp-info :state-provider ::sp-impl/<get-state)]
+      (f (assoc fn-arg :branch branch)))))
+
+(defn make-state-fns [{:keys [sp-root->info] :as arg}]
+  (let [<update-state! (make-update-state arg)
+        <get-state (make-get-state arg)
+        <set-state! (fn [{:zeno/keys [branch path value]}]
+                      (<update-state! #:zeno{:branch branch
+                                             :cmds [#:zeno{:arg value
+                                                           :op :zeno/set
+                                                           :path path}]}))]
+    (u/sym-map <get-state <set-state! <update-state!)))
+
+(defn make-auth-handler
+  [{:keys [*conn-id->env-name *env-name->info f] :as arg}]
+  (let [base-info (select-keys arg [:*conn-id->auth-info
+                                    :*connected-actor-id->conn-ids
+                                    :storage])]
+    (fn [{:keys [conn-id] :as handler-arg}]
+      (let [env-name (get @*conn-id->env-name conn-id)
+            info (get @*env-name->info env-name)
+            state-fns (make-state-fns (assoc info :env-name env-name))]
+        (f (merge base-info state-fns handler-arg))))))
+
+(defn make-rpc-handler
+  [{:keys [*conn-id->env-name *env-name->info f] :as arg}]
+  (let [base-info (select-keys arg [:*conn-id->auth-info
+                                    :*connected-actor-id->conn-ids
+                                    :*rpc-name-kw->handler
+                                    :rpcs
+                                    :storage])]
+    (fn [{:keys [conn-id] :as handler-arg}]
+      (let [env-name (get @*conn-id->env-name conn-id)
+            info (get @*env-name->info env-name)
+            state-fns (make-state-fns (assoc info :env-name env-name))]
+        (<do-rpc! (merge base-info state-fns handler-arg))))))
+
+(defn query-string->env-info [s]
+  (let [m (u/query-string->map s)
+        ;;{:keys [env-name source-env-name env-lifetime-mins]} m
+        temp? (or (not-empty? (:source-env-name m))
+                  (not-empty? (:env-lifetime-mins m)))
+        env-name (or (:env-name m)
+                     (if temp?
+                       (u/compact-random-uuid)
+                       u/default-env-name))
+        env-type (if temp?
+                   :temp
+                   :perm)
+        source-env-name (when temp?
+                          (or (:source-env-name m)
+                              u/default-env-name))
+        env-lifetime-mins (when temp?
+                            (or (:env-lifetime-mins m)
+                                u/default-env-lifetime-mins))
+        ]))
+
+(defn make-client-ep-info
   [{:keys [*conn-id->auth-info
-           *conn-id->sync-session-info
+           *conn-id->state-fns
            *connected-actor-id->conn-ids
            *rpc-name-kw->handler
            authenticator-name->info
-           env-name
            rpcs
            storage]
     :as arg}]
-  (when-not env-name
-    (throw (ex-info "`:env-name` is nil" {})))
-  (au/go
-    (let [base-info (u/sym-map env-name storage)
-          auth-info (u/sym-map *conn-id->auth-info
-                               *connected-actor-id->conn-ids
-                               authenticator-name->info)
-          rpc-info (u/sym-map *rpc-name-kw->handler rpcs)
-          state-fns (au/<? (<make-state-fns arg))]
-      {:handlers {:get-authenticator-state
-                  #(auth-impl/<handle-get-authenticator-state
-                    (merge base-info auth-info state-fns %))
+  {:handlers {:get-authenticator-state
+              (make-auth-handler
+               (assoc arg :f auth-impl/<handle-get-authenticator-state))
 
-                  :get-schema-pcf-for-fingerprint
-                  #(au/go
-                     (-> (storage/<fp->schema storage (:arg %))
-                         (au/<?)
-                         (l/json)))
+              :get-schema-pcf-for-fingerprint
+              #(au/go
+                 (-> (storage/<fp->schema storage (:arg %))
+                     (au/<?)
+                     (l/json)))
 
-                  :log-in
-                  #(auth-impl/<handle-log-in
-                    (merge base-info auth-info state-fns %))
+              :log-in
+              (make-auth-handler
+               (assoc arg :f auth-impl/<handle-log-in))
 
-                  :log-out
-                  #(auth-impl/<handle-log-out (merge base-info state-fns %))
+              :log-out
+              (make-auth-handler
+               (assoc arg :f auth-impl/<handle-log-out))
 
-                  :resume-login-session
-                  #(auth-impl/<handle-resume-login-session
-                    (merge base-info auth-info state-fns %))
+              :resume-login-session
+              (make-auth-handler
+               (assoc arg :f auth-impl/<handle-resume-login-session))
 
-                  :rpc
-                  #(<do-rpc! (merge auth-info base-info rpc-info state-fns %))
+              :rpc
+              (make-rpc-handler arg)
 
-                  :update-authenticator-state
-                  #(auth-impl/<handle-update-authenticator-state
-                    (merge base-info auth-info state-fns %))}
-       :on-connect (fn [{:keys [conn-id remote-address] :as conn}]
-                     (swap! *conn-id->auth-info assoc conn-id {})
-                     (swap! *conn-id->sync-session-info assoc conn-id {})
-                     (log/info
-                      (str "Client connection opened:\n"
-                           (u/pprint-str
-                            (u/sym-map conn-id env-name remote-address)))))
-       :on-disconnect (fn [{:keys [conn-id]}]
-                        (when-let [actor-id (some-> @*conn-id->auth-info
-                                                    (get conn-id)
-                                                    (:actor-id))]
-                          (swap! *connected-actor-id->conn-ids
-                                 #(update % actor-id disj conn-id)))
-                        (swap! *conn-id->auth-info dissoc conn-id)
-                        (swap! *conn-id->sync-session-info dissoc conn-id)
-                        (log/info
-                         (str "Client connection closed:\n"
-                              (u/pprint-str (u/sym-map conn-id env-name)))))
-       :path (u/env-name->client-path-name env-name)
-       :protocol schemas/client-server-protocol})))
-
-(defn <handle-create-env [{:keys [server storage] :as arg}]
-  (au/go
-    (let [{:keys [env-name]} (:arg arg)
-          ep-info (au/<? (<make-client-ep-info
-                          (-> arg
-                              (dissoc :arg)
-                              (assoc :env-name env-name))))]
-      (au/<? (storage/<swap! storage
-                             storage/env-name-to-info-key
-                             schemas/env-name-to-info-schema
-                             (fn [env-name->info]
-                               (when (contains? env-name->info env-name)
-                                 (throw (ex-info (str "Env `" env-name "` "
-                                                      "already exists.")
-                                                 (u/sym-map env-name))))
-                               (assoc env-name->info env-name (:arg arg)))))
-      ;; TODO: Figure out how this works in a multi-server setup
-      (t2s/add-endpoint! (assoc ep-info :server server))
-      true)))
-
-(defn <handle-delete-env [{:keys [server storage] :as arg}]
-  (au/go
-    (let [env-name (:arg arg)
-          path (u/env-name->client-path-name env-name)]
-      (au/<? (storage/<swap! storage
-                             storage/env-name-to-info-key
-                             schemas/env-name-to-info-schema
-                             (fn [env-name->info]
-                               (dissoc env-name->info env-name))))
-      ;; TODO: Figure out how this works in a multi-server setup
-      (t2s/remove-endpoint! (u/sym-map path server))
-      true)))
-
-(defn <handle-get-env-names [{:keys [server storage] :as arg}]
-  (au/go
-    (let [env-name->info (au/<? (storage/<get storage
-                                              storage/env-name-to-info-key
-                                              schemas/env-name-to-info-schema))]
-      (or (keys env-name->info)
-          []))))
-
-(defn handle-admin-log-in
-  [{:keys [*logged-in-admin-conn-ids admin-password arg conn-id]}]
-  (if-not (= admin-password arg)
-    false
-    (do
-      (swap! *logged-in-admin-conn-ids conj conn-id)
-      true)))
+              :update-authenticator-state
+              (make-auth-handler
+               (assoc arg :f auth-impl/<handle-update-authenticator-state))}
+   :on-connect (fn [{:keys [conn-id path remote-address] :as conn}]
+                 (let [uri-map (uri/uri path)
+                       info (-> uri-map :query query-string->env-info)
+                       ]
+                   create the env / branches as necessary
+                   (swap! *conn-id->auth-info assoc conn-id {})
+                   (swap! *conn-id->env-name assoc conn-id env-name)
+                   (add-state-fns-to-conn! )
+                   (log/info
+                    (str "Client connection opened:\n"
+                         (u/pprint-str
+                          (u/sym-map conn-id env-name remote-address))))))
+   :on-disconnect (fn [{:keys [conn-id]}]
+                    (when-let [actor-id (some-> @*conn-id->auth-info
+                                                (get conn-id)
+                                                (:actor-id))]
+                      (swap! *connected-actor-id->conn-ids
+                             #(update % actor-id disj conn-id)))
+                    (swap! *conn-id->auth-info dissoc conn-id)
+                    (swap! *conn-id->env-name dissoc conn-id)
+                    (log/info
+                     (str "Client connection closed:\n"
+                          (u/pprint-str (u/sym-map conn-id )))))
+   :path "/client"
+   :protocol schemas/client-server-protocol})
 
 (defn make-admin-client-ep-info [{:keys [*logged-in-admin-conn-ids] :as arg}]
   (let [make-handler (fn [f]
@@ -506,42 +546,17 @@
      :path "/admin"
      :protocol schemas/admin-client-server-protocol}))
 
-(defn <add-default-env [{:keys [server] :as arg}]
-  (ca/go
-    (try
-      (let [arg* (assoc arg :env-name u/default-env-name)
-            default-env-ep-info (au/<? (<make-client-ep-info arg*))]
-        (t2s/add-endpoint! (assoc default-env-ep-info :server server)))
-      (catch Exception e
-        (log/error (str "Error adding default env:\n"
-                        (u/ex-msg-and-stacktrace e)))))))
-
 (defn make-talk2-server [{:keys [port] :as arg}]
   (let [server (t2s/server (assoc arg :port port))
-        admin-client-ep-info (make-admin-client-ep-info
-                              (assoc arg :server server))]
-    (<add-default-env (assoc arg :server server))
+        admin-client-ep-info (make-admin-client-ep-info arg)
+        client-ep-info (make-client-ep-info arg)]
     (t2s/add-endpoint! (assoc admin-client-ep-info :server server))
+    (t2s/add-endpoint! (assoc client-ep-info :server server))
     server))
 
-(defn make-authenticator-storage [authenticator-name storage]
-  (let [str-ns (namespace authenticator-name)
-        str-name (name authenticator-name)
-        prefix (if str-ns
-                 (str str-ns "_" str-name)
-                 str-name)]
-    (storage/make-prefixed-storage prefix storage)))
-
-(defn xf-authenticator-info [{:keys [authenticators storage]}]
+(defn make-auth-map [authenticators]
   (reduce (fn [acc* authenticator]
-            (let [authenticator-name (auth-impl/get-name
-                                      authenticator)
-                  storage-name (:storage-name authenticator)
-                  authenticator-storage (make-authenticator-storage
-                                         (if storage-name
-                                           storage-name
-                                           authenticator-name)
-                                         storage)
+            (let [authenticator-name (auth-impl/get-name authenticator)
                   info (u/sym-map authenticator
                                   authenticator-storage)]
               (assoc acc* authenticator-name info)))
@@ -564,21 +579,20 @@
                      storage
                      ws-url]} config
         *conn-id->auth-info (atom {})
-        *conn-id->sync-session-info (atom {})
+        *conn-id->env-name (atom {})
         *connected-actor-id->conn-ids (atom {})
         *consumer-actor-id->last-branch-log-tx-i (atom {})
         *rpc-name-kw->handler (atom {})
         *logged-in-admin-conn-ids (atom #{})
-        authenticator-name->info (xf-authenticator-info
-                                  (u/sym-map authenticators storage))
+        authenticator-name->authenticator (make-auth-map authenticators)
         arg (u/sym-map *conn-id->auth-info
-                       *conn-id->sync-session-info
+                       *conn-id->env-name
                        *connected-actor-id->conn-ids
                        *consumer-actor-id->last-branch-log-tx-i
                        *logged-in-admin-conn-ids
                        *rpc-name-kw->handler
                        admin-password
-                       authenticator-name->info
+                       authenticator-name->authenticator
                        certificate-str
                        port
                        private-key-str

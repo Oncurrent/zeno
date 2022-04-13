@@ -178,10 +178,6 @@
     :as arg}]
   ;; Client may or may not be logged in when this is called
   (au/go
-    (log/info (str "@@@@:\n"
-                   (u/pprint-str
-                    {:arg-ks (keys arg)
-                     :arg-arg (:arg arg)})))
     (let [{:keys [authenticator-name
                   serialized-update-info
                   update-type]} (:arg arg)

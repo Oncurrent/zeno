@@ -23,6 +23,7 @@
 
 #?(:clj (set! *warn-on-reflection* true))
 
+(def default-env-lifetime-mins 5)
 (def default-env-name "main")
 (def terminal-kw-ops #{:zeno/keys :zeno/count :zeno/concat})
 (def kw-ops (conj terminal-kw-ops :zeno/*))
@@ -352,11 +353,6 @@
                  "map is invalid. It " msg ". Got `" (or v "nil") "`.")
             (sym-map k v config))))))))
 
-(defn env-name->client-path-name [env-name]
-  (when (empty? env-name)
-    (throw (ex-info "`env-name` must be non-empty." (sym-map env-name))))
-  (str "/client/" env-name))
-
 (defn get-normalized-array-index
   "Translates relative indexing (e.g. using negative numbers to index from the
    end) into absolute indexing. Returns nil if out of bounds."
@@ -387,6 +383,24 @@
       (neg? norm-i) 0
       (> norm-i max-i) max-i
       :else norm-i)))
+
+(defn map->query-string [{:keys [ks m]}]
+  (let [kvs (reduce (fn [acc k]
+                      (let [v (get m k)]
+                        (if (nil? v)
+                          acc
+                          (conj acc (str (name k) "=" v)))))
+                    []
+                    ks)]
+    (str/join "&" kvs)))
+
+(defn query-string->map [s]
+  (let [parts (str/split s #"&")]
+    (reduce (fn [acc part]
+              (let [[k v] (str/split part #"=")]
+                (assoc acc (keyword k) v)))
+            {}
+            parts)))
 
 ;;;;;;;;;;;;;;;;;;;; Platform detection ;;;;;;;;;;;;;;;;;;;;
 

@@ -163,8 +163,6 @@
 (l/def-record-schema env-info-schema
   [:authenticator-infos (l/array-schema authenticator-info-schema)]
   [:env-name env-name-schema]
-  [:lifetime-mins l/int-schema]
-  [:source-env-name env-name-schema]
   [:state-provider-infos (l/array-schema state-provider-info-schema)])
 
 (def env-name-to-info-schema (l/map-schema env-info-schema))

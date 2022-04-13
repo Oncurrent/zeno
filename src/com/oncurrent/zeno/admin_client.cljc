@@ -169,30 +169,6 @@
                                       env-name
                                       state-provider-infos)))))
 
-(defn <create-temporary-env!
-  [{:zeno/keys [admin-client
-                env-name
-                lifetime-mins
-                source-env-name]
-    :as arg}]
-  (au/go
-    (check-env-name env-name)
-    (when-not (integer? lifetime-mins)
-      (throw (ex-info (str "`:zeno/lifetime-mins` must be an integer. "
-                           "Got `" (or lifetime-mins "nil") "`.")
-                      (u/sym-map lifetime-mins arg))))
-    (when (and source-env-name
-               (not (string? source-env-name)))
-      (throw (ex-info (str "`:zeno/source-env-name` must be a string. "
-                           "Got `" source-env-name "`.")
-                      (u/sym-map arg source-env-name))))
-    (au/<? (<check-login admin-client))
-    (au/<? (t2c/<send-msg! (:talk2-client admin-client)
-                           :create-env
-                           (u/sym-map env-name
-                                      lifetime-mins
-                                      source-env-name)))))
-
 (defn <get-env-names
   [{:zeno/keys [admin-client]}]
   (au/go
