@@ -7,10 +7,13 @@
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
    #?(:clj kaocha.repl)
+   [com.oncurrent.zeno.admin-client :as admin]
    [com.oncurrent.zeno.authenticators.password :as-alias pwd-auth]
    [com.oncurrent.zeno.authenticators.password.client :as password]
+   [com.oncurrent.zeno.authenticators.password.shared :as pwd-shared]
    [com.oncurrent.zeno.client :as zc]
    [com.oncurrent.zeno.utils :as u]
+   [integration.test-info :as ti]
    [taoensso.timbre :as log]))
 
 (comment (kaocha.repl/run 'integration.authentication-test))
@@ -28,17 +31,30 @@
      (zc/->zeno-client config))))
 
 
-(def ex #?(:clj Exception :cljs js/Error))
+(defn <setup-env! [{:keys [env-name]}]
+  (au/go
+    (let [admin (admin/admin-client
+                 #:zeno{:admin-password ti/admin-password
+                        :get-server-base-url
+                        (constantly "ws://localhost:8080/admin")})
+          envs (au/<? (admin/<get-env-names {:zeno/admin-client admin}))
+          _ (when (= true (some #(= env-name %) envs))
+              (au/<? (admin/<delete-env!
+                      #:zeno{:admin-client admin
+                             :env-name env-name})))
+          auth-infos [#:zeno{:authenticator-name pwd-shared/authenticator-name}]]
+      (au/<? (admin/<create-env!
+              #:zeno{:admin-client admin
+                     :authenticator-infos auth-infos
+                     :env-name env-name})))))
 
-(defn catcher [e]
-  (log/error (u/ex-msg-and-stacktrace e))
-  (is (= :threw :but-should-not-have)))
-
-(deftest ^:this test-password-authenticator
+(deftest test-password-authenticator
   (au/test-async
    10000
    (au/go
-     (let [zc (make-zc)
+     (let [env-name "test-auth-env"
+           _ (is (= true (au/<? (<setup-env! (u/sym-map env-name)))))
+           zc (make-zc (u/sym-map env-name))
            password "A long-ish password with spaces CAPS 13212 !!#$@|_.*<>"
            actor-id (u/compact-random-uuid)
            login-ret (au/<? (password/<log-in!
@@ -74,7 +90,7 @@
                                :zeno/actor-id actor-id
                                :zeno/zeno-client zc}))
            {:keys [login-session-token]} login-ret2
-           zc2 (make-zc)
+           zc2 (make-zc (u/sym-map env-name))
            rs-ret (au/<? (password/<resume-login-session!
                           {:zeno/login-session-token login-session-token
                            :zeno/zeno-client zc2}))]

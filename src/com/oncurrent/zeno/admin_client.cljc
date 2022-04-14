@@ -10,7 +10,7 @@
 
 (def default-max-login-wait-ms 20000)
 
-(defn check-authenticator-infos [authenticator-infos]
+(defn xf-authenticator-infos [authenticator-infos]
   (doseq [{:zeno/keys [authenticator-name
                        authenticator-branch]
            :as authenticator-info}
@@ -24,15 +24,19 @@
       (throw (ex-info (str "`:zeno/authenticator-branch` must be a string. "
                            "Got `" authenticator-branch "`.")
                       (u/sym-map authenticator-branch authenticator-infos)))))
-  (reduce (fn [acc authenticator-info]
-            (if-not (acc authenticator-info)
-              (conj acc authenticator-info)
-              (throw (ex-info
-                      (str "`:zeno/authenticator-infos` must be unique. `"
-                           authenticator-info "` was duplicated.")
-                      (u/sym-map authenticator-info authenticator-infos)))))
-          #{}
-          authenticator-infos))
+  (reduce
+   (fn [acc {:zeno/keys [authenticator-name authenticator-branch]
+             :as authenticator-info}]
+     (let [no-ns-info (u/sym-map authenticator-name authenticator-branch)]
+       (if-not (some #(= no-ns-info %) acc)
+         (conj acc no-ns-info)
+         (throw
+          (ex-info
+           (str "`Values in :zeno/authenticator-infos` must be "
+                "unique. `" authenticator-info "` was duplicated.")
+           (u/sym-map authenticator-info authenticator-infos))))))
+   []
+   authenticator-infos))
 
 (defn check-env-name [env-name]
   (when-not (string? env-name)
@@ -42,34 +46,38 @@
   ;; TODO: Check that env-name is URL safe
   )
 
-(defn check-state-provider-infos [state-provider-infos]
-  (doseq [{:zeno/keys [path-root
-                       state-provider-name
-                       state-provider-branch]
-           :as state-provider-info}
-          state-provider-infos]
-    (when-not (keyword? path-root)
-      (throw (ex-info (str "`:zeno/path-root` must be a keyword. "
-                           "Got `" (or path-root "nil") "`.")
-                      (u/sym-map path-root state-provider-infos))))
-    (when-not (keyword? state-provider-name)
-      (throw (ex-info (str "`:zeno/state-provider-name` must be a keyword. "
-                           "Got `" (or state-provider-name "nil") "`.")
-                      (u/sym-map state-provider-name state-provider-infos))))
-    (when (and state-provider-branch
-               (not (string? state-provider-branch)))
-      (throw (ex-info (str "`:zeno/state-provider-branch` must be a string. "
-                           "Got `" state-provider-branch "`.")
-                      (u/sym-map state-provider-branch state-provider-infos)))))
-  (reduce (fn [acc {:zeno/keys [path-root]}]
-            (if-not (acc path-root)
-              (conj acc path-root)
-              (throw (ex-info
-                      (str "`:zeno/path-root`s in `:zeno/state-provider-infos "
-                           "must be unique. `" path-root "` was duplicated.")
-                      (u/sym-map path-root state-provider-infos)))))
-          #{}
-          state-provider-infos))
+(defn xf-state-provider-infos [state-provider-infos]
+  (reduce
+   (fn [acc {:zeno/keys [path-root
+                         state-provider-branch
+                         state-provider-name]
+             :as state-provider-info}]
+     (when-not (keyword? path-root)
+       (throw (ex-info (str "`:zeno/path-root` must be a keyword. "
+                            "Got `" (or path-root "nil") "`.")
+                       (u/sym-map path-root state-provider-infos))))
+     (when (and state-provider-branch
+                (not (string? state-provider-branch)))
+       (throw (ex-info
+               (str "`:zeno/state-provider-branch` must be a string. "
+                    "Got `" state-provider-branch "`.")
+               (u/sym-map state-provider-branch state-provider-infos))))
+     (when-not (keyword? state-provider-name)
+       (throw (ex-info
+               (str "`:zeno/state-provider-name` must be a keyword. "
+                    "Got `" (or state-provider-name "nil") "`.")
+               (u/sym-map state-provider-name state-provider-infos))))
+     (let [no-ns-info (u/sym-map path-root
+                                 state-provider-branch
+                                 state-provider-name)]
+       (if-not  (some #(= path-root (:path-root %)) acc)
+         (conj acc no-ns-info)
+         (throw (ex-info
+                 (str "`:zeno/path-root`s in `:zeno/state-provider-infos "
+                      "must be unique. `" path-root "` was duplicated.")
+                 (u/sym-map path-root state-provider-infos))))))
+   []
+   state-provider-infos))
 
 (defn check-admin-client
   [{:keys [admin-password talk2-client] :as admin-client}]
@@ -158,16 +166,16 @@
                 env-name
                 state-provider-infos]}]
   (au/go
-    (check-authenticator-infos authenticator-infos)
     (check-env-name env-name)
-    (check-state-provider-infos state-provider-infos)
     (check-admin-client admin-client)
     (au/<? (<check-login admin-client))
-    (au/<? (t2c/<send-msg! (:talk2-client admin-client)
-                           :create-env
-                           (u/sym-map authenticator-infos
-                                      env-name
-                                      state-provider-infos)))))
+    (let [ais (xf-authenticator-infos authenticator-infos)
+          spis (xf-state-provider-infos state-provider-infos)]
+      (au/<? (t2c/<send-msg! (:talk2-client admin-client)
+                             :create-env
+                             {:stored-authenticator-infos ais
+                              :env-name env-name
+                              :stored-state-provider-infos spis})))))
 
 (defn <get-env-names
   [{:zeno/keys [admin-client]}]

@@ -220,7 +220,6 @@
 
 (defn <do-rpc! [{:keys [*conn-id->auth-info
                         *rpc-name-kw->handler
-                        authenticator-name->info
                         conn-id
                         env-name
                         <get-state
@@ -252,7 +251,6 @@
               h-arg #:zeno{:<get-state <get-state
                            :<set-state! <set-state!
                            :<update-state! <update-state!
-                           :authenticator-name->info authenticator-name->info
                            :arg deser-arg
                            :actor-id actor-id
                            :conn-id conn-id
@@ -277,33 +275,32 @@
 
 (defn xf-env-info
   [{:keys [authenticator-name->info env-info root->state-provider]}]
-  (let [{:keys [authenticator-infos
+  (let [{:keys [stored-authenticator-infos
                 env-lifetime-mins
-                state-provider-infos]} env-info
-        auth-name->info (reduce
-                         (fn [acc {:keys [authenticator-name
-                                          authenticator-branch]}]
-                           (let [auth (-> authenticator-name
-                                          authenticator-name->info
-                                          :authenticator)]
-                             (assoc acc authenticator-name
-                                    {:authenticator auth
-                                     :branch authenticator-branch})))
-                         {}
-                         authenticator-infos)
-        sp-root->info (reduce
-                       (fn [acc spi]
-                         (let [{:keys [path-root
-                                       state-provider-name
-                                       state-provider-branch]} spi
-                               sp (root->state-provider path-root)]
-                           (assoc acc path-root
-                                  {:state-provider sp
-                                   :branch state-provider-branch})))
-                       {}
-                       state-provider-infos)]
-    (cond-> {:authenticator-name->info auth-name->info
-             :sp-root->info sp-root->info}
+                stored-state-provider-infos]} env-info
+        env-auth-name->info (reduce
+                             (fn [acc {:keys [authenticator-name
+                                              authenticator-branch]}]
+                               (let [auth-info (authenticator-name->info
+                                                authenticator-name)]
+                                 (assoc acc authenticator-name
+                                        (assoc auth-info :branch
+                                               authenticator-branch))))
+                             {}
+                             stored-authenticator-infos)
+        env-sp-root->info (reduce
+                           (fn [acc spi]
+                             (let [{:keys [path-root
+                                           state-provider-name
+                                           state-provider-branch]} spi
+                                   sp (root->state-provider path-root)]
+                               (assoc acc path-root
+                                      {:state-provider sp
+                                       :branch state-provider-branch})))
+                           {}
+                           stored-state-provider-infos)]
+    (cond-> {:env-authenticator-name->info env-auth-name->info
+             :env-sp-root->info env-sp-root->info}
       env-lifetime-mins (assoc :expiry-ms (+ (u/current-time-ms)
                                              (* 60000 env-lifetime-mins))))))
 
@@ -408,13 +405,13 @@
   [{:keys [*conn-id->env-name *env-name->info f] :as arg}]
   (let [base-info (select-keys arg [:*conn-id->auth-info
                                     :*connected-actor-id->conn-ids
-                                    :authenticator-name->info
                                     :storage])]
     (fn [{:keys [conn-id] :as handler-arg}]
       (let [env-name (get @*conn-id->env-name conn-id)
-            info (get @*env-name->info env-name)
-            state-fns (make-state-fns (assoc info :env-name env-name))]
-        (f (merge base-info state-fns handler-arg))))))
+            env-info (-> (get @*env-name->info env-name)
+                         (assoc :env-name env-name))
+            state-fns (make-state-fns env-info)]
+        (f (merge base-info env-info state-fns handler-arg))))))
 
 (defn make-rpc-handler
   [{:keys [*conn-id->env-name *env-name->info] :as arg}]
@@ -425,8 +422,9 @@
                                     :storage])]
     (fn [{:keys [conn-id] :as handler-arg}]
       (let [env-name (get @*conn-id->env-name conn-id)
-            info (get @*env-name->info env-name)
-            state-fns (make-state-fns (assoc info :env-name env-name))]
+            env-info (-> (get @*env-name->info env-name)
+                         (assoc :env-name env-name))
+            state-fns (make-state-fns env-info)]
         (<do-rpc! (merge base-info state-fns handler-arg))))))
 
 (defn query-string->env-params [s]
@@ -580,7 +578,7 @@
     (storage/make-prefixed-storage prefix storage)))
 
 (defn xf-authenticator-info [{:keys [authenticators storage]}]
-  (reduce (fn [acc* authenticator]
+  (reduce (fn [acc authenticator]
             (let [authenticator-name (auth-impl/get-name authenticator)
                   storage-name (:storage-name authenticator)
                   authenticator-storage (make-authenticator-storage
@@ -590,7 +588,7 @@
                                          storage)
                   info (u/sym-map authenticator
                                   authenticator-storage)]
-              (assoc acc* authenticator-name info)))
+              (assoc acc authenticator-name info)))
           {}
           authenticators))
 
@@ -607,7 +605,7 @@
                                 root->state-provider)
         m (assoc stored-m u/default-env-name
                  {:env-name u/default-env-name
-                  :state-provider-infos default-spis})]
+                  :stored-state-provider-infos default-spis})]
     (reduce-kv (fn [acc env-name info]
                  (assoc acc env-name
                         (xf-env-info (assoc arg :env-info info))))

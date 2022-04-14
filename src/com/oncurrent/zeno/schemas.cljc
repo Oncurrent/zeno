@@ -151,21 +151,23 @@
 
 ;;;;;;;;;;;;;;; Envs ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(l/def-record-schema authenticator-info-schema
-  [:authenticator-name authenticator-name-schema]
-  [:authenticator-branch branch-schema])
+(l/def-record-schema stored-authenticator-info-schema
+  [:authenticator-branch branch-schema]
+  [:authenticator-name authenticator-name-schema])
 
-(l/def-record-schema state-provider-info-schema
+(l/def-record-schema stored-state-provider-info-schema
   [:path-root l/keyword-schema]
-  [:state-provider-name state-provider-name-schema]
-  [:state-provider-branch branch-schema])
+  [:state-provider-branch branch-schema]
+  [:state-provider-name state-provider-name-schema])
 
-(l/def-record-schema env-info-schema
-  [:authenticator-infos (l/array-schema authenticator-info-schema)]
+(l/def-record-schema stored-env-info-schema
   [:env-name env-name-schema]
-  [:state-provider-infos (l/array-schema state-provider-info-schema)])
+  [:stored-authenticator-infos (l/array-schema
+                                stored-authenticator-info-schema)]
+  [:stored-state-provider-infos (l/array-schema
+                                 stored-state-provider-info-schema)])
 
-(def env-name-to-info-schema (l/map-schema env-info-schema))
+(def env-name-to-info-schema (l/map-schema stored-env-info-schema))
 
 ;;;;;;;;;;;;;;; RPCs ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -185,7 +187,7 @@
 ;;;;;;;;;;;;;;; Talk2 Protocols ;;;;;;;;;;;;;;;;;;;;;
 
 (def admin-client-server-protocol
-  {:create-env {:arg-schema env-info-schema
+  {:create-env {:arg-schema stored-env-info-schema
                 :ret-schema l/boolean-schema}
    :delete-env {:arg-schema env-name-schema
                 :ret-schema l/boolean-schema}
