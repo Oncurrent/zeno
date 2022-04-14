@@ -188,7 +188,9 @@
                       (str "No authenticator with name `" authenticator-name
                            "` was found in this env.")
                       (u/sym-map authenticator-name env-name))))
-          {:keys [authenticator authenticator-storage]} auth-info
+          {:keys [authenticator
+                  authenticator-branch
+                  authenticator-storage]} auth-info
           reader-schema (get-update-state-info-schema authenticator update-type)
           <request-schema (su/make-schema-requester arg)
           update-info (au/<? (common/<serialized-value->value
@@ -204,6 +206,7 @@
                                  <set-state!
                                  <update-state!
                                  authenticator-storage
+                                 authenticator-branch
                                  actor-id
                                  update-info
                                  update-type)))]

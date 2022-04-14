@@ -277,6 +277,7 @@
   [{:keys [authenticator-name->info env-info root->state-provider]}]
   (let [{:keys [stored-authenticator-infos
                 env-lifetime-mins
+                env-name
                 stored-state-provider-infos]} env-info
         env-auth-name->info (reduce
                              (fn [acc {:keys [authenticator-name
@@ -284,8 +285,10 @@
                                (let [auth-info (authenticator-name->info
                                                 authenticator-name)]
                                  (assoc acc authenticator-name
-                                        (assoc auth-info :branch
-                                               authenticator-branch))))
+                                        (assoc auth-info
+                                               :authenticator-branch
+                                               (or authenticator-branch
+                                                   env-name)))))
                              {}
                              stored-authenticator-infos)
         env-sp-root->info (reduce
@@ -296,7 +299,9 @@
                                    sp (root->state-provider path-root)]
                                (assoc acc path-root
                                       {:state-provider sp
-                                       :branch state-provider-branch})))
+
+                                       :state-provider-branch
+                                       (or state-provider-branch env-name)})))
                            {}
                            stored-state-provider-infos)]
     (cond-> {:env-authenticator-name->info env-auth-name->info
