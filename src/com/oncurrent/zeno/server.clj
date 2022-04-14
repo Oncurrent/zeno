@@ -369,29 +369,29 @@
   ;; TODO: Implement
   )
 
-(defn make-update-state [{:keys [env-name sp-root->info]}]
+(defn make-update-state [{:keys [env-name env-sp-root->info]}]
   (fn [{:zeno/keys [cmds] :as fn-arg}]
     (check-update-state-arg fn-arg)
     (let [root (-> cmds first :zeno/path first)
-          sp-info (sp-root->info root)
+          sp-info (env-sp-root->info root)
           branch (or (:branch fn-arg)
                      (:branch sp-info)
                      env-name)
           f (-> sp-info :state-provider ::sp-impl/<update-state!)]
       (f (assoc fn-arg :branch branch)))))
 
-(defn make-get-state [{:keys [env-name sp-root->info]}]
+(defn make-get-state [{:keys [env-name env-sp-root->info]}]
   (fn [{:zeno/keys [path] :as fn-arg}]
     (check-get-state-arg fn-arg)
     (let [root (first path)
-          sp-info (sp-root->info root)
+          sp-info (env-sp-root->info root)
           branch (or (:branch fn-arg)
                      (:branch sp-info)
                      env-name)
           f (-> sp-info :state-provider ::sp-impl/<get-state)]
       (f (assoc fn-arg :branch branch)))))
 
-(defn make-state-fns [{:keys [sp-root->info] :as arg}]
+(defn make-state-fns [arg]
   (let [<update-state! (make-update-state arg)
         <get-state (make-get-state arg)
         <set-state! (fn [{:zeno/keys [branch path value]}]

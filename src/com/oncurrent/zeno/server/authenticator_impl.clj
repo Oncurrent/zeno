@@ -43,13 +43,6 @@
   (au/go
     (let [{:keys [authenticator-name serialized-login-info]} (:arg arg)
           auth-info (env-authenticator-name->info authenticator-name)
-          _ (log/info (str "++++++:\n"
-                           (u/pprint-str
-                            (u/sym-map authenticator-name
-                                       auth-info
-                                       env-authenticator-name->info
-                                       env-name
-                                       conn-id))))
           _ (when-not auth-info
               (throw (ex-info
                       (str "No authenticator with name `" authenticator-name
