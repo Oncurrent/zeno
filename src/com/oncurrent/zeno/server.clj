@@ -321,7 +321,7 @@
                                  (throw (ex-info (str "Env `" env-name "` "
                                                       "already exists.")
                                                  (u/sym-map env-name))))
-                               (assoc env-name->info env-name (:arg arg)))))
+                               (assoc env-name->info env-name env-info))))
       (swap! *env-name->info assoc env-name
              (xf-env-info (assoc arg :env-info env-info)))
       true)))
