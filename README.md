@@ -22,7 +22,7 @@ risk.***
 In deps.edn:
 ```clojure
 {:deps {com.oncurrent.zeno {:git/url "https://github.com/Oncurrent/zeno.git"
-                        :sha "xxx"}}}
+                            :sha "xxx"}}}
 ```
 
 # Zeno Concepts
