@@ -34,7 +34,7 @@
                       :source-env-name source-env-name}]
     (zc/->zeno-client config)))
 
-(deftest ^:this test-envs
+(deftest test-envs
   (au/test-async
    10000
    (au/go

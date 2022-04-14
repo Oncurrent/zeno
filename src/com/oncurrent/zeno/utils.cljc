@@ -395,12 +395,13 @@
     (str/join "&" kvs)))
 
 (defn query-string->map [s]
-  (let [parts (str/split s #"&")]
-    (reduce (fn [acc part]
-              (let [[k v] (str/split part #"=")]
-                (assoc acc (keyword k) v)))
-            {}
-            parts)))
+  (when (not-empty s)
+    (let [parts (str/split s #"&")]
+      (reduce (fn [acc part]
+                (let [[k v] (str/split part #"=")]
+                  (assoc acc (keyword k) v)))
+              {}
+              parts))))
 
 ;;;;;;;;;;;;;;;;;;;; Platform detection ;;;;;;;;;;;;;;;;;;;;
 

@@ -17,7 +17,7 @@
 
 ;; TODO: Fill this in
 (def default-config
-  {:zeno/env-name u/default-env-name})
+  {})
 
 ;; TODO: Revise these
 (def client-config-rules

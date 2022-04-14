@@ -437,9 +437,8 @@
                      (if temp?
                        (u/compact-random-uuid)
                        u/default-env-name))
-        source-env-name (when temp?
-                          (or (:source-env-name m)
-                              u/default-env-name))
+        source-env-name (or (:source-env-name m)
+                            u/default-env-name)
         env-lifetime-mins (when temp?
                             (if (not-empty (:env-lifetime-mins m))
                               (u/str->int (:env-lifetime-mins m))
@@ -447,45 +446,43 @@
     (u/sym-map env-name source-env-name env-lifetime-mins)))
 
 (defn ->temp-env-info [{:keys [env-name->info env-params]}]
-  (let [{:keys [env-name source-env-name env-lifetime-mins]} env-params]
-    ))
+  (let [{:keys [source-env-name env-lifetime-mins]} env-params]
+    (-> (env-name->info source-env-name)
+        (assoc :env-lifetime-mins env-lifetime-mins))))
 
 (defn make-client-on-connect
   [{:keys [*conn-id->auth-info
            *conn-id->env-name
            *env-name->info]
     :as arg}]
-  (fn [{:keys [conn-id path remote-address] :as conn}]
-    (let [uri-map (uri/uri path)
-          env-params (-> uri-map :query query-string->env-params)
-          {:keys [env-lifetime-mins env-name]} env-params
-          perm? (not env-lifetime-mins)]
-      (swap! *env-name->info
-             (fn [env-name->info]
-               (let [exists? (contains? env-name->info env-name)]
-                 (cond
-                   (and perm? (not exists?))
-                   (throw (ex-info
-                           (str "The requested permanent env `" env-name
-                                "` does not exist and must be created "
-                                "via the admin interface.")
-                           (u/sym-map env-name env-params path)))
+  (fn [{:keys [close! conn-id path remote-address] :as conn}]
+    (try
+      (let [uri-map (uri/uri path)
+            env-params (-> uri-map :query query-string->env-params)
+            {:keys [env-lifetime-mins env-name]} env-params
+            temp? (boolean env-lifetime-mins)]
+        (swap! *env-name->info
+               (fn [env-name->info]
+                 (let [exists? (contains? env-name->info env-name)]
+                   (cond
+                     exists?
+                     env-name->info ; no change needed
 
-                   exists?
-                   env-name->info ; no change needed
-
-                   :else ; Create the temp env
-                   (let [env-info (->temp-env-info (u/sym-map env-name->info
-                                                              env-params))]
-                     (assoc env-name->info (:env-name env-params)
-                            (xf-env-info
-                             (assoc arg :env-info env-info))))))))
-      (swap! *conn-id->auth-info assoc conn-id {})
-      (swap! *conn-id->env-name assoc conn-id env-name)
-      (log/info
-       (str "Client connection opened:\n"
-            (u/pprint-str
-             (u/sym-map conn-id env-name remote-address)))))))
+                     temp? ; Create the temp env
+                     (let [env-info (->temp-env-info (u/sym-map env-name->info
+                                                                env-params))]
+                       (assoc env-name->info (:env-name env-params)
+                              env-info))))))
+        (swap! *conn-id->auth-info assoc conn-id {})
+        (swap! *conn-id->env-name assoc conn-id env-name)
+        (log/info
+         (str "Client connection opened:\n"
+              (u/pprint-str
+               (u/sym-map conn-id env-name remote-address)))))
+      (catch Exception e
+        (log/error (str "Error in client on-connect:\n"
+                        (u/ex-msg-and-stacktrace e)))
+        (close!)))))
 
 (defn make-client-on-disconnect
   [{:keys [*conn-id->auth-info *conn-id->env-name *connected-actor-id->conn-ids]
@@ -590,10 +587,25 @@
           {}
           authenticators))
 
-(defn get-perm-env-name->info [storage]
-  (au/<?? (storage/<get storage
-                        storage/env-name-to-info-key
-                        schemas/env-name-to-info-schema)))
+(defn get-perm-env-name->info
+  [{:keys [root->state-provider storage] :as arg}]
+  (let [stored-m (au/<?? (storage/<get storage
+                                       storage/env-name-to-info-key
+                                       schemas/env-name-to-info-schema))
+        default-spis (reduce-kv (fn [acc root sp]
+                                  (let [sp-name ((::sp-impl/get-name sp))]
+                                    (conj acc {:path-root root
+                                               :state-provider-name sp-name})))
+                                []
+                                root->state-provider)
+        m (assoc stored-m u/default-env-name
+                 {:env-name u/default-env-name
+                  :state-provider-infos default-spis})]
+    (reduce-kv (fn [acc env-name info]
+                 (assoc acc env-name
+                        (xf-env-info (assoc arg :env-info info))))
+               {}
+               m)))
 
 (defn zeno-server [config]
   (u/check-config {:config config
@@ -614,11 +626,14 @@
         *conn-id->env-name (atom {})
         *connected-actor-id->conn-ids (atom {})
         *consumer-actor-id->last-branch-log-tx-i (atom {})
-        *env-name->info (atom (get-perm-env-name->info storage))
         *rpc-name-kw->handler (atom {})
         *logged-in-admin-conn-ids (atom #{})
         authenticator-name->info (xf-authenticator-info
                                   (u/sym-map authenticators storage))
+        *env-name->info (atom (get-perm-env-name->info
+                               (u/sym-map authenticator-name->info
+                                          root->state-provider
+                                          storage)))
         arg (u/sym-map *conn-id->auth-info
                        *conn-id->env-name
                        *connected-actor-id->conn-ids

@@ -13,7 +13,7 @@
 ;;;; You must start the integration test server for these tests to work.
 ;;;; $ bin/run-test-server
 
-(deftest test-rpc
+(deftest ^:this test-rpc
   (au/test-async
    10000
    (ca/go
