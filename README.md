@@ -68,10 +68,11 @@ which root to use based on the desired attributes of the state provider at said
 root.
 
 For example, suppose you chose to use the client state provider at the root
-`:local`:
+`:local`
 * `[:local :user-id]`
 * `[:local :score-info :high-score]`
-Or perhaps you chose to use the CRDT state provider at the root `:crdt`:
+
+Or perhaps you chose to use the CRDT state provider at the root `:crdt`
 * `[:crdt :users "my-user-id" :user/name]`
 * `[:crdt :msgs 0]`
 
@@ -300,23 +301,23 @@ Client Side State Provider:
 TODO
 
 Server Side State Provider:
-1. `:<get-state`
+- `:<get-state`
   - Given the keyword `:zeno/path` in the argument map, return the state at
   that path.
   - The argument may will also contain `:zeno/branch` which the state provider
   can use to support branching.
-1. `:<update-state!`
+- `:<update-state!`
   - Given the keyword `:zeno/cmds` apply the commands to the state.
   - See [Update Commands](#update-commands) for details on what commands look
     like.
   - The argument may will also contain `:zeno/branch` which the state provider
   can use to support branching.
-1. `:<set-state!`
+- `:<set-state!`
   - Given the keywords `:zeno/path` and `:zeno/value` this function can just
   call `<update-state` with `:zeno/op :zeno/set` and `:zeno/arg value`.
   - The argument may will also contain `:zeno/branch` which the state provider
   can use to support branching.
-1. `:get-name`
+- `:get-name`
   - Should return the name of your state provider which we
   recommend to be a reverse domain name namespaced keyword.
 
