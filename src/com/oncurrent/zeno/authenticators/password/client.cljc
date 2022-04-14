@@ -88,8 +88,9 @@
   [{:zeno/keys [zeno-client]}]
   (ai/<client-log-out zeno-client))
 
-(defn <resume-login-session! [zc login-session-token]
+(defn <resume-login-session!
+  [{:zeno/keys [login-session-token zeno-client]}]
   (au/go
     (let [ret (au/<? (ai/<client-resume-login-session
-                      (u/sym-map login-session-token zc)))]
+                      (u/sym-map login-session-token zeno-client)))]
       (or ret false))))

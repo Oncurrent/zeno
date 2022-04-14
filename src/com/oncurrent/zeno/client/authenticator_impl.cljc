@@ -30,17 +30,18 @@
           arg {:authenticator-name authenticator-name
                :branch crdt-branch
                :serialized-login-info ser-login-info}
-          ret (au/<? (t2c/<send-msg! talk2-client :log-in arg))
-          {:keys [serialized-extra-info login-session-info]} ret
-          <request-schema (cimpl/make-schema-requester talk2-client)
-          extra-info (when (and login-ret-extra-info-schema
-                                serialized-extra-info)
-                       (au/<? (common/<serialized-value->value
-                               {:<request-schema <request-schema
-                                :reader-schema login-ret-extra-info-schema
-                                :serialized-value serialized-extra-info
-                                :storage storage})))]
-      (u/sym-map extra-info login-session-info))))
+          ret (au/<? (t2c/<send-msg! talk2-client :log-in arg))]
+      (when ret
+        (let [{:keys [serialized-extra-info login-session-info]} ret
+              <request-schema (cimpl/make-schema-requester talk2-client)
+              extra-info (when (and login-ret-extra-info-schema
+                                    serialized-extra-info)
+                           (au/<? (common/<serialized-value->value
+                                   {:<request-schema <request-schema
+                                    :reader-schema login-ret-extra-info-schema
+                                    :serialized-value serialized-extra-info
+                                    :storage storage})))]
+          (u/sym-map extra-info login-session-info))))))
 
 (defn <client-log-out [{:keys [*actor-id storage talk2-client] :as zeno-client}]
   ;; TODO: Delete stored transaction log data

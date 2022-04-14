@@ -58,8 +58,6 @@
   #?(:clj (puget/with-color (pprint-str* x))
      :cljs (pprint-str* x)))
 
-
-
 (defn int-pow [base exp]
   (int (Math/pow base exp)))
 

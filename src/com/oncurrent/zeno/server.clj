@@ -417,7 +417,7 @@
         (f (merge base-info state-fns handler-arg))))))
 
 (defn make-rpc-handler
-  [{:keys [*conn-id->env-name *env-name->info f] :as arg}]
+  [{:keys [*conn-id->env-name *env-name->info] :as arg}]
   (let [base-info (select-keys arg [:*conn-id->auth-info
                                     :*connected-actor-id->conn-ids
                                     :*rpc-name-kw->handler
@@ -471,8 +471,15 @@
                      temp? ; Create the temp env
                      (let [env-info (->temp-env-info (u/sym-map env-name->info
                                                                 env-params))]
-                       (assoc env-name->info (:env-name env-params)
-                              env-info))))))
+                       (assoc env-name->info (:env-name env-params) env-info))
+
+                     :else
+                     (throw (ex-info
+                             (str "The env `" env-name "` does not "
+                                  "exist. It must be created via the admin "
+                                  "interface or made into a temporary env "
+                                  "by specifying `env-lifetime-mins`.")
+                             (u/sym-map env-name)))))))
         (swap! *conn-id->auth-info assoc conn-id {})
         (swap! *conn-id->env-name assoc conn-id env-name)
         (log/info
