@@ -177,8 +177,8 @@
                  (if (au/<? (<active-table? ddb table-name))
                    ddb
                    (ex-info
-                    "DynamoDB table `" table-name
-                    "` does not exist or is not yet active."
+                    (str "DynamoDB table `" table-name
+                         "` does not exist or is not yet active.")
                     (u/sym-map table-name)))))
         (catch Exception e
           (ca/>! ddb-promise-chan e))))

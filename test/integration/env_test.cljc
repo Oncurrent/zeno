@@ -5,11 +5,11 @@
    #?(:clj [clojure.java.io :as io])
    [clojure.test :refer [deftest is]]
    [com.oncurrent.zeno.admin-client :as admin]
-   [com.oncurrent.zeno.authenticators.password :as-alias pwd-auth]
+   [com.oncurrent.zeno.authenticators.password :as pwd-auth]
    [com.oncurrent.zeno.authenticators.password.client :as pwd-client]
    [com.oncurrent.zeno.authenticators.password.shared :as pwd-shared]
    [com.oncurrent.zeno.client :as zc]
-   [com.oncurrent.zeno.state-providers.crdt :as-alias crdt]
+   [com.oncurrent.zeno.state-providers.crdt :as crdt]
    [com.oncurrent.zeno.state-providers.crdt.client :as crdt-client]
    [com.oncurrent.zeno.state-providers.crdt.shared :as crdt-shared]
    [com.oncurrent.zeno.utils :as u]

@@ -76,7 +76,7 @@
                                                update-fn)))
        (zc/stop! zc)))))
 
-(comment (kaocha.repl/run 'unit.state-subscription-test/test-subscribe!-actor-id))
+(comment (kaocha.repl/run #'test-subscribe!-actor-id))
 (deftest test-subscribe!-actor-id
   (au/test-async
    1000

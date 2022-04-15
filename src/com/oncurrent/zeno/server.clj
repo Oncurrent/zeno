@@ -401,7 +401,7 @@
                      (:branch sp-info)
                      env-name)
           f (-> sp-info :state-provider ::sp-impl/<get-state)]
-      (f (assoc fn-arg :branch branch)))))
+      (f (assoc fn-arg :branch branch :prefix root)))))
 
 (defn make-state-fns [arg]
   (let [<update-state! (make-update-state arg)

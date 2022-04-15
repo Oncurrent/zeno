@@ -5,7 +5,7 @@
    [com.oncurrent.zeno.authenticators.password.server :as password]
    [com.oncurrent.zeno.authorizers.affirmative-authorizer.server :as authz]
    [com.oncurrent.zeno.server :as server]
-   [com.oncurrent.zeno.state-providers.crdt :as-alias crdt]
+   [com.oncurrent.zeno.state-providers.crdt :as crdt]
    [com.oncurrent.zeno.state-providers.crdt.server :as crdt-server]
    [com.oncurrent.zeno.storage :as storage]
    [com.oncurrent.zeno.utils :as u]
