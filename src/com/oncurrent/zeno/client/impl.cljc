@@ -77,7 +77,8 @@
                                :known-roots (keys root->state-provider)})))
                 {::sp-impl/keys [<update-state!]} state-provider
                 cmds (root->cmds root)
-                update-infos (au/<? (<update-state! {:zeno/cmds cmds}))
+                update-infos (au/<? (<update-state! {:zeno/cmds cmds
+                                                     :prefix root}))
                 new-out (concat out update-infos)]
             (if (= last-i i)
               new-out

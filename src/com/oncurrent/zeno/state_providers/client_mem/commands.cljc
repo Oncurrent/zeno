@@ -1,4 +1,4 @@
-(ns com.oncurrent.zeno.client.client-commands
+(ns com.oncurrent.zeno.state-providers.client-mem.commands
   (:require
    [deercreeklabs.lancaster :as l]
    [com.oncurrent.zeno.schemas :as schemas]
