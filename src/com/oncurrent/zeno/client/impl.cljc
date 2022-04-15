@@ -192,18 +192,21 @@
         *actor-id (atom nil)
         *talk2-client (atom nil)
         update-state-ch (ca/chan (ca/sliding-buffer 1000))
-        arg (u/sym-map *actor-id
-                       *stop?
-                       admin-password
-                       client-name
-                       env-lifetime-mins
-                       env-name
-                       get-server-base-url
-                       root->state-provider
-                       rpcs
-                       storage
-                       source-env-name
-                       update-state-ch)
+        actor-id-root->sp {::sp-impl/get-state-atom (constantly *actor-id)}
+        arg (-> (u/sym-map *actor-id
+                           *stop?
+                           admin-password
+                           client-name
+                           env-lifetime-mins
+                           env-name
+                           get-server-base-url
+                           root->state-provider
+                           rpcs
+                           storage
+                           source-env-name
+                           update-state-ch)
+                (update :root->state-provider
+                        assoc :zeno/actor-id actor-id-root->sp))
         talk2-client (when (:zeno/get-server-base-url config*)
                        (let [arg* (assoc arg
                                          :*talk2-client *talk2-client)]

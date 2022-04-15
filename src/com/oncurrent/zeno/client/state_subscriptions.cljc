@@ -184,7 +184,7 @@
       [nil [path]]
 
       (= [:zeno/actor-id] path)
-      [state [path]]
+      [@state [path]]
 
       (and (not terminal-kw?) (not join?))
       (let [{:keys [norm-path value]} (get-in-state
@@ -275,7 +275,7 @@
                                                   :state acc-state})
                         path)
         [root & tail] resolved-path
-        state-provider (root->state-provider root)
+        state-provider (root root->state-provider)
         _ (when-not state-provider
             (throw (ex-info (str "No state provider found "
                                  "for root `" (or root "nil")
