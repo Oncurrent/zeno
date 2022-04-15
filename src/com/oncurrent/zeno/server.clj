@@ -273,6 +273,19 @@
         (:state-provider-branch spi)
         env-name)))
 
+(defn xf-env-auth-info
+  [authenticator-name->info
+   env-name
+   acc
+   {:keys [authenticator-name authenticator-branch] :as stored-info}]
+  (let [branch (or authenticator-branch env-name)
+        auth-info (authenticator-name->info authenticator-name)]
+    (assoc acc authenticator-name
+           (-> auth-info
+               (assoc :authenticator-branch branch)
+               (update :authenticator-storage
+                       #(storage/make-prefixed-storage branch %))))))
+
 (defn xf-env-info
   [{:keys [authenticator-name->info env-info root->state-provider]}]
   (let [{:keys [stored-authenticator-infos
@@ -280,15 +293,9 @@
                 env-name
                 stored-state-provider-infos]} env-info
         env-auth-name->info (reduce
-                             (fn [acc {:keys [authenticator-name
-                                              authenticator-branch]}]
-                               (let [auth-info (authenticator-name->info
-                                                authenticator-name)]
-                                 (assoc acc authenticator-name
-                                        (assoc auth-info
-                                               :authenticator-branch
-                                               (or authenticator-branch
-                                                   env-name)))))
+                             (partial xf-env-auth-info
+                                      authenticator-name->info
+                                      env-name)
                              {}
                              stored-authenticator-infos)
         env-sp-root->info (reduce
@@ -299,9 +306,9 @@
                                    sp (root->state-provider path-root)]
                                (assoc acc path-root
                                       {:state-provider sp
-
                                        :state-provider-branch
-                                       (or state-provider-branch env-name)})))
+                                       (or state-provider-branch
+                                           env-name)})))
                            {}
                            stored-state-provider-infos)]
     (cond-> {:env-authenticator-name->info env-auth-name->info
@@ -448,10 +455,31 @@
                               u/default-env-lifetime-mins))]
     (u/sym-map env-name source-env-name env-lifetime-mins)))
 
-(defn ->temp-env-info [{:keys [env-name->info env-params]}]
-  (let [{:keys [source-env-name env-lifetime-mins]} env-params]
-    (-> (env-name->info source-env-name)
-        (assoc :env-lifetime-mins env-lifetime-mins))))
+(defn xf-ean->info [new-branch authenticator-name->info env-auth-name->info]
+  (reduce-kv (fn [acc auth-name auth-info]
+               (let [global-info (authenticator-name->info auth-name)
+                     {:keys [authenticator-storage]} global-info]
+                 (assoc acc auth-name
+                        (-> auth-info
+                            (assoc :authenticator-branch new-branch)
+                            (update :authenticator-storage
+                                    #(storage/make-prefixed-storage
+                                      new-branch authenticator-storage))))))
+             {}
+             env-auth-name->info))
+
+(defn ->temp-env-info
+  [{:keys [authenticator-name->info env-name->info env-params] :as arg}]
+  (let [{:keys [env-name source-env-name env-lifetime-mins]} env-params
+        source-env-info (env-name->info source-env-name)]
+    (-> source-env-info
+        (assoc :env-name env-name)
+        (assoc :env-lifetime-mins env-lifetime-mins)
+        (update :stored-authenticator-infos
+                #(update % :env-authenticator-name->info
+                         (partial xf-ean->info
+                                  env-name ; TODO: Is this the new branch?
+                                  authenticator-name->info))))))
 
 (defn make-client-on-connect
   [{:keys [*conn-id->auth-info
@@ -472,8 +500,10 @@
                      env-name->info ; no change needed
 
                      temp? ; Create the temp env
-                     (let [env-info (->temp-env-info (u/sym-map env-name->info
-                                                                env-params))]
+                     (let [env-info (->temp-env-info
+                                     (merge arg
+                                            (u/sym-map env-name->info
+                                                       env-params)))]
                        (assoc env-name->info (:env-name env-params) env-info))
 
                      :else

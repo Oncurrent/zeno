@@ -3,8 +3,9 @@
    [clojure.set :as set]
    [clojure.test :as t :refer [deftest is]]
    [deercreeklabs.lancaster :as l]
-   [com.oncurrent.zeno.crdt.commands :as commands]
-   [com.oncurrent.zeno.crdt :as crdt]
+   [com.oncurrent.zeno.state-providers.crdt.apply-ops-impl :as apply-ops]
+   [com.oncurrent.zeno.state-providers.crdt.commands :as commands]
+   [com.oncurrent.zeno.state-providers.crdt.common :as crdt]
    [com.oncurrent.zeno.utils :as u]
    #?(:clj [kaocha.repl])
    [taoensso.timbre :as log])
@@ -607,9 +608,9 @@
         ret1 (commands/process-cmds arg1)
         ret2 (commands/process-cmds arg2)
         new-ops (set/union (:ops ret1) (:ops ret2))
-        merged-crdt (crdt/apply-ops {:crdt (:crdt ret0)
-                                     :ops new-ops
-                                     :schema pet-owner-schema})
+        merged-crdt (apply-ops/apply-ops {:crdt (:crdt ret0)
+                                          :ops new-ops
+                                          :schema pet-owner-schema})
         expected-value [{:name "Chris"
                          :species "Canis familiaris"}
                         {:name "Pinky"
@@ -653,9 +654,9 @@
         ret1 (commands/process-cmds arg1)
         ret2 (commands/process-cmds arg2)
         new-ops (set/union (:ops ret1) (:ops ret2))
-        merged-crdt (crdt/apply-ops {:crdt (:crdt ret0)
-                                     :ops new-ops
-                                     :schema pet-owner-schema})
+        merged-crdt (apply-ops/apply-ops {:crdt (:crdt ret0)
+                                          :ops new-ops
+                                          :schema pet-owner-schema})
         expected-value [{:name "Chris"
                          :species "Canis familiaris"}
                         {:name "Pat"
@@ -701,9 +702,9 @@
         ret2 (commands/process-cmds arg2)
         ret3 (commands/process-cmds arg3)
         new-ops (set/union (:ops ret1) (:ops ret2) (:ops ret3))
-        merged-crdt (crdt/apply-ops {:crdt (:crdt ret0)
-                                     :ops new-ops
-                                     :schema schema})
+        merged-crdt (apply-ops/apply-ops {:crdt (:crdt ret0)
+                                          :ops new-ops
+                                          :schema schema})
         ;; Order of the first three items is determined by their add-ids.
         ;; Any ordering would be fine, as long as it is deterministic.
         ;; The important part is that all three appear before the original
@@ -755,9 +756,9 @@
         ret2 (commands/process-cmds arg2)
         ret3 (commands/process-cmds arg3)
         new-ops (set/union (:ops ret1) (:ops ret2) (:ops ret3))
-        merged-crdt (crdt/apply-ops {:crdt (:crdt ret0)
-                                     :ops new-ops
-                                     :schema schema})
+        merged-crdt (apply-ops/apply-ops {:crdt (:crdt ret0)
+                                          :ops new-ops
+                                          :schema schema})
         ;; Order of the first three pairs of items is determined by their
         ;; add-ids. Any ordering would be fine, as long as it is deterministic.
         ;; The important part is that all three appear before the original
@@ -809,9 +810,9 @@
         ret2 (commands/process-cmds arg2)
         ret3 (commands/process-cmds arg3)
         new-ops (set/union (:ops ret1) (:ops ret2) (:ops ret3))
-        merged-crdt (crdt/apply-ops {:crdt (:crdt ret0)
-                                     :ops new-ops
-                                     :schema schema})
+        merged-crdt (apply-ops/apply-ops {:crdt (:crdt ret0)
+                                          :ops new-ops
+                                          :schema schema})
         expected-value ["XF" "YF" "ZF" "A" "B" "C" "XL" "YL" "ZL"]]
     (is (= expected-value (crdt/get-value {:crdt merged-crdt
                                            :make-id make-id
@@ -842,9 +843,9 @@
               :sys-time-ms (u/str->long "1640205282999")}
         ret1 (commands/process-cmds arg1)
         ret2 (commands/process-cmds arg2)
-        merged-crdt (crdt/apply-ops {:crdt (:crdt ret0)
-                                     :ops (set/union (:ops ret1) (:ops ret2))
-                                     :schema pet-owner-schema})]
+        merged-crdt (apply-ops/apply-ops {:crdt (:crdt ret0)
+                                          :ops (set/union (:ops ret1) (:ops ret2))
+                                          :schema pet-owner-schema})]
     ;; We expect "Herman" because its sys-time-ms is later
     (is (= "Herman" (crdt/get-value {:crdt merged-crdt
                                      :path [:pets -1 :name]

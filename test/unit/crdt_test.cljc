@@ -3,9 +3,10 @@
    [clojure.math.combinatorics :as combo]
    [clojure.test :as t :refer [deftest is]]
    [deercreeklabs.lancaster :as l]
-   [com.oncurrent.zeno.crdt :as crdt]
-   [com.oncurrent.zeno.crdt.array :as array]
-   [com.oncurrent.zeno.crdt.common :as crdt-c]
+   [com.oncurrent.zeno.state-providers.crdt.apply-ops-impl :as apply-ops]
+   [com.oncurrent.zeno.state-providers.crdt.array :as array]
+   [com.oncurrent.zeno.state-providers.crdt.commands :as commands]
+   [com.oncurrent.zeno.state-providers.crdt.common :as crdt]
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log])
   #?(:clj
@@ -40,10 +41,10 @@
               :op-type :add-value
               :path path
               :value "XYZ"}]
-        crdt (crdt/apply-ops (u/sym-map ops schema sys-time-ms))
+        crdt (apply-ops/apply-ops (u/sym-map ops schema sys-time-ms))
         expected-v "XYZ"]
     (doseq [ops (combo/permutations ops)]
-      (let [crdt (crdt/apply-ops (u/sym-map ops
+      (let [crdt (apply-ops/apply-ops (u/sym-map ops
                                             schema
                                             sys-time-ms))
             v (crdt/get-value (u/sym-map crdt path schema))]
@@ -65,7 +66,7 @@
               :value 42}]
         expected-v 42]
     (doseq [ops (combo/permutations ops)]
-      (let [crdt (crdt/apply-ops (u/sym-map ops
+      (let [crdt (apply-ops/apply-ops (u/sym-map ops
                                             schema
                                             sys-time-ms))
             path [] ; Union branch not used for get-value
@@ -97,7 +98,7 @@
         expected-v {"a" 42}]
     ;; Too many permutations to test them all, so we take a random sample
     (doseq [ops (repeatedly 500 #(shuffle ops))]
-      (let [crdt (crdt/apply-ops (u/sym-map ops
+      (let [crdt (apply-ops/apply-ops (u/sym-map ops
                                             schema
                                             sys-time-ms))
             v (crdt/get-value (u/sym-map crdt path schema))]
@@ -138,7 +139,7 @@
                     "d" {"w" 999}}]
     ;; Too many permutations to test them all, so we take a random sample
     (doseq [ops (repeatedly 500 #(shuffle ops))]
-      (let [crdt (crdt/apply-ops (u/sym-map ops
+      (let [crdt (apply-ops/apply-ops (u/sym-map ops
                                             schema
                                             sys-time-ms))
             v (crdt/get-value (u/sym-map crdt path schema))]
@@ -174,29 +175,29 @@
                     :bar/b "Yo"}]
     ;; Too many permutations to test them all, so we take a random sample
     (doseq [ops (repeatedly 500 #(shuffle ops))]
-      (let [crdt (crdt/apply-ops (u/sym-map ops
-                                            schema
-                                            sys-time-ms))
+      (let [crdt (apply-ops/apply-ops (u/sym-map ops
+                                                 schema
+                                                 sys-time-ms))
             v (crdt/get-value (u/sym-map crdt path schema))]
         (is (= expected-v v))))))
 
 (deftest test-record-crdt-conflict
   (let [schema the-rec-schema
-        crdt-1 (crdt/apply-ops {:ops [{:add-id "a1"
-                                       :op-type :add-value
-                                       :path [:foo/a 1]
-                                       :schema schema
-                                       :value 1}]
-                                :schema schema
-                                :sys-time-ms (u/str->long "1640205282858")})
-        crdt-2 (crdt/apply-ops {:crdt crdt-1
-                                :ops [{:add-id "a2"
-                                       :op-type :add-value
-                                       :path [:foo/a 1]
-                                       :schema schema
-                                       :value 42}]
-                                :schema schema
-                                :sys-time-ms (u/str->long "1640205282862")})
+        crdt-1 (apply-ops/apply-ops {:ops [{:add-id "a1"
+                                            :op-type :add-value
+                                            :path [:foo/a 1]
+                                            :schema schema
+                                            :value 1}]
+                                     :schema schema
+                                     :sys-time-ms (u/str->long "1640205282858")})
+        crdt-2 (apply-ops/apply-ops {:crdt crdt-1
+                                     :ops [{:add-id "a2"
+                                            :op-type :add-value
+                                            :path [:foo/a 1]
+                                            :schema schema
+                                            :value 42}]
+                                     :schema schema
+                                     :sys-time-ms (u/str->long "1640205282862")})
         v (crdt/get-value {:crdt crdt-2
                            :path []
                            :schema schema})
@@ -236,9 +237,9 @@
                          :c false}}]
     ;; Too many permutations to test them all, so we take a random sample
     (doseq [ops (repeatedly 500 #(shuffle ops))]
-      (let [crdt (crdt/apply-ops (u/sym-map ops
-                                            schema
-                                            sys-time-ms))
+      (let [crdt (apply-ops/apply-ops (u/sym-map ops
+                                                 schema
+                                                 sys-time-ms))
             v (crdt/get-value (u/sym-map crdt path schema))
             nested-v (crdt/get-value {:crdt crdt
                                       :path ["b" :bar/b]
@@ -322,7 +323,7 @@
         expected-v ["A" "X" "Y" "C"]]
     ;; Too many permutations to test them all, so we take a random sample
     (doseq [ops (repeatedly 500 #(shuffle ops))]
-      (let [crdt (crdt/apply-ops (u/sym-map ops schema sys-time-ms))
+      (let [crdt (apply-ops/apply-ops (u/sym-map ops schema sys-time-ms))
             v (crdt/get-value (u/sym-map crdt make-id path schema))]
         (is (= expected-v v))))))
 
@@ -364,7 +365,7 @@
                       :tail-node-id array/array-end-node-id}}]
         path []]
     (doseq [ops (repeatedly 500 #(shuffle ops))]
-      (let [crdt (crdt/apply-ops (u/sym-map ops schema sys-time-ms))
+      (let [crdt (apply-ops/apply-ops (u/sym-map ops schema sys-time-ms))
             arg (u/sym-map crdt path schema)
             v (crdt/get-value arg)
             _ (is (= ["A" "B" "C"] v))
@@ -405,13 +406,13 @@
         path []
         apply-ops-arg (u/sym-map ops schema sys-time-ms)]
     (doseq [ops (combo/permutations ops)]
-      (let [crdt (crdt/apply-ops apply-ops-arg)
+      (let [crdt (apply-ops/apply-ops apply-ops-arg)
             get-value-arg (u/sym-map crdt path schema)
             v (crdt/get-value get-value-arg)
             _ (is (= ["A" "B"] v))
-            crdt* (crdt/apply-ops (assoc apply-ops-arg
-                                         :crdt crdt
-                                         :ops change-ops))
+            crdt* (apply-ops/apply-ops (assoc apply-ops-arg
+                                              :crdt crdt
+                                              :ops change-ops))
             new-v (crdt/get-value (assoc get-value-arg :crdt crdt*))]
         (is (= ["A" "X"] new-v))))))
 
@@ -459,9 +460,9 @@
                    :species "Felis catus"}]]
     ;; Too many permutations to test them all, so we take a random sample
     (doseq [ops (repeatedly 500 #(shuffle ops))]
-      (let [crdt (crdt/apply-ops (u/sym-map ops
-                                            schema
-                                            sys-time-ms))
+      (let [crdt (apply-ops/apply-ops (u/sym-map ops
+                                                 schema
+                                                 sys-time-ms))
             v (crdt/get-value (u/sym-map crdt path schema))]
         (is (= expected v))))))
 
@@ -510,9 +511,9 @@
                                      {:name "Sam"
                                       :species "Felis catus"}]}}]
     (doseq [ops (repeatedly 500 #(shuffle ops))]
-      (let [crdt (crdt/apply-ops (u/sym-map ops
-                                            schema
-                                            sys-time-ms))
+      (let [crdt (apply-ops/apply-ops (u/sym-map ops
+                                                 schema
+                                                 sys-time-ms))
             v (crdt/get-value (u/sym-map crdt path schema))]
         (is (= expected v))))))
 
@@ -521,8 +522,8 @@
         sys-time-ms (u/str->long "1640205282858")
         ops []
         path []
-        crdt (crdt/apply-ops (u/sym-map ops
-                                        schema
-                                        sys-time-ms))
+        crdt (apply-ops/apply-ops (u/sym-map ops
+                                             schema
+                                             sys-time-ms))
         v (crdt/get-value (u/sym-map crdt path schema))
         _ (is (= nil v))]))

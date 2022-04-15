@@ -13,8 +13,8 @@
   (au/test-async
    3000
    (ca/go
-     (let [zc (zc/zeno-client {:initial-client-state
-                               '{page :home}})
+     (let [zc (zc/->zeno-client {:initial-client-state
+                                 '{page :home}})
            ch (ca/chan 1)
            update-fn #(ca/put! ch %)
            sub-map '{page [:zeno/client :page]}]

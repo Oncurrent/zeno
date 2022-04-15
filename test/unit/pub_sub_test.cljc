@@ -15,7 +15,7 @@
   (au/test-async
    1000
    (au/go
-     (let [zc (zc/zeno-client)
+     (let [zc (zc/->zeno-client)
            ch (ca/chan)
            cb #(ca/put! ch %)
            topic "my-num-topic"
@@ -31,7 +31,7 @@
   (au/test-async
    1000
    (au/go
-     (let [zc (zc/zeno-client)
+     (let [zc (zc/->zeno-client)
            ch (ca/chan)
            cb #(ca/put! ch %)
            topic "my-num-topic"
@@ -50,7 +50,7 @@
   (au/test-async
    1000
    (au/go
-     (let [zc (zc/zeno-client)
+     (let [zc (zc/->zeno-client)
            ch1 (ca/chan)
            ch2 (ca/chan)
            cb1 #(ca/put! ch1 %)
@@ -72,7 +72,7 @@
   (au/test-async
    1000
    (au/go
-     (let [zc (zc/zeno-client)
+     (let [zc (zc/->zeno-client)
            ch1 (ca/chan)
            ch2 (ca/chan)
            cb1 #(ca/put! ch1 %)

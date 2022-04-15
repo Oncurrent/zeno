@@ -13,7 +13,7 @@
       (clojure.lang ExceptionInfo))))
 
 (deftest test-empty-sub-map
-  (let [zc (zc/zeno-client)
+  (let [zc (zc/->zeno-client)
         bad-sub-map {}]
     (is (thrown-with-msg?
          #?(:clj ExceptionInfo :cljs js/Error)
@@ -23,7 +23,7 @@
     (zc/stop! zc)))
 
 (deftest test-nil-sub-map
-  (let [zc (zc/zeno-client)
+  (let [zc (zc/->zeno-client)
         bad-sub-map nil]
     (is (thrown-with-msg?
          #?(:clj ExceptionInfo :cljs js/Error)
@@ -33,7 +33,7 @@
     (zc/stop! zc)))
 
 (deftest test-non-sym-key-in-sub-map
-  (let [zc (zc/zeno-client)
+  (let [zc (zc/->zeno-client)
         bad-sub-map {:not-a-symbol [:zeno/client :user-id]}]
     (is (thrown-with-msg?
          #?(:clj ExceptionInfo :cljs js/Error)
@@ -43,7 +43,7 @@
     (zc/stop! zc)))
 
 (deftest test-bad-path-in-sub-map
-  (let [zc (zc/zeno-client)
+  (let [zc (zc/->zeno-client)
         bad-sub-map '{user-id [:zeno/client 8.9]}]
     (is (thrown-with-msg?
          #?(:clj ExceptionInfo :cljs js/Error)
@@ -56,7 +56,7 @@
   (au/test-async
    1000
    (ca/go
-     (let [zc (zc/zeno-client)
+     (let [zc (zc/->zeno-client)
            ch (ca/chan 1)
            update-fn #(ca/put! ch %)
            name "Alice"
@@ -81,22 +81,22 @@
   (au/test-async
    1000
    (ca/go
-    (let [zc (zc/zeno-client)
-          ch (ca/chan 1)
-          update-fn #(ca/put! ch %)
-          actor-id "AAAA"
-          sub-map '{actor-id* [:zeno/actor-id]}
-          expected '{actor-id* "AAAA"}]
-      (reset! (:*actor-id zc) actor-id) ; Simulate login
-      (is (= expected (zc/subscribe-to-state! zc "test" sub-map
-                                              update-fn)))
-      (zc/stop! zc)))))
+     (let [zc (zc/->zeno-client)
+           ch (ca/chan 1)
+           update-fn #(ca/put! ch %)
+           actor-id "AAAA"
+           sub-map '{actor-id* [:zeno/actor-id]}
+           expected '{actor-id* "AAAA"}]
+       (reset! (:*actor-id zc) actor-id) ; Simulate login
+       (is (= expected (zc/subscribe-to-state! zc "test" sub-map
+                                               update-fn)))
+       (zc/stop! zc)))))
 
 (deftest test-subscribe!-single-entry
   (au/test-async
    1000
    (ca/go
-     (let [zc (zc/zeno-client)
+     (let [zc (zc/->zeno-client)
            update-fn (constantly nil)
            name "Alice"
            user-id "123"
@@ -109,7 +109,7 @@
        (zc/stop! zc)))))
 
 (deftest test-bad-path-root-in-sub-map
-  (let [zc (zc/zeno-client)
+  (let [zc (zc/->zeno-client)
         sub-map '{a [:not-a-valid-root :x]}]
     (is (thrown-with-msg?
          #?(:clj ExceptionInfo :cljs js/Error)
@@ -119,7 +119,7 @@
     (zc/stop! zc)))
 
 (deftest test-bad-path-root-in-sub-map-not-a-sequence
-  (let [zc (zc/zeno-client)
+  (let [zc (zc/->zeno-client)
         sub-map '{actor-id :zeno/actor-id}]
     (is (thrown-with-msg?
          #?(:clj ExceptionInfo :cljs js/Error)
@@ -164,7 +164,7 @@
                       #{"h" "f"} *name->info)))))
 
 (deftest test-get-state-and-expanded-paths
-  (let [zc (zc/zeno-client {:zeno/initial-client-state {:page :frobnozzle}})
+  (let [zc (zc/->zeno-client {:zeno/initial-client-state {:page :frobnozzle}})
         independent-pairs [['page [:zeno/client :page]]
                            ['actor-id [:zeno/actor-id]]]
         ordered-dependent-pairs []

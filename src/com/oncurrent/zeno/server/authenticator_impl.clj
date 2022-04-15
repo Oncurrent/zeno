@@ -48,7 +48,9 @@
                       (str "No authenticator with name `" authenticator-name
                            "` was found in this env.")
                       (u/sym-map authenticator-name env-name))))
-          {:keys [authenticator authenticator-storage]} auth-info
+          {:keys [authenticator
+                  authenticator-branch
+                  authenticator-storage]} auth-info
           <request-schema (su/make-schema-requester arg)
           reader-schema (get-login-info-schema authenticator)
           login-info (au/<? (common/<serialized-value->value
@@ -60,6 +62,7 @@
                                      (u/sym-map <get-state
                                                 <set-state!
                                                 <update-state!
+                                                authenticator-branch
                                                 authenticator-storage
                                                 login-info)))]
       (when login-ret
@@ -205,8 +208,8 @@
                       (u/sym-map <get-state
                                  <set-state!
                                  <update-state!
-                                 authenticator-storage
                                  authenticator-branch
+                                 authenticator-storage
                                  actor-id
                                  update-info
                                  update-type)))]
@@ -230,7 +233,9 @@
                       (str "No authenticator with name `" authenticator-name
                            "` was found.")
                       (u/sym-map authenticator-name))))
-          {:keys [authenticator authenticator-storage]} auth-info
+          {:keys [authenticator
+                  authenticator-branch
+                  authenticator-storage]} auth-info
           reader-schema (get-get-state-info-schema authenticator get-type)
           <request-schema (su/make-schema-requester arg)
           get-info (au/<? (common/<serialized-value->value
@@ -245,6 +250,7 @@
                       (u/sym-map <get-state
                                  <set-state!
                                  <update-state!
+                                 authenticator-branch
                                  authenticator-storage
                                  actor-id
                                  get-info

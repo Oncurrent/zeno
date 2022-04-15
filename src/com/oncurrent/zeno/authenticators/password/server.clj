@@ -24,7 +24,11 @@
   (let [k (str actor-id-to-hashed-password-key-prefix actor-id)]
     (storage/<get authenticator-storage k l/string-schema)))
 
-(defn <log-in!* [{:keys [login-lifetime-mins authenticator-storage login-info]}]
+(defn <log-in!*
+  [{:keys [authenticator-branch
+           authenticator-storage
+           login-lifetime-mins
+           login-info]}]
   (au/go
     (let [{:keys [actor-id password]} login-info
           hashed-password (when actor-id
