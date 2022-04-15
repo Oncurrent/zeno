@@ -19,4 +19,6 @@
    :remove-name {:arg-schema l/null-schema
                  :ret-schema l/boolean-schema}
    :set-name {:arg-schema l/string-schema
-              :ret-schema l/boolean-schema}})
+              :ret-schema l/boolean-schema}
+   :throw-if-even {:arg-schema l/int-schema
+                   :ret-schema l/boolean-schema}})

@@ -23,6 +23,8 @@
 
 #?(:clj (set! *warn-on-reflection* true))
 
+(def default-env-lifetime-mins 5)
+(def default-env-name "main")
 (def terminal-kw-ops #{:zeno/keys :zeno/count :zeno/concat})
 (def kw-ops (conj terminal-kw-ops :zeno/*))
 (def valid-path-roots #{:zeno/actor-id
@@ -55,8 +57,6 @@
 (defn pprint-str [x]
   #?(:clj (puget/with-color (pprint-str* x))
      :cljs (pprint-str* x)))
-
-
 
 (defn int-pow [base exp]
   (int (Math/pow base exp)))
@@ -350,6 +350,56 @@
             (str "The value of `" k "` in the " (name config-type) " config "
                  "map is invalid. It " msg ". Got `" (or v "nil") "`.")
             (sym-map k v config))))))))
+
+(defn get-normalized-array-index
+  "Translates relative indexing (e.g. using negative numbers to index from the
+   end) into absolute indexing. Returns nil if out of bounds."
+  [{:keys [array-len i]}]
+  (let [max-i (if (pos? array-len)
+                (dec array-len)
+                0)
+        norm-i (if (nat-int? i)
+                 i
+                 (+ array-len i))]
+    (cond
+      (neg? norm-i) nil
+      (> norm-i max-i) nil
+      :else norm-i)))
+
+(defn get-clamped-array-index
+  "Translates relative indexing (e.g. using negative numbers to index from the
+   end) into absolute indexing. Returns the first or last element if out of
+   bounds (depending on which end it's out)."
+  [{:keys [array-len i]}]
+  (let [max-i (if (pos? array-len)
+                (dec array-len)
+                0)
+        norm-i (if (nat-int? i)
+                 i
+                 (+ array-len i))]
+    (cond
+      (neg? norm-i) 0
+      (> norm-i max-i) max-i
+      :else norm-i)))
+
+(defn map->query-string [{:keys [ks m]}]
+  (let [kvs (reduce (fn [acc k]
+                      (let [v (get m k)]
+                        (if (nil? v)
+                          acc
+                          (conj acc (str (name k) "=" v)))))
+                    []
+                    ks)]
+    (str/join "&" kvs)))
+
+(defn query-string->map [s]
+  (when (not-empty s)
+    (let [parts (str/split s #"&")]
+      (reduce (fn [acc part]
+                (let [[k v] (str/split part #"=")]
+                  (assoc acc (keyword k) v)))
+              {}
+              parts))))
 
 ;;;;;;;;;;;;;;;;;;;; Platform detection ;;;;;;;;;;;;;;;;;;;;
 

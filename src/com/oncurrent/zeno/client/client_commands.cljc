@@ -1,7 +1,6 @@
 (ns com.oncurrent.zeno.client.client-commands
   (:require
    [deercreeklabs.lancaster :as l]
-   [com.oncurrent.zeno.crdt.array :as array]
    [com.oncurrent.zeno.schemas :as schemas]
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
@@ -107,7 +106,7 @@
                               [(dissoc value k) k]
 
                               :else
-                              (let [norm-i (array/get-normalized-array-index
+                              (let [norm-i (u/get-normalized-array-index
                                             {:array-len (count value)
                                              :i k})
                                     [h t] (split-at norm-i value)]
@@ -157,8 +156,8 @@
             (throw (ex-info (str "In `" op "` operations, the `:zeno/arg` "
                                  "value must be sequential. Got `" arg "`.")
                             (u/sym-map op path value norm-path))))
-        clamped-i (array/get-clamped-array-index {:array-len (count value)
-                                                  :i i})
+        clamped-i (u/get-clamped-array-index {:array-len (count value)
+                                              :i i})
         split-i (if (#{:zeno/insert-before :zeno/insert-range-before} op)
                   clamped-i
                   (inc clamped-i))

@@ -7,15 +7,15 @@
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
-(defn zeno-client
+(defn ->zeno-client
   "Returns a Zeno client."
   ([]
-   (zeno-client {}))
+   (->zeno-client {}))
   ([config]
    (impl/zeno-client config)))
 
 (defn stop!
-  "Stop the zeno client and its connection to the server.
+  "Stop the client and its connection to the server.
    Mostly useful in tests."
   [zc]
   (impl/stop! zc))

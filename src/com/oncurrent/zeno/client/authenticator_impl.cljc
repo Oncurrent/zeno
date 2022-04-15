@@ -1,11 +1,10 @@
-(ns com.oncurrent.zeno.client.authentication
+(ns com.oncurrent.zeno.client.authenticator-impl
   (:require
    [clojure.core.async :as ca]
    [com.deercreeklabs.talk2.client :as t2c]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
    [com.oncurrent.zeno.client.impl :as cimpl]
-   [com.oncurrent.zeno.client.storage :as client-storage]
    [com.oncurrent.zeno.common :as common]
    [com.oncurrent.zeno.schemas :as schemas]
    [com.oncurrent.zeno.storage :as storage]
@@ -16,25 +15,14 @@
   (reset! *actor-id actor-id)
   (on-actor-id-change actor-id))
 
-(defn <process-login-session-info!
-  [{:keys [login-session-info storage] :as arg}]
-  (au/go
-    (let [{:keys [actor-id login-session-token]} login-session-info]
-      (set-actor-id! (assoc arg :actor-id actor-id))
-      (when login-session-token
-        (au/<? (storage/<swap! storage
-                               client-storage/login-session-token-key
-                               schemas/login-session-token-schema
-                               (constantly login-session-token)))))))
-
 (defn <client-log-in
   [{:keys [authenticator-name
            login-info
            login-info-schema
            login-ret-extra-info-schema
-           zc]}]
+           zeno-client]}]
   (au/go
-    (let [{:keys [crdt-branch storage talk2-client]} zc
+    (let [{:keys [crdt-branch storage talk2-client]} zeno-client
           ser-login-info (au/<? (storage/<value->serialized-value
                                  storage
                                  login-info-schema
@@ -42,25 +30,23 @@
           arg {:authenticator-name authenticator-name
                :branch crdt-branch
                :serialized-login-info ser-login-info}
-          ret (au/<? (t2c/<send-msg! talk2-client :log-in arg))
-          {:keys [serialized-extra-info login-session-info]} ret
-          <request-schema (cimpl/make-schema-requester talk2-client)
-          extra-info (when (and login-ret-extra-info-schema
-                                serialized-extra-info)
-                       (au/<? (common/<serialized-value->value
-                               {:<request-schema <request-schema
-                                :reader-schema login-ret-extra-info-schema
-                                :serialized-value serialized-extra-info
-                                :storage storage})))]
-      (au/<? (<process-login-session-info!
-              (assoc zc :login-session-info login-session-info)))
-      (u/sym-map extra-info login-session-info))))
+          ret (au/<? (t2c/<send-msg! talk2-client :log-in arg))]
+      (when ret
+        (let [{:keys [serialized-extra-info login-session-info]} ret
+              <request-schema (cimpl/make-schema-requester talk2-client)
+              extra-info (when (and login-ret-extra-info-schema
+                                    serialized-extra-info)
+                           (au/<? (common/<serialized-value->value
+                                   {:<request-schema <request-schema
+                                    :reader-schema login-ret-extra-info-schema
+                                    :serialized-value serialized-extra-info
+                                    :storage storage})))]
+          (u/sym-map extra-info login-session-info))))))
 
-(defn <client-log-out [{:keys [*actor-id storage talk2-client] :as zc}]
+(defn <client-log-out [{:keys [*actor-id storage talk2-client] :as zeno-client}]
   ;; TODO: Delete stored transaction log data
   ;; TODO: Update subscribers that actor-id has changed
-  (set-actor-id! (assoc zc :actor-id nil))
-  (storage/<delete! storage client-storage/login-session-token-key)
+  (set-actor-id! (assoc zeno-client :actor-id nil))
   (t2c/<send-msg! talk2-client :log-out nil))
 
 (defn <client-update-authenticator-state
@@ -69,7 +55,7 @@
            update-info-schema
            update-info
            update-type
-           zc]}]
+           zeno-client]}]
   (when-not (keyword? authenticator-name)
     (throw (ex-info (str "`authenticator-name` must be a keyword. Got `"
                          (or authenticator-name "nil") "`.")
@@ -87,7 +73,7 @@
             (u/sym-map authenticator-name update-info-schema update-type
                        update-info))))
   (au/go
-    (let [{:keys [crdt-branch storage talk2-client]} zc
+    (let [{:keys [crdt-branch storage talk2-client]} zeno-client
           ser-info (au/<? (storage/<value->serialized-value storage
                                                             update-info-schema
                                                             update-info))
@@ -110,7 +96,7 @@
            get-info-schema
            get-info
            get-type
-           zc]}]
+           zeno-client]}]
   (when-not (keyword? authenticator-name)
     (throw (ex-info (str "`authenticator-name` must be a keyword. Got `"
                          (or authenticator-name "nil") "`.")
@@ -128,7 +114,7 @@
             (u/sym-map authenticator-name get-info-schema get-type
                        get-info))))
   (au/go
-    (let [{:keys [crdt-branch storage talk2-client]} zc
+    (let [{:keys [crdt-branch storage talk2-client]} zeno-client
           ser-info (au/<? (storage/<value->serialized-value storage
                                                             get-info-schema
                                                             get-info))
@@ -146,11 +132,7 @@
                :storage storage})))))
 
 (defn <client-resume-login-session
-  [{:keys [login-session-token zc]}]
-  (au/go
-    (let [login-session-info (au/<? (t2c/<send-msg! (:talk2-client zc)
-                                                    :resume-login-session
-                                                    login-session-token))]
-      (au/<? (<process-login-session-info!
-              (assoc zc :login-session-info login-session-info)))
-      login-session-info)))
+  [{:keys [login-session-token zeno-client]}]
+  (t2c/<send-msg! (:talk2-client zeno-client)
+                  :resume-login-session
+                  login-session-token))

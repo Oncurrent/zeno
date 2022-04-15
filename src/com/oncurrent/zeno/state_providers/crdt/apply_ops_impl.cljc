@@ -1,7 +1,7 @@
-(ns com.oncurrent.zeno.crdt.apply-ops-impl
+(ns com.oncurrent.zeno.state-providers.crdt.apply-ops-impl
   (:require
    [deercreeklabs.lancaster :as l]
-   [com.oncurrent.zeno.crdt.common :as c]
+   [com.oncurrent.zeno.state-providers.crdt.common :as c]
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 

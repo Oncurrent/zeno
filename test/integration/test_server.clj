@@ -2,14 +2,16 @@
   (:require
    [clojure.core.async :as ca]
    [clojure.string :as str]
-   [deercreeklabs.async-utils :as au]
-   [deercreeklabs.lancaster :as l]
-   [com.oncurrent.zeno.authenticators.identifier-secret.server :as is-auth]
-   [com.oncurrent.zeno.authenticators.magic-token.server :as mt-auth]
+   [com.oncurrent.zeno.authenticators.password.server :as password]
    [com.oncurrent.zeno.authorizers.affirmative-authorizer.server :as authz]
    [com.oncurrent.zeno.server :as server]
+   [com.oncurrent.zeno.state-providers.crdt :as-alias crdt]
+   [com.oncurrent.zeno.state-providers.crdt.server :as crdt-server]
    [com.oncurrent.zeno.storage :as storage]
    [com.oncurrent.zeno.utils :as u]
+   [deercreeklabs.async-utils :as au]
+   [deercreeklabs.lancaster :as l]
+   [integration.test-info :as ti]
    [integration.test-schemas :as test-schemas]
    [taoensso.timbre :as log]))
 
@@ -24,27 +26,6 @@
       (throw (ex-info "Failed to load private key file" {})))
     #:zeno{:certificate-str certificate-str
            :private-key-str private-key-str}))
-
-(defrecord MagicTokenApplicationServer
-  [mins-valid number-of-uses]
-  mt-auth/IMagicTokenApplicationServer
-  (get-extra-info-schema [this] l/string-schema)
-  (get-params-schema [this] l/string-schema)
-  (<handle-request-magic-token! [this arg]
-    (au/go
-     (spit (-> arg :token-info :extra-info)
-           (prn-str (select-keys arg [:actor-id :token :token-info :params]))
-           :append true)))
-  (<handle-redeem-magic-token! [this arg]
-    (au/go
-     (spit (-> arg :token-info :extra-info)
-           (prn-str (select-keys arg [:token :token-info]))
-           :append true))))
-
-(defn make-mtas
-  ([] (make-mtas {}))
-  ([{:keys [mins-valid number-of-uses]}]
-   (->MagicTokenApplicationServer mins-valid number-of-uses)))
 
 (defn add-nums
   [{:zeno/keys [arg]}]
@@ -68,18 +49,22 @@
                                          :zeno/path [:zeno/crdt :name]}]}))
     true))
 
+(defn throw-if-even [{:zeno/keys [arg]}]
+  (if (even? arg)
+    (throw (ex-info "Even!" {}))
+    false))
+
 (defn -main [port-str tls?-str]
   (let [tls? (#{"true" "1"} (str/lower-case tls?-str))
-        branch "integration-test"
-        identity-secret-auth (is-auth/make-authenticator)
-        magic-token-auth (mt-auth/make-authenticator {:mtas (make-mtas)})
-        authenticators [identity-secret-auth magic-token-auth]
         port (u/str->int port-str)
-        config #:zeno{:authenticators authenticators
-                      :crdt-authorizer (authz/make-affirmative-authorizer)
-                      :crdt-branch branch
-                      :crdt-schema test-schemas/crdt-schema
+        crdt-sp (crdt-server/->state-provider
+                 #::crdt{:authorizer (authz/->authorizer)
+                         :schema test-schemas/crdt-schema})
+        root->sp {:zeno/crdt crdt-sp}
+        config #:zeno{:admin-password ti/admin-password
+                      :authenticators [(password/->authenticator)]
                       :port port
+                      :root->state-provider root->sp
                       :rpcs test-schemas/rpcs
                       :storage (storage/make-storage)}
         _ (log/info (str "Starting Zeno integration test server on port "
@@ -88,8 +73,9 @@
                                  tls? (merge (get-tls-configs))))]
     (server/set-rpc-handler! zs :add-nums add-nums)
     (server/set-rpc-handler! zs :get-name <get-name)
-    (server/set-rpc-handler! zs :set-name <set-name!)
     (server/set-rpc-handler! zs :remove-name <remove-name!)
+    (server/set-rpc-handler! zs :set-name <set-name!)
+    (server/set-rpc-handler! zs :throw-if-even throw-if-even)
     zs))
 
 (comment

@@ -1,10 +1,10 @@
-(ns com.oncurrent.zeno.crdt.commands
+(ns com.oncurrent.zeno.state-providers.crdt.commands
   (:require
    [clojure.set :as set]
    [deercreeklabs.lancaster :as l]
-   [com.oncurrent.zeno.crdt.apply-ops-impl :as apply-ops]
-   [com.oncurrent.zeno.crdt.array :as array]
-   [com.oncurrent.zeno.crdt.common :as c]
+   [com.oncurrent.zeno.state-providers.crdt.apply-ops-impl :as apply-ops]
+   [com.oncurrent.zeno.state-providers.crdt.array :as array]
+   [com.oncurrent.zeno.state-providers.crdt.common :as c]
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
@@ -32,24 +32,23 @@
                              (c/schema->dispatch-type schema)))
 
 (defn xf-op-paths [{:keys [prefix i ops union? array?]}]
-  (let [x (reduce (fn [acc {:keys [norm-path] :as op}]
-                    (conj acc
-                          (cond-> op
-                            true
-                            (update :path #(cons prefix %))
+  (reduce (fn [acc {:keys [norm-path] :as op}]
+            (conj acc
+                  (cond-> op
+                    true
+                    (update :path #(cons prefix %))
 
-                            (and norm-path
-                                 (not array?)
-                                 (not union?))
-                            (update :norm-path #(cons prefix %))
+                    (and norm-path
+                         (not array?)
+                         (not union?))
+                    (update :norm-path #(cons prefix %))
 
-                            (and norm-path
-                                 array?
-                                 (not union?))
-                            (update :norm-path #(cons i %)))))
-                  #{}
-                  ops)]
-    x))
+                    (and norm-path
+                         array?
+                         (not union?))
+                    (update :norm-path #(cons i %)))))
+          #{}
+          ops))
 
 (defmethod get-delete-ops :single-value
   [{:keys [crdt]}]
@@ -161,7 +160,7 @@
                                      (str "Index into array must be an "
                                           "integer. Got: `" (or i "nil") "`.")
                                      (u/sym-map i sub-path path cmd))))
-                           (let [ni (array/get-normalized-array-index
+                           (let [ni (u/get-normalized-array-index
                                      {:array-len (count ordered-node-ids)
                                       :i i})]
                              (when (or (not ni) (empty? ordered-node-ids))
@@ -323,7 +322,7 @@
         ordered-node-ids (array/get-ordered-node-ids arg)]
     (if (seq path)
       (let [[i & sub-path] path
-            ni (array/get-normalized-array-index
+            ni (u/get-normalized-array-index
                 {:array-len (count ordered-node-ids)
                  :i i})
             _ (when (or (not ni) (empty? ordered-node-ids))
@@ -434,7 +433,7 @@
                         :schema items-schema))
         ordered-node-ids (array/get-ordered-node-ids arg)
         array-len (count ordered-node-ids)
-        clamped-i (array/get-clamped-array-index (u/sym-map array-len i))
+        clamped-i (u/get-clamped-array-index (u/sym-map array-len i))
         edge-ops (array/get-edge-ops-for-insert
                   (assoc arg
                          :crdt repaired-crdt
@@ -496,7 +495,7 @@
         {:keys [new-node-ids node-ops]} info
         ordered-node-ids (array/get-ordered-node-ids arg)
         array-len (count ordered-node-ids)
-        clamped-i (array/get-clamped-array-index (u/sym-map array-len i))
+        clamped-i (u/get-clamped-array-index (u/sym-map array-len i))
         edge-ops (array/get-edge-ops-for-insert
                   (assoc arg
                          :crdt repaired-crdt

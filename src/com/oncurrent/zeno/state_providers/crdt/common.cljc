@@ -1,4 +1,4 @@
-(ns com.oncurrent.zeno.crdt.common
+(ns com.oncurrent.zeno.state-providers.crdt.common
   (:require
    [clojure.core.async :as ca]
    [deercreeklabs.async-utils :as au]
@@ -326,3 +326,7 @@
             (if (= last-i new-i)
               new-out
               (recur new-i new-out))))))))
+
+(defn get-value [{:keys [crdt make-id path schema] :as arg}]
+  (-> (get-value-info arg)
+      (:value)))

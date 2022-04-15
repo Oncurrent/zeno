@@ -1,7 +1,7 @@
 (ns com.oncurrent.zeno.authorizers.affirmative-authorizer.client
   (:require
    [com.oncurrent.zeno.authorizers.affirmative-authorizer.shared :as shared]
-   [com.oncurrent.zeno.client.authorization :as client-authz]
+   [com.oncurrent.zeno.client.authorizer-impl :as client-authz]
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 

@@ -13,9 +13,11 @@
 (def chunk-id-schema l/string-schema)
 (def client-id-schema l/string-schema)
 (def cluster-member-id-schema l/string-schema)
+(def env-name-schema l/string-schema)
 (def fingerprint-schema l/bytes-schema)
 (def login-session-token-schema l/string-schema)
 (def node-id-schema l/string-schema)
+(def state-provider-name-schema l/keyword-schema)
 (def timestamp-ms-schema l/long-schema)
 (def tx-i-schema l/long-schema)
 (def tx-id-schema l/string-schema)
@@ -33,8 +35,6 @@
   [:chunk-i l/int-schema])
 
 ;;;;;;;;;;;;;;;; Server Schemas ;;;;;;;;;;;;;;;;;;;;;;
-
-;; TODO: Authenticators are global, not per branch
 
 (def cluster-membership-list-schema
   (l/array-schema cluster-member-id-schema))
@@ -61,7 +61,7 @@
   l/long-schema)
 
 (l/def-array-schema path-schema
-  path-item-schema)
+  path-item-schema)3
 
 ;;;;;;;;;;;;;;;;; CRDT Schemas ;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -149,20 +149,52 @@
   [:serialized-get-info serialized-value-schema]
   [:get-type l/keyword-schema])
 
+;;;;;;;;;;;;;;; Envs ;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(l/def-record-schema stored-authenticator-info-schema
+  [:authenticator-branch branch-schema]
+  [:authenticator-name authenticator-name-schema])
+
+(l/def-record-schema stored-state-provider-info-schema
+  [:path-root l/keyword-schema]
+  [:state-provider-branch branch-schema]
+  [:state-provider-name state-provider-name-schema])
+
+(l/def-record-schema stored-env-info-schema
+  [:env-name env-name-schema]
+  [:stored-authenticator-infos (l/array-schema
+                                stored-authenticator-info-schema)]
+  [:stored-state-provider-infos (l/array-schema
+                                 stored-state-provider-info-schema)])
+
+(def env-name-to-info-schema (l/map-schema stored-env-info-schema))
+
 ;;;;;;;;;;;;;;; RPCs ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(l/def-enum-schema unauthorized-schema
-  :zeno/unauthorized)
+(l/def-enum-schema rpc-anomaly-schema
+  :zeno/rpc-error
+  :zeno/rpc-unauthorized)
 
 (l/def-record-schema rpc-arg-schema
+  [:rpc-id l/string-schema]
   [:rpc-name-kw-ns l/string-schema]
   [:rpc-name-kw-name l/string-schema]
   [:arg serialized-value-schema])
 
 (def rpc-ret-schema
-  (l/union-schema [l/null-schema unauthorized-schema serialized-value-schema]))
+  (l/union-schema [rpc-anomaly-schema serialized-value-schema]))
 
 ;;;;;;;;;;;;;;; Talk2 Protocols ;;;;;;;;;;;;;;;;;;;;;
+
+(def admin-client-server-protocol
+  {:create-env {:arg-schema stored-env-info-schema
+                :ret-schema l/boolean-schema}
+   :delete-env {:arg-schema env-name-schema
+                :ret-schema l/boolean-schema}
+   :get-env-names {:arg-schema l/null-schema
+                   :ret-schema (l/array-schema env-name-schema)}
+   :log-in {:arg-schema l/string-schema
+            :ret-schema l/boolean-schema}})
 
 (def client-server-protocol
   {:get-log-range {:arg-schema tx-log-range-info-schema

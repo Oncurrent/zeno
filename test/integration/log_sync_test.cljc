@@ -4,7 +4,7 @@
    [clojure.test :refer [deftest is]]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
-   [com.oncurrent.zeno.authenticators.identifier-secret.client :as isa]
+   [com.oncurrent.zeno.authenticators.password.client :as password-client]
    [com.oncurrent.zeno.authorizers.affirmative-authorizer.client :as authz]
    [com.oncurrent.zeno.client :as zc]
    [com.oncurrent.zeno.utils :as u]
@@ -28,7 +28,7 @@
      (let [config #:zeno{:crdt-authorizer (authz/make-affirmative-authorizer)
                          :crdt-branch "integration-test"
                          :crdt-schema data-schema
-                         :get-server-url (constantly "ws://localhost:8080/client")}
+                         :get-server-base-url (constantly "ws://localhost:8080")}
            zc1 (zc/zeno-client (assoc config :client-name "zc1"))
            zc2 (zc/zeno-client (assoc config :client-name "zc2"))]
        (try

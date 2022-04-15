@@ -1,10 +1,10 @@
-(ns com.oncurrent.zeno.crdt.array
+(ns com.oncurrent.zeno.state-providers.crdt.array
   (:require
    [clojure.set :as set]
    [clojure.string :as str]
    [deercreeklabs.lancaster :as l]
-   [com.oncurrent.zeno.crdt.apply-ops-impl :as apply-ops]
-   [com.oncurrent.zeno.crdt.common :as c]
+   [com.oncurrent.zeno.state-providers.crdt.apply-ops-impl :as apply-ops]
+   [com.oncurrent.zeno.state-providers.crdt.common :as c]
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
@@ -216,37 +216,6 @@
                                         :paths (map :path path-infos)
                                         :splitting-node node)))))))))))
 
-(defn get-normalized-array-index
-  "Translates relative indexing (e.g. using negative numbers to index from the
-   end) into absolute indexing. Returns nil if out of bounds."
-  [{:keys [array-len i]}]
-  (let [max-i (if (pos? array-len)
-                (dec array-len)
-                0)
-        norm-i (if (nat-int? i)
-                 i
-                 (+ array-len i))]
-    (cond
-     (neg? norm-i) nil
-     (> norm-i max-i) nil
-     :else norm-i)))
-
-(defn get-clamped-array-index
-  "Translates relative indexing (e.g. using negative numbers to index from the
-   end) into absolute indexing. Returns the first or last element if out of
-   bounds (depending on which end it's out)."
-  [{:keys [array-len i]}]
-  (let [max-i (if (pos? array-len)
-                (dec array-len)
-                0)
-        norm-i (if (nat-int? i)
-                 i
-                 (+ array-len i))]
-    (cond
-      (neg? norm-i) 0
-      (> norm-i max-i) max-i
-      :else norm-i)))
-
 (defn get-array-info
   [{:keys [crdt path]}]
   (let [edges (get-edges {:crdt crdt
@@ -421,8 +390,8 @@
 
                     (integer? raw-k)
                     (let [array-len (count ordered-node-ids)
-                          ni (get-normalized-array-index {:array-len array-len
-                                                          :i raw-k})]
+                          ni (u/get-normalized-array-index {:array-len array-len
+                                                            :i raw-k})]
                       (when (or (not ni) (empty? ordered-node-ids))
                         (throw
                          (ex-info

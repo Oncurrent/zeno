@@ -1,4 +1,4 @@
-(ns com.oncurrent.zeno.server.authentication
+(ns com.oncurrent.zeno.server.authenticator-impl
   (:require
    [com.deercreeklabs.talk2.server :as t2s]
    [clojure.core.async :as ca]
@@ -35,19 +35,22 @@
            <get-state
            <set-state!
            <update-state!
-           authenticator-name->info
+           env-authenticator-name->info
            conn-id
+           env-name
            storage]
     :as arg}]
   (au/go
     (let [{:keys [authenticator-name serialized-login-info]} (:arg arg)
-          auth-info (authenticator-name->info authenticator-name)
+          auth-info (env-authenticator-name->info authenticator-name)
           _ (when-not auth-info
               (throw (ex-info
                       (str "No authenticator with name `" authenticator-name
-                           "` was found.")
-                      (u/sym-map authenticator-name))))
-          {:keys [authenticator authenticator-storage]} auth-info
+                           "` was found in this env.")
+                      (u/sym-map authenticator-name env-name))))
+          {:keys [authenticator
+                  authenticator-branch
+                  authenticator-storage]} auth-info
           <request-schema (su/make-schema-requester arg)
           reader-schema (get-login-info-schema authenticator)
           login-info (au/<? (common/<serialized-value->value
@@ -59,6 +62,7 @@
                                      (u/sym-map <get-state
                                                 <set-state!
                                                 <update-state!
+                                                authenticator-branch
                                                 authenticator-storage
                                                 login-info)))]
       (when login-ret
@@ -174,20 +178,22 @@
 
 (defn <handle-update-authenticator-state
   [{:keys [*conn-id->auth-info <get-state <set-state! <update-state!
-           authenticator-name->info conn-id storage]
+           env-authenticator-name->info env-name conn-id storage]
     :as arg}]
   ;; Client may or may not be logged in when this is called
   (au/go
     (let [{:keys [authenticator-name
                   serialized-update-info
                   update-type]} (:arg arg)
-          auth-info (authenticator-name->info authenticator-name)
+          auth-info (env-authenticator-name->info authenticator-name)
           _ (when-not auth-info
               (throw (ex-info
                       (str "No authenticator with name `" authenticator-name
-                           "` was found.")
-                      (u/sym-map authenticator-name))))
-          {:keys [authenticator authenticator-storage]} auth-info
+                           "` was found in this env.")
+                      (u/sym-map authenticator-name env-name))))
+          {:keys [authenticator
+                  authenticator-branch
+                  authenticator-storage]} auth-info
           reader-schema (get-update-state-info-schema authenticator update-type)
           <request-schema (su/make-schema-requester arg)
           update-info (au/<? (common/<serialized-value->value
@@ -202,6 +208,7 @@
                       (u/sym-map <get-state
                                  <set-state!
                                  <update-state!
+                                 authenticator-branch
                                  authenticator-storage
                                  actor-id
                                  update-info
@@ -213,20 +220,22 @@
 
 (defn <handle-get-authenticator-state
   [{:keys [*conn-id->auth-info <get-state <set-state! <update-state!
-           authenticator-name->info conn-id storage]
+           env-authenticator-name->info conn-id storage]
     :as arg}]
   ;; Client may or may not be logged in when this is called)
   (au/go
     (let [{:keys [authenticator-name
                   serialized-get-info
                   get-type]} (:arg arg)
-          auth-info (authenticator-name->info authenticator-name)
+          auth-info (env-authenticator-name->info authenticator-name)
           _ (when-not auth-info
               (throw (ex-info
                       (str "No authenticator with name `" authenticator-name
                            "` was found.")
                       (u/sym-map authenticator-name))))
-          {:keys [authenticator authenticator-storage]} auth-info
+          {:keys [authenticator
+                  authenticator-branch
+                  authenticator-storage]} auth-info
           reader-schema (get-get-state-info-schema authenticator get-type)
           <request-schema (su/make-schema-requester arg)
           get-info (au/<? (common/<serialized-value->value
@@ -241,6 +250,7 @@
                       (u/sym-map <get-state
                                  <set-state!
                                  <update-state!
+                                 authenticator-branch
                                  authenticator-storage
                                  actor-id
                                  get-info
