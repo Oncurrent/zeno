@@ -15,10 +15,11 @@
 
 (comment (kaocha.repl/run))
 
-(defn krun
-  ([sym] (krun sym nil))
-  ([sym opts]
-   (kaocha.repl/run sym (merge {:color? false :capture-output? false} opts))))
+#?(:clj
+   (defn krun
+     ([sym] (krun sym nil))
+     ([sym opts]
+      (kaocha.repl/run sym (merge {:color? false :capture-output? false} opts)))))
 
 (defn ->norm-paths [ops]
   (->> ops
