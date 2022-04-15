@@ -4,7 +4,7 @@
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
    [com.oncurrent.zeno.client.authenticator-impl :as ai]
-   [com.oncurrent.zeno.authenticators.password :as-alias pwd-auth]
+   [com.oncurrent.zeno.authenticators.password :as pwd-auth]
    [com.oncurrent.zeno.authenticators.password.shared :as shared]
    [com.oncurrent.zeno.client :as zc]
    [com.oncurrent.zeno.schemas :as schemas]

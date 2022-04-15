@@ -5,7 +5,7 @@
    [deercreeklabs.lancaster :as l]
    [com.oncurrent.zeno.schemas :as schemas]
    [com.oncurrent.zeno.server.state-provider-impl :as sp-impl]
-   [com.oncurrent.zeno.state-providers.crdt :as-alias crdt]
+   [com.oncurrent.zeno.state-providers.crdt :as crdt]
    [com.oncurrent.zeno.state-providers.crdt.commands :as commands]
    [com.oncurrent.zeno.state-providers.crdt.common :as common]
    [com.oncurrent.zeno.state-providers.crdt.shared :as shared]
