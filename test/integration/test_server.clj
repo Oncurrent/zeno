@@ -69,7 +69,7 @@
                       :storage (storage/make-storage)}
         _ (log/info (str "Starting Zeno integration test server on port "
                          port "."))
-        zs (server/zeno-server (cond-> config
+        zs (server/->zeno-server (cond-> config
                                  tls? (merge (get-tls-configs))))]
     (server/set-rpc-handler! zs :add-nums add-nums)
     (server/set-rpc-handler! zs :get-name <get-name)

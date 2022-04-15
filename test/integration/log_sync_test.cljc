@@ -25,7 +25,7 @@
   (au/test-async
    15000
    (ca/go
-     (let [config #:zeno{:crdt-authorizer (authz/make-affirmative-authorizer)
+     (let [config #:zeno{:crdt-authorizer (authz/->authorizer)
                          :crdt-branch "integration-test"
                          :crdt-schema data-schema
                          :get-server-base-url (constantly "ws://localhost:8080")}
