@@ -8,7 +8,7 @@
    [deercreeklabs.lancaster :as l]
    #?(:clj kaocha.repl)
    [com.oncurrent.zeno.admin-client :as admin]
-   [com.oncurrent.zeno.authenticators.password :as-alias pwd-auth]
+   [com.oncurrent.zeno.authenticators.password :as pwd-auth]
    [com.oncurrent.zeno.authenticators.password.client :as password]
    [com.oncurrent.zeno.authenticators.password.shared :as pwd-shared]
    [com.oncurrent.zeno.client :as zc]
