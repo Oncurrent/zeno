@@ -27,9 +27,14 @@
 (def default-env-name "main")
 (def terminal-kw-ops #{:zeno/keys :zeno/count :zeno/concat})
 (def kw-ops (conj terminal-kw-ops :zeno/*))
+;; TODO: Make valid-path-roots dynamic according to the client's
+;; root->state-provider configuration. Then remove this variabl altogether and
+;; use the new dynamic thing.
 (def valid-path-roots #{:zeno/actor-id
                         :zeno/client
-                        :zeno/crdt})
+                        :zeno/crdt
+                        :crdt
+                        :local})
 
 (defmacro sym-map
   "Builds a map from symbols.
