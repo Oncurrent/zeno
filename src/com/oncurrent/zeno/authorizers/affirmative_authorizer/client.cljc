@@ -12,5 +12,5 @@
   (get-name [this]
     shared/authorizer-name))
 
-(defn make-affirmative-authorizer []
+(defn ->authorizer []
   (->AffirmativeClientAuthorizer))

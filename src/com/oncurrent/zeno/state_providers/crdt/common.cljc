@@ -10,9 +10,9 @@
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
-(defn chop-root [path]
-  (case (first path)
-    :zeno/crdt (recur (-> path rest))
+(defn chop-root [path root]
+  (if (= root (first path))
+    (recur (rest path) root)
     path))
 
 (def container-types #{:array :map :record :union})
@@ -25,7 +25,7 @@
 (defmulti check-key (fn [{:keys [schema]}]
                       (schema->dispatch-type schema)))
 
-(defmulti get-value-info (fn [{:keys [schema]}]
+(defmulti get-value-info (fn [{:keys [schema path]}]
                            (schema->dispatch-type schema)))
 
 (defmethod check-key :array
@@ -102,7 +102,7 @@
      :norm-path norm-path}))
 
 (defmethod get-value-info :map
-  [{:keys [schema] :as arg}]
+  [{:keys [schema path] :as arg}]
   (let [get-child-schema #(l/schema-at-path schema [%])]
     (associative-get-value-info
      (assoc arg :get-child-schema get-child-schema))))
@@ -265,7 +265,7 @@
       (let [{:keys [norm-path value]} update-info
             value-schema (when-not (nil? value)
                            (l/schema-at-path crdt-schema
-                                             (chop-root norm-path)))
+                                             (rest norm-path)))
             range? (#{:zeno/insert-range-after
                       :zeno/insert-range-before} (:op update-info))
             range-schema (when range?
@@ -284,7 +284,7 @@
   (au/go
     (when update-info
       (let [{:keys [norm-path serialized-value]} update-info
-            value-schema (l/schema-at-path crdt-schema (chop-root norm-path))]
+            value-schema (l/schema-at-path crdt-schema (rest norm-path))]
         (-> update-info
             (dissoc :serialized-value)
             (assoc :value

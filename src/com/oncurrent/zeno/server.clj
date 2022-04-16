@@ -647,7 +647,7 @@
                {}
                m)))
 
-(defn zeno-server [config]
+(defn ->zeno-server [config]
   (u/check-config {:config config
                    :config-type :server
                    :config-rules server-config-rules})

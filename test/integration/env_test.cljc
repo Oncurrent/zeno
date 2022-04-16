@@ -1,7 +1,6 @@
 (ns integration.env-test
   (:require
    [clojure.core.async :as ca]
-   [clojure.edn :as edn]
    #?(:clj [clojure.java.io :as io])
    [clojure.test :refer [deftest is]]
    [com.oncurrent.zeno.admin-client :as admin]
@@ -9,46 +8,30 @@
    [com.oncurrent.zeno.authenticators.password.client :as pwd-client]
    [com.oncurrent.zeno.authenticators.password.shared :as pwd-shared]
    [com.oncurrent.zeno.client :as zc]
-   [com.oncurrent.zeno.state-providers.crdt :as crdt]
-   [com.oncurrent.zeno.state-providers.crdt.client :as crdt-client]
    [com.oncurrent.zeno.state-providers.crdt.shared :as crdt-shared]
    [com.oncurrent.zeno.utils :as u]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
-   [integration.test-info :as ti]
-   [integration.test-schemas :as ts]
    #?(:clj kaocha.repl)
-   [taoensso.timbre :as log]))
+   [taoensso.timbre :as log]
+   [test-common :as c]))
 
 ;;;; IMPORTANT!!!
 ;;;; You must start the integration test server for these tests to work.
 ;;;; $ bin/run-test-server
 
-(defn make-zc [{:keys [env-name source-env-name]}]
-  (let [crdt-sp (crdt-client/->state-provider
-                 #::crdt{:authorizer nil ; TODO: Fill this in
-                         :schema ts/crdt-schema})
-        config #:zeno{:env-name env-name
-                      :get-server-base-url (constantly "ws://localhost:8080")
-                      :root->state-provider {:zeno/crdt crdt-sp}
-                      :source-env-name source-env-name}]
-    (zc/->zeno-client config)))
-
-(deftest ^:this test-envs
+(comment (kaocha.repl/run *ns* {:color? false}))
+(deftest test-envs
   (au/test-async
    10000
    (au/go
-     (let [admin (admin/admin-client
-                  #:zeno{:admin-password ti/admin-password
+     (let [admin (admin/->admin-client
+                  #:zeno{:admin-password c/admin-password
                          :get-server-base-url
                          (constantly "ws://localhost:8080/admin")})
+           _ (au/<? (c/<clear-envs! admin))
            ;; Create a permanent env to use as a base
-           perm-env-name "test-env-perm"
-           envs (au/<? (admin/<get-env-names {:zeno/admin-client admin}))
-           _ (when (= true (some #(= perm-env-name %) envs))
-               (au/<? (admin/<delete-env!
-                       #:zeno{:admin-client admin
-                              :env-name perm-env-name})))
+           perm-env-name (u/compact-random-uuid)
            auth-infos [#:zeno{:authenticator-name
                               pwd-shared/authenticator-name
                               ;; If :authenticator-branch is nil, Zeno will use
@@ -64,8 +47,10 @@
                                         :authenticator-infos auth-infos
                                         :env-name perm-env-name
                                         :state-provider-infos spis}))))
+           envs* (au/<? (admin/<get-env-names {:zeno/admin-client admin}))
+           _ (is (= [perm-env-name] envs*))
            ;; Connect to the permanent env and set some state
-           zc-perm (make-zc {:env-name perm-env-name})
+           zc-perm (c/->zc {:env-name perm-env-name})
            sub-map {'name [:zeno/crdt :name]}
            get-state #(zc/subscribe-to-state! % "test" sub-map (constantly nil))
            _ (is (= '{name nil} (get-state zc-perm)))
@@ -75,7 +60,7 @@
                                           :zeno/path [:zeno/crdt :name]}]))
            _ (is (= '{name "base"} (get-state zc-perm)))
            ;; Connect to a temp env based on the permanent env
-           zc-temp (make-zc {:source-env-name perm-env-name})
+           zc-temp (c/->zc {:source-env-name perm-env-name})
            ;; Verify that the `:name` is "base"
            _ (is (= '{name "base"} (get-state zc-temp)))
            ;; Set the `:name` to "temp" in this env

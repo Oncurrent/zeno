@@ -14,7 +14,7 @@
 (defn make-<update-state! [{:keys [*state]}]
   (fn [{:zeno/keys [cmds] :keys [prefix]}]
     (au/go
-     (let [ret (commands/eval-cmds *state cmds prefix)
+     (let [ret (commands/eval-cmds @*state cmds prefix)
            {:keys [state update-infos]} ret]
         ;; We can use `reset!` here b/c there are no concurrent updates
         (reset! *state state)
@@ -22,8 +22,8 @@
 
 (defn ->state-provider
   ([] (->state-provider nil))
-  ([arg]
-   (let [*state (atom nil)]
+  ([{::client-mem/keys [initial-state]}]
+   (let [*state (atom initial-state)]
      #::sp-impl{:<update-state! (make-<update-state! (u/sym-map *state))
                 :get-in-state (fn [{:keys [prefix path]}]
                                 (commands/get-in-state @*state path prefix))

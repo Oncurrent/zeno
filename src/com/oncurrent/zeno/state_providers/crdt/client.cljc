@@ -13,11 +13,12 @@
    [taoensso.timbre :as log]))
 
 (defn make-<update-state! [{:keys [*crdt-state schema]}]
-  (fn [{:zeno/keys [cmds]}]
+  (fn [{:zeno/keys [cmds] :keys [prefix]}]
     (au/go
       (let [ret (commands/process-cmds {:cmds cmds
                                         :crdt @*crdt-state
-                                        :crdt-schema schema})
+                                        :crdt-schema schema
+                                        :prefix prefix})
             {:keys [crdt ops update-infos]} ret]
         ;; We can use `reset!` here b/c there are no concurrent updates
         (reset! *crdt-state crdt)
@@ -29,11 +30,13 @@
   ;; TODO: Check args
   ;; TODO: Load initial state from IDB
   (let [*crdt-state (atom nil)
-        get-in-state (fn [{:keys [path] :as arg}]
-                       (common/get-value-info (assoc arg
-                                                     :crdt @*crdt-state
-                                                     :path (rest path)
-                                                     :schema schema)))]
+        get-in-state (fn [{:keys [path prefix] :as arg}]
+                       (common/get-value-info
+                        (assoc arg
+                               :crdt @*crdt-state
+                               :path (common/chop-root path prefix)
+                               :norm-path [prefix]
+                               :schema schema)))]
     #::sp-impl{:<update-state! (make-<update-state!
                                 (u/sym-map *crdt-state schema))
                :get-in-state get-in-state

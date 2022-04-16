@@ -145,7 +145,7 @@
 
 ;;;;;;;;;;;;;;;;;;;;;;;;; Public API ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defn admin-client
+(defn ->admin-client
   "Returns a Zeno admin client.
    Required config keys:
     - `:zeno/admin-password` - The admin password of the server
