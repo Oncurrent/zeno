@@ -11,9 +11,8 @@
    [com.oncurrent.zeno.utils :as u]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
-   [integration.test-info :as ti]
-   [integration.test-schemas :as test-schemas]
-   [taoensso.timbre :as log]))
+   [taoensso.timbre :as log]
+   [test-common :as c]))
 
 (defn get-tls-configs []
   (let [certificate-str (some-> (System/getenv "ZENO_SERVER_CERTIFICATE_FILE")
@@ -59,13 +58,13 @@
         port (u/str->int port-str)
         crdt-sp (crdt-server/->state-provider
                  #::crdt{:authorizer (authz/->authorizer)
-                         :schema test-schemas/crdt-schema})
+                         :schema c/crdt-schema})
         root->sp {:zeno/crdt crdt-sp}
-        config #:zeno{:admin-password ti/admin-password
+        config #:zeno{:admin-password c/admin-password
                       :authenticators [(password/->authenticator)]
                       :port port
                       :root->state-provider root->sp
-                      :rpcs test-schemas/rpcs
+                      :rpcs c/rpcs
                       :storage (storage/make-storage)}
         _ (log/info (str "Starting Zeno integration test server on port "
                          port "."))

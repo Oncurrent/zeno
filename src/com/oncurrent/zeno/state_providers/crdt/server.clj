@@ -26,7 +26,7 @@
                         {:crdt (get @*branch->crdt-store branch)
                          :path (rest path)
                          :schema schema})))
-        <update-state! (fn [{:zeno/keys [branch cmds]}]
+        <update-state! (fn [{:zeno/keys [branch cmds] :as arg}]
                          (au/go
                            (swap! *branch->crdt-store
                                   update branch

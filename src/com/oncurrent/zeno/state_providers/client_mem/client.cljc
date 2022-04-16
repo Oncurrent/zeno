@@ -14,7 +14,7 @@
 (defn make-<update-state! [{:keys [*state]}]
   (fn [{:zeno/keys [cmds] :keys [prefix]}]
     (au/go
-     (let [ret (commands/eval-cmds *state cmds prefix)
+     (let [ret (commands/eval-cmds @*state cmds prefix)
            {:keys [state update-infos]} ret]
         ;; We can use `reset!` here b/c there are no concurrent updates
         (reset! *state state)

@@ -12,32 +12,26 @@
    [com.oncurrent.zeno.utils :as u]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
-   [integration.common :as c]
-   [integration.test-info :as ti]
    #?(:clj kaocha.repl)
-   [taoensso.timbre :as log]))
+   [taoensso.timbre :as log]
+   [test-common :as c]))
 
 ;;;; IMPORTANT!!!
 ;;;; You must start the integration test server for these tests to work.
 ;;;; $ bin/run-test-server
 
 (comment (kaocha.repl/run *ns* {:color? false}))
-
-(deftest ^:this test-envs
+(deftest test-envs
   (au/test-async
    10000
    (au/go
      (let [admin (admin/->admin-client
-                  #:zeno{:admin-password ti/admin-password
+                  #:zeno{:admin-password c/admin-password
                          :get-server-base-url
                          (constantly "ws://localhost:8080/admin")})
+           _ (au/<? (c/<clear-envs! admin))
            ;; Create a permanent env to use as a base
-           perm-env-name "test-env-perm"
-           envs (au/<? (admin/<get-env-names {:zeno/admin-client admin}))
-           _ (when (= true (some #(= perm-env-name %) envs))
-               (au/<? (admin/<delete-env!
-                       #:zeno{:admin-client admin
-                              :env-name perm-env-name})))
+           perm-env-name (u/compact-random-uuid)
            auth-infos [#:zeno{:authenticator-name
                               pwd-shared/authenticator-name
                               ;; If :authenticator-branch is nil, Zeno will use
@@ -53,6 +47,8 @@
                                         :authenticator-infos auth-infos
                                         :env-name perm-env-name
                                         :state-provider-infos spis}))))
+           envs* (au/<? (admin/<get-env-names {:zeno/admin-client admin}))
+           _ (is (= [perm-env-name] envs*))
            ;; Connect to the permanent env and set some state
            zc-perm (c/->zc {:env-name perm-env-name})
            sub-map {'name [:zeno/crdt :name]}

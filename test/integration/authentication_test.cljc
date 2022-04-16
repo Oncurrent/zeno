@@ -11,9 +11,8 @@
    [com.oncurrent.zeno.authenticators.password.shared :as pwd-shared]
    [com.oncurrent.zeno.client :as zc]
    [com.oncurrent.zeno.utils :as u]
-   [integration.common :as c]
-   [integration.test-info :as ti]
-   [taoensso.timbre :as log]))
+   [taoensso.timbre :as log]
+   [test-common :as c]))
 
 (comment (kaocha.repl/run 'integration.authentication-test))
 

@@ -2,35 +2,24 @@
   (:require
    [clojure.core.async :as ca]
    [clojure.test :as t :refer [deftest is]]
-   [deercreeklabs.async-utils :as au]
-   [deercreeklabs.lancaster :as l]
    [com.oncurrent.zeno.client :as zc]
    [com.oncurrent.zeno.utils :as u]
-   [taoensso.timbre :as log])
+   [deercreeklabs.async-utils :as au]
+   [deercreeklabs.lancaster :as l]
+   #?(:clj [kaocha.repl])
+   [taoensso.timbre :as log]
+   [test-common :as c])
   #?(:clj
      (:import
       (clojure.lang ExceptionInfo))))
 
-(l/def-record-schema book-schema
-  [:title l/string-schema]
-  [:nums (l/array-schema l/int-schema)])
-
-(l/def-record-schema msg-schema
-  [:text l/string-schema]
-  [:user-id l/string-schema])
-
-(l/def-record-schema info-schema
-  [:books (l/map-schema book-schema)]
-  [:my-book-ids (l/array-schema l/string-schema)]
-  [:msgs (l/array-schema msg-schema)]
-  [:num l/int-schema]
-  [:the-id l/string-schema])
+(comment (kaocha.repl/run *ns*))
 
 (deftest test-bad-path-root-in-update-state!
   (au/test-async
    1000
    (ca/go
-     (let [zc (zc/->zeno-client)]
+     (let [zc (c/->zc-unit)]
        (is (thrown-with-msg?
             #?(:clj ExceptionInfo :cljs js/Error)
             #"Paths must begin with "
@@ -43,7 +32,7 @@
   (au/test-async
    1000
    (ca/go
-     (let [zc (zc/->zeno-client)]
+     (let [zc (c/->zc-unit)]
        (is (thrown-with-msg?
             #?(:clj ExceptionInfo :cljs js/Error)
             #"Invalid"
@@ -56,7 +45,7 @@
   (au/test-async
    1000
    (ca/go
-     (let [zc (zc/->zeno-client)]
+     (let [zc (c/->zc-unit)]
        (is (thrown-with-msg?
             #?(:clj ExceptionInfo :cljs js/Error)
             #"Invalid"
@@ -70,7 +59,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client)
+       (let [zc (c/->zc-unit)
              sub-map '{text [:zeno/client :msgs 0 :text]}
              ch (ca/chan 1)
              update-fn #(ca/put! ch (% 'text))
@@ -101,12 +90,15 @@
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
+(comment
+ (kaocha.repl/run #'test-ordered-update-maps {:capture-output? false})
+ (kaocha.repl/run #'test-crdt-ordered-update-maps {:capture-output? false}))
 (deftest test-crdt-ordered-update-maps
   (au/test-async
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client {:zeno/crdt-schema info-schema})
+       (let [zc (c/->zc-unit)
              sub-map '{text [:zeno/crdt :msgs 0 :text]}
              ch (ca/chan 1)
              update-fn #(ca/put! ch (% 'text))
@@ -143,7 +135,7 @@
    (ca/go
      (try
        (let [orig-text "Foo"
-             zc (zc/->zeno-client)
+             zc (c/->zc-unit)
              ch (ca/chan 1)
              sub-map '{last-text [:zeno/client :msgs -1 :text]}
              update-fn #(ca/put! ch (% 'last-text))
@@ -169,7 +161,7 @@
    (ca/go
      (try
        (let [orig-text "Foo"
-             zc (zc/->zeno-client {:zeno/crdt-schema info-schema})
+             zc (c/->zc-unit)
              ch (ca/chan 1)
              sub-map '{last-text [:zeno/crdt :msgs -1 :text]}
              update-fn #(ca/put! ch (% 'last-text))
@@ -194,7 +186,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client)
+       (let [zc (c/->zc-unit)
              book-id "123"
              book-title "Treasure Island"
              resolution-map {'book-id book-id}
@@ -216,7 +208,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client {:zeno/crdt-schema info-schema})
+       (let [zc (c/->zc-unit)
              book-id "123"
              book-title "Treasure Island"
              resolution-map {'book-id book-id}
@@ -238,7 +230,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client)
+       (let [zc (c/->zc-unit)
              book-id "123"
              book-title "Treasure Island"
              resolution-map {'d-path [:zeno/client :books 'the-id :title]}
@@ -265,7 +257,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client {:zeno/crdt-schema info-schema})
+       (let [zc (c/->zc-unit)
              book-id "123"
              book-title "Treasure Island"
              resolution-map {'d-path [:zeno/crdt :books 'the-id :title]}
@@ -292,7 +284,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client)
+       (let [zc (c/->zc-unit)
              my-book-ids ["123" "456"]
              books {"123" {:title "Treasure Island"}
                     "456" {:title "Kidnapped"}
@@ -316,7 +308,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client {:zeno/crdt-schema info-schema})
+       (let [zc (c/->zc-unit)
              my-book-ids ["123" "456"]
              books {"123" {:title "Treasure Island"}
                     "456" {:title "Kidnapped"}
@@ -340,7 +332,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client)
+       (let [zc (c/->zc-unit)
              update-ch (ca/chan 1)
              my-book-ids ["123" "456"]
              books {"123" {:title "Treasure Island"}
@@ -374,7 +366,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client {:zeno/crdt-schema info-schema})
+       (let [zc (c/->zc-unit)
              update-ch (ca/chan 1)
              my-book-ids ["123" "456"]
              books {"123" {:title "Treasure Island"}
@@ -409,7 +401,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client)
+       (let [zc (c/->zc-unit)
              update-ch (ca/chan 1)
              my-book-ids ["123" "789"]
              books {"123" {:title "Treasure Island"}
@@ -449,7 +441,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client {:zeno/crdt-schema info-schema})
+       (let [zc (c/->zc-unit)
              update-ch (ca/chan 1)
              my-book-ids ["123" "789"]
              books {"123" {:title "Treasure Island"}
@@ -488,7 +480,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client)
+       (let [zc (c/->zc-unit)
              ch (ca/chan 1)
              my-book-ids #{"123" "789"}
              books {"123" {:title "Treasure Island"}
@@ -514,7 +506,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client {:zeno/crdt-schema info-schema})
+       (let [zc (c/->zc-unit)
              ch (ca/chan 1)
              my-book-ids #{"123" "789"}
              books {"123" {:title "Treasure Island"}
@@ -540,7 +532,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client)
+       (let [zc (c/->zc-unit)
              ch (ca/chan 1)
              books {"123" {:title "Treasure Island" :nums [2 4 6]}
                     "456" {:title "Kidnapped" :nums [1 3]}
@@ -595,7 +587,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client {:zeno/crdt-schema info-schema})
+       (let [zc (c/->zc-unit)
              ch (ca/chan 1)
              books {"123" {:title "Treasure Island" :nums [2 4 6]}
                     "456" {:title "Kidnapped" :nums [1 3]}
@@ -650,7 +642,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client)
+       (let [zc (c/->zc-unit)
              books {"123" {:title "Treasure Island"}
                     "456" {:title "Kidnapped"}
                     "789" {:title "Dr Jekyll and Mr Hyde"}}
@@ -676,7 +668,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client {:zeno/crdt-schema info-schema})
+       (let [zc (c/->zc-unit)
              books {"123" {:title "Treasure Island"}
                     "456" {:title "Kidnapped"}
                     "789" {:title "Dr Jekyll and Mr Hyde"}}
@@ -703,7 +695,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client)
+       (let [zc (c/->zc-unit)
              books {"123" {:title "Treasure Island"}
                     "456" {:title "Kidnapped"}
                     "789" {:title "Dr Jekyll and Mr Hyde"}}
@@ -721,7 +713,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client {:zeno/crdt-schema info-schema})
+       (let [zc (c/->zc-unit)
              books {"123" {:title "Treasure Island"}
                     "456" {:title "Kidnapped"}
                     "789" {:title "Dr Jekyll and Mr Hyde"}}
@@ -739,7 +731,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client)
+       (let [zc (c/->zc-unit)
              books {"123" {:title "Treasure Island"}
                     "456" {:title "Kidnapped"}
                     "789" {:title "Dr Jekyll and Mr Hyde"}}
@@ -760,7 +752,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client {:zeno/crdt-schema info-schema})
+       (let [zc (c/->zc-unit)
              books {"123" {:title "Treasure Island"}
                     "456" {:title "Kidnapped"}
                     "789" {:title "Dr Jekyll and Mr Hyde"}}
@@ -781,7 +773,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client)
+       (let [zc (c/->zc-unit)
              books {"123" {:title "Treasure Island"}
                     "456" {:title "Kidnapped"}
                     "789" {:title "Dr Jekyll and Mr Hyde"}}
@@ -803,7 +795,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client {:zeno/crdt-schema info-schema})
+       (let [zc (c/->zc-unit)
              books {"123" {:title "Treasure Island"}
                     "456" {:title "Kidnapped"}
                     "789" {:title "Dr Jekyll and Mr Hyde"}}
@@ -825,7 +817,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client)
+       (let [zc (c/->zc-unit)
              books {"123" {:title "Treasure Island"}
                     "456" {:title "Kidnapped"}
                     "789" {:title "Dr Jekyll and Mr Hyde"}}
@@ -844,7 +836,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client {:zeno/crdt-schema info-schema})
+       (let [zc (c/->zc-unit)
              books {"123" {:title "Treasure Island"}
                     "456" {:title "Kidnapped"}
                     "789" {:title "Dr Jekyll and Mr Hyde"}}
@@ -863,7 +855,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client)
+       (let [zc (c/->zc-unit)
              books {"123" {:title "Treasure Island"}
                     "456" {:title "Kidnapped"}
                     "789" {:title "Dr Jekyll and Mr Hyde"}}
@@ -881,7 +873,7 @@
    1000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client {:zeno/crdt-schema info-schema})
+       (let [zc (c/->zc-unit)
              books {"123" {:title "Treasure Island"}
                     "456" {:title "Kidnapped"}
                     "789" {:title "Dr Jekyll and Mr Hyde"}}
@@ -899,7 +891,7 @@
    3000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client)
+       (let [zc (c/->zc-unit)
              ch (ca/chan 1)
              books {"123" {:title "Treasure Island"}
                     "456" {:title "Kidnapped"}
@@ -934,7 +926,7 @@
    3000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client {:zeno/crdt-schema info-schema})
+       (let [zc (c/->zc-unit)
              ch (ca/chan 1)
              books {"123" {:title "Treasure Island"}
                     "456" {:title "Kidnapped"}
@@ -973,7 +965,7 @@
    3000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client)
+       (let [zc (c/->zc-unit)
              ch (ca/chan 1)
              id-to-fav-nums {1 [7 8 9]
                              2 [2 3 4]}
@@ -1008,7 +1000,7 @@
    (ca/go
      (try
        (let [crdt-schema (l/map-schema (l/array-schema l/int-schema))
-             zc (zc/->zeno-client {:zeno/crdt-schema crdt-schema})
+             zc (c/->zc-unit (u/sym-map crdt-schema))
              ch (ca/chan 1)
              id-to-fav-nums {"1" [7 8 9]
                              "2" [2 3 4]}
@@ -1041,7 +1033,7 @@
    3000
    (ca/go
      (try
-       (let [zc (zc/->zeno-client)
+       (let [zc (c/->zc-unit)
              ch (ca/chan 1)
              id-to-fav-nums {"1" [7 8 9]
                              "2" [2 3 4]}
@@ -1074,7 +1066,7 @@
    (ca/go
      (try
        (let [crdt-schema (l/map-schema (l/array-schema l/int-schema))
-             zc (zc/->zeno-client {:zeno/crdt-schema crdt-schema})
+             zc (c/->zc-unit (u/sym-map crdt-schema))
              ch (ca/chan 1)
              id-to-fav-nums {"1" [7 8 9]
                              "2" [2 3 4]}
