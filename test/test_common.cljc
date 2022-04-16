@@ -48,8 +48,10 @@
 
 (defn ->zc-unit
   ([] (->zc-unit nil))
-  ([{crdt-schema* :crdt-schema}]
-   (let [root->sp {:zeno/client (cm-client/->state-provider)
+  ([{crdt-schema* :crdt-schema
+     :keys [initial-client-state]}]
+   (let [root->sp {:zeno/client (cm-client/->state-provider
+                                 #::cm{:initial-state initial-client-state})
                    :zeno/crdt (crdt-client/->state-provider
                                #::crdt{:authorizer nil ; TODO
                                        :schema (or crdt-schema*

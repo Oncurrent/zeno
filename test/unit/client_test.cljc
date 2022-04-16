@@ -5,16 +5,19 @@
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.baracus :as ba]
    [deercreeklabs.lancaster :as l]
+   #?(:clj [kaocha.repl])
    [com.oncurrent.zeno.client :as zc]
    [com.oncurrent.zeno.utils :as u]
-   [taoensso.timbre :as log]))
+   [taoensso.timbre :as log]
+   [test-common :as c]))
+
+(comment (kaocha.repl/run *ns*))
 
 (deftest test-subscribe-client-update
   (au/test-async
    3000
    (ca/go
-     (let [zc (zc/->zeno-client {:initial-client-state
-                                 '{page :home}})
+     (let [zc (c/->zc-unit {:initial-client-state '{page :home}})
            ch (ca/chan 1)
            update-fn #(ca/put! ch %)
            sub-map '{page [:zeno/client :page]}]

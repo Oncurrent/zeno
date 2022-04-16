@@ -22,8 +22,8 @@
 
 (defn ->state-provider
   ([] (->state-provider nil))
-  ([arg]
-   (let [*state (atom nil)]
+  ([{::client-mem/keys [initial-state]}]
+   (let [*state (atom initial-state)]
      #::sp-impl{:<update-state! (make-<update-state! (u/sym-map *state))
                 :get-in-state (fn [{:keys [prefix path]}]
                                 (commands/get-in-state @*state path prefix))
