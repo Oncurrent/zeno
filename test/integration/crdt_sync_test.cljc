@@ -1,11 +1,9 @@
-(ns integration.log-sync-test
+(ns integration.crdt-sync-test
   (:require
    [clojure.core.async :as ca]
    [clojure.test :refer [deftest is]]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
-   [com.oncurrent.zeno.authenticators.password.client :as password-client]
-   [com.oncurrent.zeno.authorizers.affirmative-authorizer.client :as authz]
    [com.oncurrent.zeno.client :as zc]
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
@@ -14,23 +12,25 @@
 ;;;; You must start the integration test server for these tests to work.
 ;;;; $ bin/run-test-server
 
-(defn make-identifier []
-  (str "user-" (u/compact-random-uuid) "@email.com"))
 
-(l/def-record-schema data-schema
-  [:numbers (l/array-schema l/int-schema)])
+(defn make-zc [{:keys [client-name env-name source-env-name]}]
+  (let [crdt-sp (crdt-client/->state-provider
+                 #::crdt{:authorizer nil ; TODO: Fill this in
+                         :schema ts/crdt-schema})
+        config #:zeno{:client-name client-name
+                      :env-name env-name
+                      :get-server-base-url (constantly "ws://localhost:8080")
+                      :root->state-provider {:zeno/crdt crdt-sp}
+                      :source-env-name source-env-name}]
+    (zc/->zeno-client config)))
 
-#_
-(deftest test-log-sync
+
+(deftest test-sync
   (au/test-async
    15000
    (ca/go
-     (let [config #:zeno{:crdt-authorizer (authz/make-affirmative-authorizer)
-                         :crdt-branch "integration-test"
-                         :crdt-schema data-schema
-                         :get-server-base-url (constantly "ws://localhost:8080")}
-           zc1 (zc/zeno-client (assoc config :client-name "zc1"))
-           zc2 (zc/zeno-client (assoc config :client-name "zc2"))]
+     (let [zc1 (make-zc {:client-name "zc1"})
+           zc2 (make-zc {:client-name "zc2"})]
        (try
          (let [identifier1 (make-identifier)
                secret "secret"

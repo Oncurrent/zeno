@@ -25,7 +25,9 @@
         update-infos))))
 
 (defn ->state-provider
-  [{::crdt/keys [authorizer schema]}]
+  [{::crdt/keys [authorizer
+                 sp-msg-protocol
+                 schema]}]
   ;; TODO: Check args
   ;; TODO: Load initial state from IDB
   (let [*crdt-state (atom nil)
