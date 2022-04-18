@@ -25,7 +25,7 @@
 (defmulti check-key (fn [{:keys [schema]}]
                       (schema->dispatch-type schema)))
 
-(defmulti get-value-info (fn [{:keys [schema path]}]
+(defmulti get-value-info (fn [{:keys [schema]}]
                            (schema->dispatch-type schema)))
 
 (defmethod check-key :array
@@ -102,7 +102,7 @@
      :norm-path norm-path}))
 
 (defmethod get-value-info :map
-  [{:keys [schema path] :as arg}]
+  [{:keys [schema] :as arg}]
   (let [get-child-schema #(l/schema-at-path schema [%])]
     (associative-get-value-info
      (assoc arg :get-child-schema get-child-schema))))
