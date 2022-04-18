@@ -120,8 +120,9 @@
           (recur))))))
 
 (defn make-on-connect
-  [{:keys [root->state-provider] :as arg}]
+  [{:keys [*connected? root->state-provider] :as arg}]
   (fn [{:keys [protocol url]}]
+    (reset! *connected? true)
     (ca/go
       (try
         (doseq [[root {::sp-impl/keys [on-connect]}] root->state-provider]
@@ -132,11 +133,17 @@
                      (u/ex-msg-and-stacktrace e)))))))
 
 (defn make-on-disconnect
-  [{:keys [root->state-provider] :as arg}]
+  [{:keys [*connected? root->state-provider] :as arg}]
   (fn [{:keys [code url]}]
-    (doseq [[root {::sp-impl/keys [on-disconnect]}] root->state-provider]
-      (when on-disconnect
-        (on-disconnect code)))))
+    (reset! *connected? false)
+    (ca/go
+      (try
+        (doseq [[root {::sp-impl/keys [on-disconnect]}] root->state-provider]
+          (when on-disconnect
+            (on-disconnect code)))
+        (catch #?(:clj Exception :cljs js/Error) e
+          (log/error "Error in on-connect:\n"
+                     (u/ex-msg-and-stacktrace e)))))))
 
 (defn make-get-url [{:keys [get-server-base-url] :as arg}]
   (fn []
