@@ -142,7 +142,7 @@
           (when on-disconnect
             (on-disconnect code)))
         (catch #?(:clj Exception :cljs js/Error) e
-          (log/error "Error in on-connect:\n"
+          (log/error "Error in on-disconnect:\n"
                      (u/ex-msg-and-stacktrace e)))))))
 
 (defn make-get-url [{:keys [get-server-base-url] :as arg}]
