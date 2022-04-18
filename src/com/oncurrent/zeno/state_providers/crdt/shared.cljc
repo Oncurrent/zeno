@@ -7,6 +7,7 @@
 
 (def state-provider-name :com.oncurrent.zeno.state-providers/crdt)
 
-(def crdt-sp-protocol
-  {:sum {:arg-schema (l/array-schema l/int-schema)
-         :ret-schema l/int-schema}})
+(def msg-protocol
+  {:add-nums {:arg-schema (l/array-schema l/int-schema)
+              :ret-schema l/int-schema}
+   :notify {:arg-schema l/string-schema}})

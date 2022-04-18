@@ -176,13 +176,28 @@
   :zeno/rpc-unauthorized)
 
 (l/def-record-schema rpc-arg-schema
+  [:arg serialized-value-schema]
   [:rpc-id l/string-schema]
-  [:rpc-name-kw-ns l/string-schema]
   [:rpc-name-kw-name l/string-schema]
-  [:arg serialized-value-schema])
+  [:rpc-name-kw-ns l/string-schema])
 
 (def rpc-ret-schema
   (l/union-schema [rpc-anomaly-schema serialized-value-schema]))
+
+;;;;;;;;;;;;;;; State Provider Schemas ;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(l/def-record-schema state-provider-msg-arg-schema
+  [:arg serialized-value-schema]
+  [:msg-type-name l/string-schema]
+  [:msg-type-ns l/string-schema]
+  [:state-provider-name state-provider-name-schema])
+
+(l/def-record-schema state-provider-rpc-arg-schema
+  [:arg serialized-value-schema]
+  [:rpc-id l/string-schema]
+  [:rpc-name-kw-name l/string-schema]
+  [:rpc-name-kw-ns l/string-schema]
+  [:state-provider-name state-provider-name-schema])
 
 ;;;;;;;;;;;;;;; Talk2 Protocols ;;;;;;;;;;;;;;;;;;;;;
 
@@ -216,6 +231,9 @@
          :ret-schema rpc-ret-schema}
    :set-sync-session-info {:arg-schema sync-session-info-schema
                            :ret-schema l/boolean-schema}
+   :state-provider-msg {:arg-schema state-provider-msg-arg-schema}
+   :state-provider-rpc {:arg-schema state-provider-rpc-arg-schema
+                        :ret-schema rpc-ret-schema}
    :update-authenticator-state {:arg-schema
                                 update-authenticator-state-arg-schema
                                 :ret-schema

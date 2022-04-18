@@ -238,7 +238,7 @@
               _ (when-not handler
                   (throw (ex-info (str "No handler found for RPC `"
                                        rpc-name-kw "`.")
-                                  (u/sym-map rpc-name-kw arg))))
+                                  (u/sym-map rpc-name-kw))))
               {:keys [arg-schema ret-schema]} (get rpcs rpc-name-kw)
               deser-arg (au/<? (common/<serialized-value->value
                                 {:<request-schema <request-schema
@@ -439,6 +439,91 @@
             state-fns (make-state-fns env-info)]
         (<do-rpc! (merge base-info state-fns handler-arg))))))
 
+(defn make-sp-rpc-handler
+  [{:keys [*conn-id->env-name *env-name->info name->state-provider storage]
+    :as make-handler-arg}]
+  (fn [{:keys [conn-id] :as handler-arg}]
+    (au/go
+      (let [{:keys [arg rpc-id rpc-name-kw-name
+                    rpc-name-kw-ns state-provider-name]} (:arg handler-arg)
+            <request-schema (su/make-schema-requester handler-arg)
+            rpc-name-kw (keyword rpc-name-kw-ns rpc-name-kw-name)]
+        (try
+          (let [sp (name->state-provider state-provider-name)
+                {::sp-impl/keys [msg-handlers msg-protocol]} sp
+                handler (get msg-handlers rpc-name-kw)
+                _ (when-not handler
+                    (throw (ex-info
+                            (str "No handler found for in state provider `"
+                                 state-provider-name "` for RPC `"
+                                 rpc-name-kw "`.")
+                            (u/sym-map rpc-name-kw state-provider-name))))
+                env-name (get @*conn-id->env-name conn-id)
+                env-info (-> (get @*env-name->info env-name)
+                             (assoc :env-name env-name))
+                {:keys [arg-schema ret-schema]} (get msg-protocol rpc-name-kw)
+                deser-arg (au/<? (common/<serialized-value->value
+                                  {:<request-schema <request-schema
+                                   :reader-schema arg-schema
+                                   :serialized-value arg
+                                   :storage storage}))
+                h-arg {:arg deser-arg
+                       :conn-id conn-id
+                       :env-name env-name}
+                ret (handler h-arg)
+                val (if (au/channel? ret)
+                      (au/<? ret)
+                      ret)]
+            (au/<? (storage/<value->serialized-value storage ret-schema val)))
+          (catch Exception e
+            (log/error (str "RPC failed for state provider `"
+                            state-provider-name
+                            "`. rpc-name-kw: `" rpc-name-kw "` "
+                            "rpc-id: `" rpc-id "`.\n\n"
+                            (u/ex-msg-and-stacktrace e)))
+            :zeno/rpc-error))))))
+
+(defn make-sp-msg-handler
+  [{:keys [*conn-id->env-name *env-name->info name->state-provider storage]
+    :as make-handler-arg}]
+  (let [<request-schema (su/make-schema-requester make-handler-arg)]
+    (fn [{:keys [conn-id] :as handler-arg}]
+      (au/go
+        (let [{:keys [arg msg-type-name
+                      msg-type-ns state-provider-name]} (:arg handler-arg)
+              msg-type (keyword msg-type-name msg-type-ns)]
+          (try
+            (let [sp (name->state-provider state-provider-name)
+                  {::sp-impl/keys [msg-handlers msg-protocol]} sp
+                  handler (get msg-handlers msg-type)
+                  _ (when-not handler
+                      (throw (ex-info
+                              (str "No handler found for in state provider `"
+                                   state-provider-name "` for msg `"
+                                   msg-type"`.")
+                              (u/sym-map msg-type state-provider-name))))
+                  env-name (get @*conn-id->env-name conn-id)
+                  env-info (-> (get @*env-name->info env-name)
+                               (assoc :env-name env-name))
+                  {:keys [arg-schema]} (get msg-protocol msg-type)
+                  deser-arg (au/<? (common/<serialized-value->value
+                                    {:<request-schema <request-schema
+                                     :reader-schema arg-schema
+                                     :serialized-value arg
+                                     :storage storage}))
+                  h-arg {:arg deser-arg
+                         :conn-id conn-id
+                         :env-name env-name}
+                  ret (handler h-arg)]
+              (when (au/channel? ret)
+                ;; Check for exceptions
+                (au/<? ret)))
+            (catch Exception e
+              (log/error (str "Msg handling failed for state provider `"
+                              state-provider-name
+                              "`. msg-type: `" msg-type "`.\n\n"
+                              (u/ex-msg-and-stacktrace e))))))))))
+
 (defn query-string->env-params [s]
   (let [m (u/query-string->map s)
         temp? (or (not-empty (:source-env-name m))
@@ -563,6 +648,12 @@
               :rpc
               (make-rpc-handler arg)
 
+              :state-provider-msg
+              (make-sp-msg-handler arg)
+
+              :state-provider-rpc
+              (make-sp-rpc-handler arg)
+
               :update-authenticator-state
               (make-auth-handler
                (assoc arg :f auth-impl/<handle-update-authenticator-state))}
@@ -633,7 +724,8 @@
                                        storage/env-name-to-info-key
                                        schemas/env-name-to-info-schema))
         default-spis (reduce-kv (fn [acc root sp]
-                                  (let [sp-name ((::sp-impl/get-name sp))]
+                                  (let [sp-name (::sp-impl/state-provider-name
+                                                 sp)]
                                     (conj acc {:path-root root
                                                :state-provider-name sp-name})))
                                 []
@@ -647,7 +739,14 @@
                {}
                m)))
 
-(defn zeno-server [config]
+(defn make-name->state-provider [root->state-provider]
+  (reduce-kv (fn [acc root state-provider]
+               (assoc acc (::sp-impl/state-provider-name state-provider)
+                      state-provider))
+             {}
+             root->state-provider))
+
+(defn ->zeno-server [config]
   (u/check-config {:config config
                    :config-type :server
                    :config-rules server-config-rules})
@@ -674,6 +773,7 @@
                                (u/sym-map authenticator-name->info
                                           root->state-provider
                                           storage)))
+        name->state-provider (make-name->state-provider root->state-provider)
         arg (u/sym-map *conn-id->auth-info
                        *conn-id->env-name
                        *connected-actor-id->conn-ids
@@ -684,6 +784,7 @@
                        admin-password
                        authenticator-name->info
                        certificate-str
+                       name->state-provider
                        port
                        private-key-str
                        root->state-provider

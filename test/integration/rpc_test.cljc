@@ -6,8 +6,8 @@
    [deercreeklabs.lancaster :as l]
    [com.oncurrent.zeno.client :as zc]
    [com.oncurrent.zeno.utils :as u]
-   [integration.test-schemas :as test-schemas]
-   [taoensso.timbre :as log]))
+   [taoensso.timbre :as log]
+   [test-common :as c]))
 
 ;;;; IMPORTANT!!!
 ;;;; You must start the integration test server for these tests to work.
@@ -19,7 +19,7 @@
    (ca/go
      (let [config #:zeno{:get-server-base-url (constantly
                                                "ws://localhost:8080")
-                         :rpcs test-schemas/rpcs}
+                         :rpcs c/rpcs}
            zc (zc/->zeno-client config)]
        (try
          (let [arg [1 3 6]

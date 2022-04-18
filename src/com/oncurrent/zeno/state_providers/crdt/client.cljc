@@ -13,34 +13,66 @@
    [taoensso.timbre :as log]))
 
 (defn make-<update-state! [{:keys [*crdt-state schema]}]
-  (fn [{:zeno/keys [cmds]}]
+  (fn [{:zeno/keys [cmds] :keys [prefix]}]
     (au/go
       (let [ret (commands/process-cmds {:cmds cmds
                                         :crdt @*crdt-state
-                                        :crdt-schema schema})
+                                        :crdt-schema schema
+                                        :prefix prefix})
             {:keys [crdt ops update-infos]} ret]
         ;; We can use `reset!` here b/c there are no concurrent updates
         (reset! *crdt-state crdt)
         ;; TODO: log the ops
         update-infos))))
 
+(defn start-sync-session! [{:keys [*host-fns]}]
+  (ca/go
+    (try
+      (let [{:keys [<send-msg]} @*host-fns
+            ret (au/<? (<send-msg {:msg-type :add-nums
+                                   :arg [2 3 42]}))]
+        (log/info (str "XXXXXXXXX:\nGot ret: `" ret "`.")))
+      (catch #?(:clj Exception :cljs js/Error) e
+        (log/error "Error in statrt-sync-session!:\n"
+                   (u/ex-msg-and-stacktrace e))))))
+
+(defn end-sync-session! [{:keys []}]
+  )
+
 (defn ->state-provider
-  [{::crdt/keys [authorizer
-                 sp-msg-protocol
-                 schema]}]
+  [{::crdt/keys [authorizer schema]}]
   ;; TODO: Check args
   ;; TODO: Load initial state from IDB
   (let [*crdt-state (atom nil)
-        get-in-state (fn [{:keys [path] :as arg}]
-                       (common/get-value-info (assoc arg
-                                                     :crdt @*crdt-state
-                                                     :path (rest path)
-                                                     :schema schema)))]
+        get-in-state (fn [{:keys [path prefix] :as arg}]
+                       (common/get-value-info
+                        (assoc arg
+                               :crdt @*crdt-state
+                               :path (common/chop-root path prefix)
+                               :norm-path [prefix]
+                               :schema schema)))
+        *host-fns (atom {})
+        init! (fn [{:keys [<send-msg connected?]}]
+                (reset! *host-fns (u/sym-map <send-msg connected?)))
+        msg-handlers {:notify #(log/info
+                                (str "NNNNNN:\nGot notification: " %))}]
     #::sp-impl{:<update-state! (make-<update-state!
-                                (u/sym-map *crdt-state schema))
+                                (u/sym-map *crdt-state *host-fns schema))
                :get-in-state get-in-state
-               :get-name (constantly shared/state-provider-name)
-               :get-state-atom (constantly *crdt-state)}))
+               :get-state-atom (constantly *crdt-state)
+               :init! init!
+               :msg-handlers msg-handlers
+               :msg-protocol shared/msg-protocol
+               :on-actor-id-change (fn [actor-id]
+                                     ;; TODO: handle this
+                                     )
+               :on-connect (fn [url]
+                             (start-sync-session! (u/sym-map *host-fns)))
+               :on-disconnect (fn [code]
+                                (end-sync-session! {}))
+               :state-provider-name shared/state-provider-name}))
+
+
 #_#_
 handlers  {:get-log-range
            (fn [{fn-arg :arg}]

@@ -620,17 +620,17 @@
   [arg]
   (do-insert arg))
 
-(defn process-cmd [{:keys [cmd] :as arg}]
-  (let [path (-> cmd :zeno/path c/chop-root)]
+(defn process-cmd [{:keys [cmd prefix] :as arg}]
+  (let [path (-> cmd :zeno/path (c/chop-root prefix))]
     (process-cmd* (-> arg
                       (assoc :cmd-arg (:zeno/arg cmd))
                       (assoc :cmd-path path)
                       (assoc :cmd-type (:zeno/op cmd))
-                      (assoc :norm-path path)
+                      (assoc :norm-path (vec (cons prefix path)))
                       (assoc :path path)
                       (assoc :schema (:crdt-schema arg))))))
 
-(defn process-cmds [{:keys [cmds make-id]
+(defn process-cmds [{:keys [cmds make-id prefix]
                      :or {make-id u/compact-random-uuid}
                      :as arg}]
   (reduce (fn [acc cmd]

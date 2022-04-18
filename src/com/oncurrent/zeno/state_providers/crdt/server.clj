@@ -26,7 +26,7 @@
                         {:crdt (get @*branch->crdt-store branch)
                          :path (rest path)
                          :schema schema})))
-        <update-state! (fn [{:zeno/keys [branch cmds]}]
+        <update-state! (fn [{:zeno/keys [branch cmds] :as arg}]
                          (au/go
                            (swap! *branch->crdt-store
                                   update branch
@@ -41,8 +41,12 @@
                       (<update-state! #:zeno{:branch branch
                                              :cmds [#:zeno{:arg value
                                                            :op :zeno/set
-                                                           :path path}]}))]
+                                                           :path path}]}))
+        msg-handlers {:add-nums (fn [{:keys [arg conn-id env-name] :as h-arg}]
+                                  (apply + arg))}]
     #::sp-impl{:<get-state <get-state
                :<set-state! <set-state!
                :<update-state! <update-state!
-               :get-name (constantly shared/state-provider-name)}))
+               :msg-handlers msg-handlers
+               :msg-protocol shared/msg-protocol
+               :state-provider-name shared/state-provider-name}))
