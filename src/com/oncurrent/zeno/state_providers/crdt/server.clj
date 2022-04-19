@@ -33,7 +33,7 @@
                                   (fn [old-crdt]
                                     (let [arg {:cmds cmds
                                                :crdt old-crdt
-                                               :crdt-schema schema}]
+                                               :schema schema}]
                                       (-> (commands/process-cmds arg)
                                           (:crdt)))))
                            true))

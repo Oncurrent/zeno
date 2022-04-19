@@ -21,7 +21,7 @@
 ;;;; $ bin/run-test-server
 
 (comment (kaocha.repl/run *ns* {:color? false}))
-(deftest test-envs
+(deftest ^:this test-envs
   (au/test-async
    10000
    (au/go

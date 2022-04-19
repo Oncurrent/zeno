@@ -247,9 +247,13 @@
                                                    state-provider-name
                                                    storage
                                                    timeout-ms)))
-              connected? (fn []
-                           @*connected?)]
-          (init! (u/sym-map <send-msg connected?)))))))
+              prefix (str storage/state-provider-prefix
+                          (namespace state-provider-name) "-"
+                          (name state-provider-name))]
+          (init! {:<send-msg <send-msg
+                  :connected? (fn []
+                                @*connected?)
+                  :storage (storage/make-prefixed-storage prefix storage)}))))))
 
 (defn update-state! [zc cmds cb]
   ;; We put the updates on a channel to guarantee serial update order

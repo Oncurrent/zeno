@@ -5,7 +5,7 @@
    [deercreeklabs.lancaster :as l]
    [deercreeklabs.lancaster.utils :as lu]
    [com.oncurrent.zeno.common :as common]
-   [com.oncurrent.zeno.schemas :as schemas]
+   [com.oncurrent.zeno.state-providers.crdt.shared :as shared]
    [com.oncurrent.zeno.storage :as storage]
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
@@ -188,20 +188,20 @@
     (let [member-schema (get-member-schema arg)]
       (get-value-info (assoc arg :schema member-schema)))))
 
-(defn get-op-value-schema [{:keys [op-type norm-path crdt-schema]}]
+(defn get-op-value-schema [{:keys [op-type norm-path schema]}]
   (case op-type
-    :add-array-edge schemas/crdt-array-edge-schema
-    :add-value (l/schema-at-path crdt-schema norm-path)
+    :add-array-edge shared/crdt-array-edge-schema
+    :add-value (l/schema-at-path schema norm-path)
     :delete-array-edge nil
     :delete-value nil))
 
 (defn <crdt-op->serializable-crdt-op
-  [{:keys [storage crdt-schema op]}]
+  [{:keys [storage schema op]}]
   (au/go
     (when op
       (let [{:keys [norm-path op-type path value]} op
             schema (get-op-value-schema
-                    (u/sym-map op-type norm-path crdt-schema))]
+                    (u/sym-map op-type norm-path schema))]
         (cond-> op
           true (dissoc :path)
           true (dissoc :value)
@@ -210,12 +210,12 @@
                                 storage schema value))))))))
 
 (defn <serializable-crdt-op->crdt-op
-  [{:keys [storage crdt-schema op] :as arg}]
+  [{:keys [storage schema op] :as arg}]
   (au/go
     (when op
       (let [{:keys [norm-path op-type serialized-value]} op
             schema (get-op-value-schema
-                    (u/sym-map op-type norm-path crdt-schema))]
+                    (u/sym-map op-type norm-path schema))]
         (cond-> op
           true (dissoc :serialized-value)
           schema (assoc :value
@@ -259,12 +259,12 @@
               (recur new-i new-out))))))))
 
 (defn <update-info->serializable-update-info
-  [{:keys [storage crdt-schema update-info]}]
+  [{:keys [storage schema update-info]}]
   (au/go
     (when update-info
       (let [{:keys [norm-path value]} update-info
             value-schema (when-not (nil? value)
-                           (l/schema-at-path crdt-schema
+                           (l/schema-at-path schema
                                              (rest norm-path)))
             range? (#{:zeno/insert-range-after
                       :zeno/insert-range-before} (:op update-info))
@@ -280,11 +280,11 @@
                                             value))))))))
 
 (defn <serializable-update-info->update-info
-  [{:keys [crdt-schema update-info] :as arg}]
+  [{:keys [schema update-info] :as arg}]
   (au/go
     (when update-info
       (let [{:keys [norm-path serialized-value]} update-info
-            value-schema (l/schema-at-path crdt-schema (rest norm-path))]
+            value-schema (l/schema-at-path schema (rest norm-path))]
         (-> update-info
             (dissoc :serialized-value)
             (assoc :value

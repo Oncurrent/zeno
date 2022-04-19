@@ -627,8 +627,7 @@
                       (assoc :cmd-path path)
                       (assoc :cmd-type (:zeno/op cmd))
                       (assoc :norm-path (vec (cons prefix path)))
-                      (assoc :path path)
-                      (assoc :schema (:crdt-schema arg))))))
+                      (assoc :path path)))))
 
 (defn process-cmds [{:keys [cmds make-id prefix]
                      :or {make-id u/compact-random-uuid}

@@ -9,19 +9,38 @@
    [com.oncurrent.zeno.state-providers.crdt.commands :as commands]
    [com.oncurrent.zeno.state-providers.crdt.common :as common]
    [com.oncurrent.zeno.state-providers.crdt.shared :as shared]
+   [com.oncurrent.zeno.storage :as storage]
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
-(defn make-<update-state! [{:keys [*crdt-state schema]}]
+(def tx-info-prefix "TX-INFO-FOR-TX-ID-")
+
+(defn tx-id->tx-info-k [tx-id]
+  (str tx-info-prefix tx-id))
+
+(defn make-<update-state!
+  [{:keys [*actor-id *crdt-state *host-fns *storage new-tx-ch schema] :as arg}]
   (fn [{:zeno/keys [cmds] :keys [prefix]}]
     (au/go
       (let [ret (commands/process-cmds {:cmds cmds
                                         :crdt @*crdt-state
-                                        :crdt-schema schema
+                                        :schema schema
                                         :prefix prefix})
-            {:keys [crdt ops update-infos]} ret]
-        ;; We can use `reset!` here b/c there are no concurrent updates
-        (reset! *crdt-state crdt)
+            {:keys [crdt ops update-infos]} ret
+            ;; We can use `reset!` here because there are no concurrent updates
+            _ (reset! *crdt-state crdt)
+            tx-id (u/compact-random-uuid)
+            k (tx-id->tx-info-k tx-id)
+            storage @*storage
+            ser-ops (au/<? (common/<crdt-ops->serializable-crdt-ops
+                            (u/sym-map ops schema storage)))
+            ser-update-infos (au/<?
+                              (common/<update-infos->serializable-update-infos
+                               (u/sym-map schema storage update-infos)))
+            tx-info {:crdt-ops ser-ops
+                     :sys-time-ms (u/current-time-ms)
+                     :update-infos ser-update-infos}]
+        (au/<? (storage/<add! storage k shared/tx-info-schema tx-info))
         ;; TODO: log the ops
         update-infos))))
 
@@ -40,32 +59,36 @@
   )
 
 (defn ->state-provider
-  [{::crdt/keys [authorizer schema]}]
+  [{::crdt/keys [authorizer schema] :as sp-arg}]
   ;; TODO: Check args
   ;; TODO: Load initial state from IDB
   (let [*crdt-state (atom nil)
-        get-in-state (fn [{:keys [path prefix] :as arg}]
+        *actor-id (atom :unauthenticated)
+        get-in-state (fn [{:keys [path prefix] :as gs-arg}]
                        (common/get-value-info
-                        (assoc arg
+                        (assoc gs-arg
                                :crdt @*crdt-state
                                :path (common/chop-root path prefix)
                                :norm-path [prefix]
                                :schema schema)))
         *host-fns (atom {})
-        init! (fn [{:keys [<send-msg connected?]}]
-                (reset! *host-fns (u/sym-map <send-msg connected?)))
+        *storage (atom nil)
+        init! (fn [{:keys [<send-msg connected? storage]}]
+                (reset! *host-fns (u/sym-map <send-msg connected?))
+                (reset! *storage storage))
         msg-handlers {:notify #(log/info
-                                (str "NNNNNN:\nGot notification: " %))}]
-    #::sp-impl{:<update-state! (make-<update-state!
-                                (u/sym-map *crdt-state *host-fns schema))
+                                (str "NNNNNN:\nGot notification: " %))}
+        new-tx-ch (ca/chan (ca/dropping-buffer 1))
+        mus-arg (u/sym-map *actor-id *crdt-state *host-fns *storage
+                           new-tx-ch schema)]
+    #::sp-impl{:<update-state! (make-<update-state! mus-arg)
                :get-in-state get-in-state
                :get-state-atom (constantly *crdt-state)
                :init! init!
                :msg-handlers msg-handlers
                :msg-protocol shared/msg-protocol
                :on-actor-id-change (fn [actor-id]
-                                     ;; TODO: handle this
-                                     )
+                                     (reset! *actor-id actor-id))
                :on-connect (fn [url]
                              (start-sync-session! (u/sym-map *host-fns)))
                :on-disconnect (fn [code]
@@ -175,7 +198,7 @@ handlers  {:get-log-range
                  :tail-segment-id-k tail-segment-id-k
                  :tx-id tx-id})))))
 
-#_(defn <apply-tx! [{:keys [*crdt-state crdt-schema tx-info talk2-client]
+#_(defn <apply-tx! [{:keys [*crdt-state schema tx-info talk2-client]
                      :as arg}]
     (au/go
       #_(let [<request-schema (make-schema-requester talk2-client)
@@ -192,7 +215,7 @@ handlers  {:get-log-range
                                (apply-ops/apply-ops
                                 (assoc arg
                                        :crdt old-crdt
-                                       :schema crdt-schema
+                                       :schema schema
                                        :ops ops))))
           (state-subscriptions/do-subscription-updates! arg update-infos))))
 
