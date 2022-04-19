@@ -712,10 +712,12 @@
                talk2-server
                ws-url)))
 
-(defn stop! [zeno-server]
-  (doseq [mutex-client (:mutex-clients zeno-server)]
-    (dm/stop! mutex-client))
-  (t2s/stop! (:talk2-server zeno-server)))
+(defn stop! [{:keys [mutex-clients talk2-server]}]
+  (when mutex-clients
+    (doseq [mutex-client mutex-clients]
+      (dm/stop! mutex-client)))
+  (when talk2-server
+    (t2s/stop! talk2-server)))
 
 (defn set-rpc-handler! [zeno-server rpc-name-kw handler]
   (let [{:keys [*rpc-name-kw->handler]} zeno-server]
