@@ -20,10 +20,11 @@
 ;;;; You must start the integration test server for these tests to work.
 ;;;; $ bin/run-test-server
 
-(comment (kaocha.repl/run *ns* {:color? false}))
+(comment
+ (kaocha.repl/run *ns* {:color? false}))
 (deftest test-envs
   (au/test-async
-   10000
+   5000
    (au/go
      (let [admin (admin/->admin-client
                   #:zeno{:admin-password c/admin-password
@@ -47,8 +48,8 @@
                                         :authenticator-infos auth-infos
                                         :env-name perm-env-name
                                         :state-provider-infos spis}))))
-           envs* (au/<? (admin/<get-env-names {:zeno/admin-client admin}))
-           _ (is (= [perm-env-name] envs*))
+           envs (au/<? (admin/<get-env-names {:zeno/admin-client admin}))
+           _ (is (= [perm-env-name] envs))
            ;; Connect to the permanent env and set some state
            zc-perm (c/->zc {:env-name perm-env-name})
            sub-map {'name [:zeno/crdt :name]}
@@ -60,7 +61,8 @@
                                           :zeno/path [:zeno/crdt :name]}]))
            _ (is (= '{name "base"} (get-state zc-perm)))
            ;; Connect to a temp env based on the permanent env
-           zc-temp (c/->zc {:source-env-name perm-env-name})
+           zc-temp (c/->zc {:source-env-name perm-env-name
+                            :env-lifetime-mins 1})
            ;; Verify that the `:name` is "base"
            _ (is (= '{name "base"} (get-state zc-temp)))
            ;; Set the `:name` to "temp" in this env

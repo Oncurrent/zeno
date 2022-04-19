@@ -130,7 +130,6 @@
 
 (l/def-record-schema log-in-arg-schema
   [:authenticator-name authenticator-name-schema]
-  [:branch branch-schema]
   [:serialized-login-info serialized-value-schema])
 
 (l/def-record-schema log-in-ret-schema
@@ -139,15 +138,13 @@
 
 (l/def-record-schema update-authenticator-state-arg-schema
   [:authenticator-name authenticator-name-schema]
-  [:branch branch-schema]
   [:serialized-update-info serialized-value-schema]
   [:update-type l/keyword-schema])
 
-(l/def-record-schema get-authenticator-state-arg-schema
+(l/def-record-schema read-authenticator-state-arg-schema
   [:authenticator-name authenticator-name-schema]
-  [:branch branch-schema]
-  [:serialized-get-info serialized-value-schema]
-  [:get-type l/keyword-schema])
+  [:serialized-read-info serialized-value-schema]
+  [:read-type l/keyword-schema])
 
 ;;;;;;;;;;;;;;; Envs ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -218,9 +215,6 @@
                            :ret-schema l/boolean-schema}
    :update-authenticator-state {:arg-schema
                                 update-authenticator-state-arg-schema
-                                :ret-schema
-                                serialized-value-schema}
-   :get-authenticator-state {:arg-schema
-                             get-authenticator-state-arg-schema
-                             :ret-schema
-                             serialized-value-schema}})
+                                :ret-schema serialized-value-schema}
+   :read-authenticator-state {:arg-schema read-authenticator-state-arg-schema
+                             :ret-schema serialized-value-schema}})

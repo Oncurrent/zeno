@@ -77,20 +77,22 @@
 
 (defn <setup-env! [{:keys [env-name]}]
   (au/go
-    (let [admin (admin/->admin-client
-                 #:zeno{:admin-password admin-password
-                        :get-server-base-url
-                        (constantly "ws://localhost:8080/admin")})
-          envs (au/<? (admin/<get-env-names {:zeno/admin-client admin}))
-          _ (when (= true (some #(= env-name %) envs))
-              (au/<? (admin/<delete-env!
-                      #:zeno{:admin-client admin
-                             :env-name env-name})))
-          auth-infos [#:zeno{:authenticator-name pwd-shared/authenticator-name}]]
-      (au/<? (admin/<create-env!
-              #:zeno{:admin-client admin
-                     :authenticator-infos auth-infos
-                     :env-name env-name})))))
+   (let [admin (admin/->admin-client
+                #:zeno{:admin-password admin-password
+                       :get-server-base-url
+                       (constantly "ws://localhost:8080/admin")})
+         envs (au/<? (admin/<get-env-names {:zeno/admin-client admin}))
+         _ (when (= true (some #(= env-name %) envs))
+             (au/<? (admin/<delete-env!
+                     #:zeno{:admin-client admin
+                            :env-name env-name})))
+         auth-infos [#:zeno{:authenticator-name pwd-shared/authenticator-name}]
+         ret (au/<? (admin/<create-env!
+                     #:zeno{:admin-client admin
+                            :authenticator-infos auth-infos
+                            :env-name env-name}))]
+      (admin/stop! admin)
+      ret)))
 
 (defn <clear-envs! [admin]
   (au/go

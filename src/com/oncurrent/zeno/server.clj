@@ -245,14 +245,15 @@
                                  :reader-schema arg-schema
                                  :serialized-value (-> orig-arg :arg :arg)
                                  :storage storage}))
-              actor-id (some-> @*conn-id->auth-info
-                               (get conn-id)
-                               (:actor-id))
+              auth-info (some-> @*conn-id->auth-info
+                                (get conn-id))
+              actor-id (:actor-id auth-info)
               h-arg #:zeno{:<get-state <get-state
                            :<set-state! <set-state!
                            :<update-state! <update-state!
-                           :arg deser-arg
                            :actor-id actor-id
+                           :arg deser-arg
+                           :authenticator-info auth-info
                            :conn-id conn-id
                            :env-name env-name}
               ret (handler h-arg)
@@ -281,10 +282,7 @@
   (let [branch (or authenticator-branch env-name)
         auth-info (authenticator-name->info authenticator-name)]
     (assoc acc authenticator-name
-           (-> auth-info
-               (assoc :authenticator-branch branch)
-               (update :authenticator-storage
-                       #(storage/make-prefixed-storage branch %))))))
+           (assoc auth-info :authenticator-branch branch))))
 
 (defn xf-env-info
   [{:keys [authenticator-name->info env-info root->state-provider]}]
@@ -455,31 +453,24 @@
                               u/default-env-lifetime-mins))]
     (u/sym-map env-name source-env-name env-lifetime-mins)))
 
-(defn xf-ean->info [new-branch authenticator-name->info env-auth-name->info]
+(defn xf-ean->info [new-branch env-auth-name->info]
   (reduce-kv (fn [acc auth-name auth-info]
-               (let [global-info (authenticator-name->info auth-name)
-                     {:keys [authenticator-storage]} global-info]
-                 (assoc acc auth-name
-                        (-> auth-info
-                            (assoc :authenticator-branch new-branch)
-                            (update :authenticator-storage
-                                    #(storage/make-prefixed-storage
-                                      new-branch authenticator-storage))))))
+               (assoc acc auth-name
+                      (-> auth-info
+                          (assoc :authenticator-branch new-branch)
+                          )))
              {}
              env-auth-name->info))
 
 (defn ->temp-env-info
-  [{:keys [authenticator-name->info env-name->info env-params] :as arg}]
+  [{:keys [env-name->info env-params] :as arg}]
   (let [{:keys [env-name source-env-name env-lifetime-mins]} env-params
         source-env-info (env-name->info source-env-name)]
     (-> source-env-info
         (assoc :env-name env-name)
         (assoc :env-lifetime-mins env-lifetime-mins)
-        (update :stored-authenticator-infos
-                #(update % :env-authenticator-name->info
-                         (partial xf-ean->info
-                                  env-name ; TODO: Is this the new branch?
-                                  authenticator-name->info))))))
+        (update :env-authenticator-name->info
+                (partial xf-ean->info env-name)))))
 
 (defn make-client-on-connect
   [{:keys [*conn-id->auth-info
@@ -500,10 +491,8 @@
                      env-name->info ; no change needed
 
                      temp? ; Create the temp env
-                     (let [env-info (->temp-env-info
-                                     (merge arg
-                                            (u/sym-map env-name->info
-                                                       env-params)))]
+                     (let [env-info (->temp-env-info (u/sym-map env-name->info
+                                                                env-params))]
                        (assoc env-name->info (:env-name env-params) env-info))
 
                      :else
@@ -538,15 +527,11 @@
                    (u/pprint-str (u/sym-map conn-id))))))
 
 (defn make-client-ep-info [{:keys [storage] :as arg}]
-  {:handlers {:get-authenticator-state
-              (make-auth-handler
-               (assoc arg :f auth-impl/<handle-get-authenticator-state))
-
-              :get-schema-pcf-for-fingerprint
+  {:handlers {:get-schema-pcf-for-fingerprint
               #(au/go
-                 (-> (storage/<fp->schema storage (:arg %))
-                     (au/<?)
-                     (l/json)))
+                (-> (storage/<fp->schema storage (:arg %))
+                    (au/<?)
+                    (l/json)))
 
               :log-in
               (make-auth-handler
@@ -555,6 +540,11 @@
               :log-out
               (make-auth-handler
                (assoc arg :f auth-impl/<handle-log-out))
+
+              :read-authenticator-state
+              (make-auth-handler
+               (assoc arg :f auth-impl/<handle-read-authenticator-state))
+
 
               :resume-login-session
               (make-auth-handler
@@ -615,11 +605,8 @@
 (defn xf-authenticator-info [{:keys [authenticators storage]}]
   (reduce (fn [acc authenticator]
             (let [authenticator-name (auth-impl/get-name authenticator)
-                  storage-name (:storage-name authenticator)
                   authenticator-storage (make-authenticator-storage
-                                         (if storage-name
-                                           storage-name
-                                           authenticator-name)
+                                         authenticator-name
                                          storage)
                   info (u/sym-map authenticator
                                   authenticator-storage)]

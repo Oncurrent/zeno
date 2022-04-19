@@ -7,6 +7,9 @@
 
 (def authenticator-name :com.oncurrent.zeno.authenticators/password)
 (def password-schema l/string-schema)
+(def hashed-password-schema l/string-schema)
+
+(l/def-map-schema storage-schema hashed-password-schema)
 
 (l/def-record-schema add-actor-and-password-info-schema
   [:actor-id schemas/actor-id-schema]
