@@ -142,27 +142,35 @@
           _ (au/<? (<add-actor-password! actor2 password2 zc-perm))
           zc-temp (c/->zc {:source-env-name perm})
           _ (au/<? (<add-actor-password! actor3 password3 zc-temp))]
+
       (au/<? (<test-log-in-out! actor1 password1 zc-base true))
       (au/<? (<test-log-in-out! actor1 password1 zc-perm true))
       (au/<? (<test-log-in-out! actor1 password1 zc-temp true))
+
       (au/<? (<test-log-in-out! actor2 password2 zc-base false))
       (au/<? (<test-log-in-out! actor2 password2 zc-perm true))
       (au/<? (<test-log-in-out! actor2 password2 zc-temp true))
+
       (au/<? (<test-log-in-out! actor3 password3 zc-base false))
       (au/<? (<test-log-in-out! actor3 password3 zc-perm false))
       (au/<? (<test-log-in-out! actor3 password3 zc-temp true))
+
       (au/<? (<add-actor-password! actor4 password4 zc-base))
       (au/<? (<add-actor-password! actor5 password5 zc-perm))
       (au/<? (<add-actor-password! actor6 password6 zc-temp))
+
       (au/<? (<test-log-in-out! actor4 password4 zc-base true))
       (au/<? (<test-log-in-out! actor4 password4 zc-perm false))
       (au/<? (<test-log-in-out! actor4 password4 zc-temp false))
+
       (au/<? (<test-log-in-out! actor5 password5 zc-base false))
       (au/<? (<test-log-in-out! actor5 password5 zc-perm true))
       (au/<? (<test-log-in-out! actor5 password5 zc-temp false))
+
       (au/<? (<test-log-in-out! actor6 password6 zc-base false))
       (au/<? (<test-log-in-out! actor6 password6 zc-perm false))
       (au/<? (<test-log-in-out! actor6 password6 zc-temp true))
+
       (zc/stop! zc-base)
       (zc/stop! zc-perm)
       (zc/stop! zc-temp)))))
