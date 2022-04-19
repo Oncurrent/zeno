@@ -98,28 +98,36 @@
               (recur (inc i) new-out))))))))
 
 (defn <sync-unsynced-log!
-  [{:keys [*sync-session-running? <send-msg actor-id storage]}]
+  [{:keys [*client-running? *sync-session-running? <send-msg actor-id storage]}]
   (au/go
     (loop []
       (let [unsynced-log-k (actor-id->unsynced-log-k actor-id)
             tx-ids (au/<? (storage/<get storage
                                         unsynced-log-k
                                         shared/unsynced-log-schema))
-            batch (take 10 tx-ids)
+            batch (set (take 10 tx-ids))
             tx-infos (when tx-ids
                        (->> {:storage storage :tx-ids batch}
                             (<get-tx-infos)
                             (au/<?)
                             (filter #(= actor-id (:actor-id %)))))]
-        (when (and @*sync-session-running?
-                   (seq tx-infos))
+        (when (seq tx-infos)
           (au/<? (<send-msg {:msg-type :record-txs
                              :arg tx-infos}))
           (au/<? (storage/<swap! storage
                                  unsynced-log-k
                                  shared/unsynced-log-schema
                                  (fn [old-log]
-                                   (concat old-log tx-ids)))))))))
+                                   (reduce (fn [acc tx-id]
+                                             (if (batch tx-id)
+                                               acc
+                                               tx-id))
+                                           []
+                                           old-log)))))
+        (when (and @*client-running?
+                   @*sync-session-running?
+                   (< (count batch) (count tx-ids)))
+          (recur))))))
 
 (defn start-sync-session!
   [{:keys [*client-running? *sync-session-running? new-tx-ch] :as arg}]
