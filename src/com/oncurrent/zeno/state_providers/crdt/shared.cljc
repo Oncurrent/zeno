@@ -8,6 +8,7 @@
 (def state-provider-name :com.oncurrent.zeno.state-providers/crdt)
 
 (def add-id-schema l/string-schema)
+(def client-id-schema l/string-schema)
 (def node-id-schema l/string-schema)
 (def tx-i-schema l/long-schema)
 (def tx-id-schema l/string-schema)
@@ -41,13 +42,16 @@
 
 (l/def-record-schema tx-info-schema
   [:actor-id schemas/actor-id-schema]
+  [:client-id client-id-schema]
   [:crdt-ops (l/array-schema crdt-op-schema)]
   [:sys-time-ms schemas/timestamp-ms-schema]
+  [:tx-id tx-id-schema]
   [:update-infos (l/array-schema update-info-schema)])
+
+(def unsynced-log-schema (l/array-schema tx-id-schema))
 
 ;;;;;;;;;;;;;;;; Msg Protocol ;;;;;;;;;;;;;;;;;;;;;
 
 (def msg-protocol
-  {:add-nums {:arg-schema (l/array-schema l/int-schema)
-              :ret-schema l/int-schema}
-   :notify {:arg-schema l/string-schema}})
+  {:record-txs {:arg-schema (l/array-schema tx-info-schema)
+                :ret-schema l/boolean-schema}})

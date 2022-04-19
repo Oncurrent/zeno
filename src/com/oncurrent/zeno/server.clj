@@ -218,16 +218,16 @@
               (dm/make-distributed-mutex-client mutex-name storage opts)))
           roles)))
 
-(defn <do-rpc! [{:keys [*conn-id->auth-info
-                        *rpc-name-kw->handler
-                        conn-id
-                        env-name
-                        <get-state
-                        <set-state!
-                        <update-state!
-                        rpcs
-                        storage]
-                 :as orig-arg}]
+(defn <handle-rpc! [{:keys [*conn-id->auth-info
+                            *rpc-name-kw->handler
+                            conn-id
+                            env-name
+                            <get-state
+                            <set-state!
+                            <update-state!
+                            rpcs
+                            storage]
+                     :as orig-arg}]
   ;; TODO: Add authorization
   (au/go
     (let [{:keys [arg rpc-id rpc-name-kw-name rpc-name-kw-ns]} (:arg orig-arg)
@@ -265,13 +265,6 @@
                           "rpc-id: `" rpc-id "`.\n\n"
                           (u/ex-msg-and-stacktrace e)))
           :zeno/rpc-error)))))
-
-(defn get-state-branch
-  [{:keys [branch env-name root root->spis sp]}]
-  (let [spi (root->spis root)]
-    (or branch
-        (:state-provider-branch spi)
-        env-name)))
 
 (defn xf-env-auth-info
   [authenticator-name->info
@@ -437,7 +430,7 @@
             env-info (-> (get @*env-name->info env-name)
                          (assoc :env-name env-name))
             state-fns (make-state-fns env-info)]
-        (<do-rpc! (merge base-info state-fns handler-arg))))))
+        (<handle-rpc! (merge base-info state-fns handler-arg))))))
 
 (defn make-sp-rpc-handler
   [{:keys [*conn-id->env-name *env-name->info name->state-provider storage]
@@ -467,7 +460,8 @@
                                    :reader-schema arg-schema
                                    :serialized-value arg
                                    :storage storage}))
-                h-arg {:arg deser-arg
+                h-arg {:<request-schema <request-schema
+                       :arg deser-arg
                        :conn-id conn-id
                        :env-name env-name}
                 ret (handler h-arg)
@@ -511,7 +505,8 @@
                                      :reader-schema arg-schema
                                      :serialized-value arg
                                      :storage storage}))
-                  h-arg {:arg deser-arg
+                  h-arg {:<request-schema <request-schema
+                         :arg deser-arg
                          :conn-id conn-id
                          :env-name env-name}
                   ret (handler h-arg)]
@@ -739,6 +734,98 @@
                {}
                m)))
 
+;; TODO: DRY this up w/ com.oncurrent.zeno.client.impl/<rpc!*
+(defn <rpc!*
+  [{:keys [arg-schema conn-id ret-schema rpc-name-kw state-provider-name
+           storage talk2-server rpc-msg-type]
+    :as arg}]
+  (au/go
+    (let [rpc-id (u/compact-random-uuid)
+          s-arg (au/<? (storage/<value->serialized-value
+                        storage arg-schema (:arg arg)))
+          rpc-arg {:arg s-arg
+                   :rpc-id rpc-id
+                   :rpc-name-kw-ns (namespace rpc-name-kw)
+                   :rpc-name-kw-name (name rpc-name-kw)
+                   :state-provider-name state-provider-name}
+          timeout-ms (or (:timeout-ms arg) u/default-rpc-timeout-ms)
+          rpc-ch (t2s/<send-msg! {:arg rpc-arg
+                                  :conn-id conn-id
+                                  :msg-type-name rpc-msg-type
+                                  :server talk2-server
+                                  :timeout-ms timeout-ms})
+          timeout-ch (ca/timeout timeout-ms)
+          [ret ch] (au/alts? [rpc-ch timeout-ch])
+          <request-schema (su/make-schema-requester {:conn-id conn-id
+                                                     :server talk2-server})]
+      (cond
+        (= timeout-ch ch)
+        (throw (ex-info (str "RPC timed out. rpc-name-kw: `" rpc-name-kw "` "
+                             "rpc-id: `" rpc-id "`.\n")
+                        (u/sym-map rpc-id rpc-name-kw timeout-ms)))
+
+        (= :zeno/rpc-error ret)
+        (throw (ex-info (str "RPC failed. rpc-name-kw: `" rpc-name-kw "` "
+                             "rpc-id: `" rpc-id "`.\n See server log for "
+                             "more information.\n")
+                        (u/sym-map rpc-id rpc-name-kw)))
+
+        (= :zeno/rpc-unauthorized ret)
+        (throw (ex-info (str "Unauthorized RPC. rpc-name-kw: `" rpc-name-kw "` "
+                             "rpc-id: `" rpc-id "`.\n See server log for "
+                             "more information.\n")
+                        (u/sym-map rpc-id rpc-name-kw)))
+
+        :else
+        (au/<? (common/<serialized-value->value
+                {:<request-schema <request-schema
+                 :reader-schema ret-schema
+                 :serialized-value ret
+                 :storage storage}))))))
+
+;; TODO: DRY this up w/ com.oncurrent.zeno.client.impl/<sp-send-msg
+(defn <sp-send-msg
+  [{:keys [arg conn-id msg-protocol msg-type state-provider-name
+           storage talk2-server timeout-ms]}]
+  (let [{:keys [arg-schema ret-schema]} (msg-protocol msg-type)]
+    (if ret-schema
+      (<rpc!* (-> (u/sym-map arg arg-schema conn-id ret-schema
+                             state-provider-name storage talk2-server
+                             timeout-ms)
+                  (assoc :rpc-msg-type :state-provider-rpc)
+                  (assoc :rpc-name-kw msg-type)))
+      (let [s-arg (au/<? (storage/<value->serialized-value
+                          storage arg-schema arg))
+            msg-arg {:arg s-arg
+                     :msg-type-ns (namespace msg-type)
+                     :msg-type-name (name msg-type)
+                     :state-provider-name state-provider-name}]
+        (t2s/<send-msg! {:arg msg-arg
+                         :conn-id conn-id
+                         :msg-type-name :state-provider-msg
+                         :server talk2-server
+                         :timeout-ms timeout-ms})))))
+
+(defn initialize-state-providers!
+  [{:keys [root->state-provider storage talk2-server]}]
+  (doseq [[root sp] root->state-provider]
+    (let [{::sp-impl/keys [init! msg-protocol state-provider-name]} sp]
+      (when init!
+        (let [<send-msg (fn [{:keys [arg conn-id msg-type timeout-ms]}]
+                          (<sp-send-msg (u/sym-map arg
+                                                   conn-id
+                                                   msg-protocol
+                                                   msg-type
+                                                   state-provider-name
+                                                   storage
+                                                   talk2-server
+                                                   timeout-ms)))
+              prefix (str storage/state-provider-prefix
+                          (namespace state-provider-name) "-"
+                          (name state-provider-name))]
+          (init! {:<send-msg <send-msg
+                  :storage (storage/make-prefixed-storage prefix storage)}))))))
+
 (defn make-name->state-provider [root->state-provider]
   (reduce-kv (fn [acc root state-provider]
                (assoc acc (::sp-impl/state-provider-name state-provider)
@@ -791,6 +878,7 @@
                        rpcs
                        storage)
         talk2-server (make-talk2-server arg)
+        _ (initialize-state-providers! (assoc arg :talk2-server talk2-server))
         member-id (u/compact-random-uuid)
         mutex-clients (when (and <get-published-member-urls
                                  <publish-member-urls)

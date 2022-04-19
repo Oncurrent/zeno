@@ -41,8 +41,6 @@
           :checks [{:pred #(satisfies? storage/IStorage %)
                     :msg "must satisfy the IStorage protocol"}]}})
 
-(def default-rpc-timeout-ms 30000)
-
 (defn make-schema-requester [talk2-client]
   (fn [fp]
     (t2c/<send-msg! talk2-client :get-schema-pcf-for-fingerprint fp)))
@@ -173,6 +171,7 @@
                  :on-disconnect (make-on-disconnect arg)
                  :protocol schemas/client-server-protocol})))
 
+;; TODO: DRY this up w/ com.oncurrent.zeno.server/<rpc!*
 (defn <rpc!*
   [{:keys [arg-schema ret-schema rpc-name-kw state-provider-name
            storage talk2-client rpc-msg-type]
@@ -187,7 +186,7 @@
                    :rpc-name-kw-name (name rpc-name-kw)
                    :state-provider-name state-provider-name}
           rpc-ch (t2c/<send-msg! talk2-client rpc-msg-type rpc-arg)
-          timeout-ms (or (:timeout-ms arg) default-rpc-timeout-ms)
+          timeout-ms (or (:timeout-ms arg) u/default-rpc-timeout-ms)
           timeout-ch (ca/timeout timeout-ms)
           [ret ch] (au/alts? [rpc-ch timeout-ch])
           <request-schema (make-schema-requester talk2-client)]
@@ -216,11 +215,11 @@
                  :serialized-value ret
                  :storage storage}))))))
 
+;; TODO: DRY this up w/ com.oncurrent.zeno.server/<sp-send-msg
 (defn <sp-send-msg
-  [{:keys [*talk2-client arg msg-protocol msg-type state-provider-name
-           storage timeout-ms]}]
-  (let [talk2-client @*talk2-client
-        {:keys [arg-schema ret-schema]} (msg-protocol msg-type)]
+  [{:keys [arg msg-protocol msg-type state-provider-name
+           storage talk2-client timeout-ms]}]
+  (let [{:keys [arg-schema ret-schema]} (msg-protocol msg-type)]
     (if ret-schema
       (<rpc!* (-> (u/sym-map arg arg-schema ret-schema state-provider-name
                              storage talk2-client timeout-ms)
@@ -235,17 +234,17 @@
         (t2c/<send-msg! talk2-client :state-provider-msg msg-arg)))))
 
 (defn initialize-state-providers!
-  [{:keys [*connected? *talk2-client root->state-provider storage]}]
+  [{:keys [*connected? root->state-provider storage talk2-client]}]
   (doseq [[root sp] root->state-provider]
     (let [{::sp-impl/keys [init! msg-protocol state-provider-name]} sp]
       (when init!
         (let [<send-msg (fn [{:keys [arg msg-type timeout-ms]}]
-                          (<sp-send-msg (u/sym-map *talk2-client
-                                                   arg
+                          (<sp-send-msg (u/sym-map arg
                                                    msg-protocol
                                                    msg-type
                                                    state-provider-name
                                                    storage
+                                                   talk2-client
                                                    timeout-ms)))
               prefix (str storage/state-provider-prefix
                           (namespace state-provider-name) "-"
@@ -301,10 +300,10 @@
                            update-state-ch)
                 (update :root->state-provider
                         assoc :zeno/actor-id actor-id-root->sp))
-        _ (initialize-state-providers! arg)
         talk2-client (when (:zeno/get-server-base-url config*)
                        (make-talk2-client arg))
         _ (reset! *talk2-client talk2-client)
+        _ (initialize-state-providers! (assoc arg :talk2-client talk2-client))
         on-actor-id-change (fn [actor-id]
                              (doseq [[root sp] root->state-provider]
                                (when-let [oaic (::sp-impl/on-actor-id-change sp)]
@@ -318,10 +317,13 @@
     (start-update-state-loop! zc)
     zc))
 
-(defn stop! [{:keys [*stop? talk2-client] :as zc}]
+(defn stop! [{:keys [*stop? root->state-provider talk2-client] :as zc}]
   (reset! *stop? true)
   (when talk2-client
-    (t2c/stop! talk2-client)))
+    (t2c/stop! talk2-client))
+  (doseq [[root {::sp-impl/keys [stop!]}] root->state-provider]
+    (when stop!
+      (stop!))))
 
 (defn subscribe-to-topic! [zc topic-name cb]
   (let [{:keys [*next-topic-sub-id *topic-name->sub-id->cb]} zc
