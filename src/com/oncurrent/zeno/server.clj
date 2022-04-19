@@ -319,7 +319,6 @@
   (au/go
    (let [{:keys [env-authenticator-name->info env-sp-root->info]} env-info]
      (doseq [[auth-name auth-info] env-authenticator-name->info]
-       (log/info "GOING TO COPY")
        (when (:authenticator-branch-source auth-info)
          (au/<? (auth-impl/<copy-branch! auth-info))))
      (doseq [[sp-root sp-info] env-sp-root->info]
@@ -341,7 +340,6 @@
                               (assoc env-name->info env-name arg))))
      (swap! *env-name->info assoc env-name
             (xf-perm-env-info (assoc fn-arg :env-info arg)))
-     (log/info "ABOUT TO COPY")
      (au/<? (<copy-from-branch-sources!
              (assoc fn-arg :env-info (get @*env-name->info env-name)))))
       true))
@@ -473,7 +471,8 @@
                (assoc acc auth-name
                       (-> auth-info
                           (assoc :authenticator-branch new-branch)
-                          )))
+                          (assoc :authenticator-branch-source
+                                 (:authenticator-branch auth-info)))))
              {}
              env-auth-name->info))
 
@@ -491,7 +490,7 @@
   [{:keys [*conn-id->auth-info
            *conn-id->env-name
            *env-name->info]
-    :as arg}]
+    :as fn-arg}]
   (fn [{:keys [close! conn-id path remote-address] :as conn}]
     (try
       (let [uri-map (uri/uri path)
@@ -508,6 +507,7 @@
                      temp? ; Create the temp env
                      (let [env-info (->temp-env-info (u/sym-map env-name->info
                                                                 env-params))]
+
                        (assoc env-name->info (:env-name env-params) env-info))
 
                      :else
@@ -519,6 +519,9 @@
                              (u/sym-map env-name)))))))
         (swap! *conn-id->auth-info assoc conn-id {})
         (swap! *conn-id->env-name assoc conn-id env-name)
+        (when temp?
+          (au/<?? (<copy-from-branch-sources!
+                   (assoc fn-arg :env-info (get @*env-name->info env-name)))))
         (log/info
          (str "Client connection opened:\n"
               (u/pprint-str

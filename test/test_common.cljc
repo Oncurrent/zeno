@@ -2,6 +2,7 @@
   (:require
    [clojure.core.async :as ca]
    [clojure.string :as str]
+   [clojure.test :refer [deftest is]]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
    [com.oncurrent.zeno.admin-client :as admin]
@@ -13,6 +14,12 @@
    [com.oncurrent.zeno.state-providers.crdt.client :as crdt-client]
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
+
+(def ex #?(:clj Exception :cljs js/Error))
+
+(defn catcher [e]
+  (log/error (u/ex-msg-and-stacktrace e))
+  (is (= :threw :but-should-not-have)))
 
 (def admin-password (str "hYczFGGPRFkKGK3yQxDGz7imUbDXAE8iRtUs.tfvAYqsVbeTQN"
                          "jbYwHB_skGw!ft4yMDrMD@uxwe@9an-iqa2ZYr3cAtmGt2MW_i"))
