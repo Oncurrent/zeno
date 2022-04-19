@@ -288,7 +288,6 @@
            <swap!* (make-<swap-authenticator-state!
                     (assoc arg :authenticator-branch authenticator-branch))
            src-state (au/<? (<get*))]
-       (log/info "COPYING")
        (au/<?
         (<swap!*
          (fn [old-state]
