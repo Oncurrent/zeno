@@ -48,10 +48,11 @@
                                          :zeno/path [:zeno/crdt :name]}]}))
     true))
 
-(defn throw-if-even [{:zeno/keys [arg]}]
-  (if (even? arg)
-    (throw (ex-info "Even!" {}))
-    false))
+(defn <throw-if-even [{:zeno/keys [arg]}]
+  (au/go
+   (if (even? arg)
+     (throw (ex-info "Even!" {}))
+     false)))
 
 (defn -main [port-str tls?-str]
   (let [tls? (#{"true" "1"} (str/lower-case tls?-str))
@@ -74,7 +75,7 @@
     (server/set-rpc-handler! zs :get-name <get-name)
     (server/set-rpc-handler! zs :remove-name <remove-name!)
     (server/set-rpc-handler! zs :set-name <set-name!)
-    (server/set-rpc-handler! zs :throw-if-even throw-if-even)
+    (server/set-rpc-handler! zs :throw-if-even <throw-if-even)
     zs))
 
 (comment

@@ -16,19 +16,15 @@
   (on-actor-id-change actor-id))
 
 (defn <client-log-in
-  [{:keys [authenticator-name
-           login-info
-           login-info-schema
-           login-ret-extra-info-schema
-           zeno-client]}]
+  [{:keys [authenticator-name login-info login-info-schema
+           login-ret-extra-info-schema zeno-client]}]
   (au/go
-    (let [{:keys [crdt-branch storage talk2-client]} zeno-client
+    (let [{:keys [env-name storage talk2-client]} zeno-client
           ser-login-info (au/<? (storage/<value->serialized-value
                                  storage
                                  login-info-schema
                                  login-info))
           arg {:authenticator-name authenticator-name
-               :branch crdt-branch
                :serialized-login-info ser-login-info}
           ret (au/<? (t2c/<send-msg! talk2-client :log-in arg))]
       (when ret
@@ -52,12 +48,8 @@
   (t2c/<send-msg! talk2-client :log-out nil))
 
 (defn <client-update-authenticator-state
-  [{:keys [authenticator-name
-           return-value-schema
-           update-info-schema
-           update-info
-           update-type
-           zeno-client]}]
+  [{:keys [authenticator-name return-value-schema update-info-schema
+           update-info update-type zeno-client]}]
   (when-not (keyword? authenticator-name)
     (throw (ex-info (str "`authenticator-name` must be a keyword. Got `"
                          (or authenticator-name "nil") "`.")
@@ -75,12 +67,11 @@
             (u/sym-map authenticator-name update-info-schema update-type
                        update-info))))
   (au/go
-    (let [{:keys [crdt-branch storage talk2-client]} zeno-client
+    (let [{:keys [storage talk2-client]} zeno-client
           ser-info (au/<? (storage/<value->serialized-value storage
                                                             update-info-schema
                                                             update-info))
           arg {:authenticator-name authenticator-name
-               :branch crdt-branch
                :serialized-update-info ser-info
                :update-type update-type}
           s-val (au/<? (t2c/<send-msg! talk2-client
@@ -92,40 +83,35 @@
                :serialized-value s-val
                :storage storage})))))
 
-(defn <client-get-authenticator-state
-  [{:keys [authenticator-name
-           return-value-schema
-           get-info-schema
-           get-info
-           get-type
-           zeno-client]}]
+(defn <client-read-authenticator-state
+  [{:keys [authenticator-name read-info read-info-schema read-type
+           return-value-schema zeno-client]}]
   (when-not (keyword? authenticator-name)
     (throw (ex-info (str "`authenticator-name` must be a keyword. Got `"
                          (or authenticator-name "nil") "`.")
-                    (u/sym-map authenticator-name get-type get-info))))
+                    (u/sym-map authenticator-name read-type read-info))))
   (when-not (l/schema? return-value-schema)
     (throw (ex-info
             (str "`return-value-schema` must be a Lancaster schema. Got `"
                  (or return-value-schema "nil") "`.")
-            (u/sym-map authenticator-name return-value-schema get-type
-                       get-info))))
-  (when-not (l/schema? get-info-schema)
+            (u/sym-map authenticator-name return-value-schema read-type
+                       read-info))))
+  (when-not (l/schema? read-info-schema)
     (throw (ex-info
-            (str "`get-info-schema` must be a Lancaster schema. Got `"
-                 (or get-info-schema "nil") "`.")
-            (u/sym-map authenticator-name get-info-schema get-type
-                       get-info))))
+            (str "`read-info-schema` must be a Lancaster schema. Got `"
+                 (or read-info-schema "nil") "`.")
+            (u/sym-map authenticator-name read-info-schema read-type
+                       read-info))))
   (au/go
-    (let [{:keys [crdt-branch storage talk2-client]} zeno-client
+    (let [{:keys [storage talk2-client]} zeno-client
           ser-info (au/<? (storage/<value->serialized-value storage
-                                                            get-info-schema
-                                                            get-info))
+                                                            read-info-schema
+                                                            read-info))
           arg {:authenticator-name authenticator-name
-               :branch crdt-branch
-               :serialized-get-info ser-info
-               :get-type get-type}
+               :serialized-read-info ser-info
+               :read-type read-type}
           s-val (au/<? (t2c/<send-msg! talk2-client
-                                       :get-authenticator-state
+                                       :read-authenticator-state
                                        arg))]
       (au/<? (common/<serialized-value->value
               {:<request-schema (cimpl/make-schema-requester talk2-client)
