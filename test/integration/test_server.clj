@@ -26,9 +26,10 @@
     #:zeno{:certificate-str certificate-str
            :private-key-str private-key-str}))
 
-(defn add-nums
+(defn <add-nums
   [{:zeno/keys [arg]}]
-  (apply + arg))
+  (au/go
+   (apply + arg)))
 
 (defn <get-name
   [{:zeno/keys [<get-state]}]
@@ -48,10 +49,11 @@
                                          :zeno/path [:zeno/crdt :name]}]}))
     true))
 
-(defn throw-if-even [{:zeno/keys [arg]}]
-  (if (even? arg)
-    (throw (ex-info "Even!" {}))
-    false))
+(defn <throw-if-even [{:zeno/keys [arg]}]
+  (au/go
+   (if (even? arg)
+     (throw (ex-info "Even!" {}))
+     false)))
 
 (defn -main [port-str tls?-str]
   (let [tls? (#{"true" "1"} (str/lower-case tls?-str))
@@ -70,11 +72,11 @@
                          port "."))
         zs (server/->zeno-server (cond-> config
                                  tls? (merge (get-tls-configs))))]
-    (server/set-rpc-handler! zs :add-nums add-nums)
+    (server/set-rpc-handler! zs :add-nums <add-nums)
     (server/set-rpc-handler! zs :get-name <get-name)
     (server/set-rpc-handler! zs :remove-name <remove-name!)
     (server/set-rpc-handler! zs :set-name <set-name!)
-    (server/set-rpc-handler! zs :throw-if-even throw-if-even)
+    (server/set-rpc-handler! zs :throw-if-even <throw-if-even)
     zs))
 
 (comment
