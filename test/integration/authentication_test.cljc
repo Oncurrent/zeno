@@ -14,7 +14,7 @@
    [taoensso.timbre :as log]
    [test-common :as c]))
 
-(comment (kaocha.repl/run 'integration.authentication-test))
+(comment (kaocha.repl/run *ns*))
 
 ;;;; IMPORTANT!!!
 ;;;; You must start the integration test server for these tests to work.

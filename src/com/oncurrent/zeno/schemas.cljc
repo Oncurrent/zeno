@@ -14,6 +14,7 @@
 (def client-id-schema l/string-schema)
 (def cluster-member-id-schema l/string-schema)
 (def env-name-schema l/string-schema)
+(def env-lifetime-mins-schema l/long-schema)
 (def fingerprint-schema l/bytes-schema)
 (def login-session-token-schema l/string-schema)
 (def node-id-schema l/string-schema)
@@ -130,7 +131,6 @@
 
 (l/def-record-schema log-in-arg-schema
   [:authenticator-name authenticator-name-schema]
-  [:branch branch-schema]
   [:serialized-login-info serialized-value-schema])
 
 (l/def-record-schema log-in-ret-schema
@@ -139,26 +139,26 @@
 
 (l/def-record-schema update-authenticator-state-arg-schema
   [:authenticator-name authenticator-name-schema]
-  [:branch branch-schema]
   [:serialized-update-info serialized-value-schema]
   [:update-type l/keyword-schema])
 
-(l/def-record-schema get-authenticator-state-arg-schema
+(l/def-record-schema read-authenticator-state-arg-schema
   [:authenticator-name authenticator-name-schema]
-  [:branch branch-schema]
-  [:serialized-get-info serialized-value-schema]
-  [:get-type l/keyword-schema])
+  [:serialized-read-info serialized-value-schema]
+  [:read-type l/keyword-schema])
 
 ;;;;;;;;;;;;;;; Envs ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (l/def-record-schema stored-authenticator-info-schema
+  [:authenticator-name authenticator-name-schema]
   [:authenticator-branch branch-schema]
-  [:authenticator-name authenticator-name-schema])
+  [:authenticator-branch-source branch-schema])
 
 (l/def-record-schema stored-state-provider-info-schema
   [:path-root l/keyword-schema]
+  [:state-provider-name state-provider-name-schema]
   [:state-provider-branch branch-schema]
-  [:state-provider-name state-provider-name-schema])
+  [:state-provider-branch-source branch-schema])
 
 (l/def-record-schema stored-env-info-schema
   [:env-name env-name-schema]
@@ -218,9 +218,6 @@
                            :ret-schema l/boolean-schema}
    :update-authenticator-state {:arg-schema
                                 update-authenticator-state-arg-schema
-                                :ret-schema
-                                serialized-value-schema}
-   :get-authenticator-state {:arg-schema
-                             get-authenticator-state-arg-schema
-                             :ret-schema
-                             serialized-value-schema}})
+                                :ret-schema serialized-value-schema}
+   :read-authenticator-state {:arg-schema read-authenticator-state-arg-schema
+                             :ret-schema serialized-value-schema}})
