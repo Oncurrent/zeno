@@ -47,7 +47,7 @@
               (fn [old-state]
                 (when (:actor-id old-state)
                   (throw (ex-info
-                          (str"Actor `" actor-id "` already exists")
+                          (str "Actor `" actor-id "` already exists")
                           {})))
                 (assoc old-state actor-id
                        (bcrypt/encrypt password work-factor)))))
