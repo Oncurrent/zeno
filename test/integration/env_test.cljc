@@ -20,6 +20,8 @@
 ;;;; You must start the integration test server for these tests to work.
 ;;;; $ bin/run-test-server
 
+(comment (kaocha.repl/run *ns*))
+
 (comment
  (kaocha.repl/run #'test-envs {:color? false}))
 (deftest test-envs

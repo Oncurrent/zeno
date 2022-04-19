@@ -287,15 +287,16 @@
                          authenticator-branch-source))
            <swap!* (make-<swap-authenticator-state!
                     (assoc arg :authenticator-branch authenticator-branch))
-           src-state (au/<? (<get*))]
-       (au/<?
-        (<swap!*
-         (fn [old-state]
-           (if-not (empty? old-state)
-             (throw
-              (ex-info
-               (str "Authenticator branch `" authenticator-branch "` must "
-                    "be empty in order to be populated from the source "
-                    "branch `" authenticator-branch-source"`.")
-               (u/sym-map authenticator-branch authenticator-branch-source)))
-             src-state))))))))
+           src-state (au/<? (<get*))
+           err-str (str "Authenticator branch `" authenticator-branch "` must "
+                        "be empty in order to be populated from the source "
+                        "branch `" authenticator-branch-source"`.")
+           swap-fn (fn [old-state]
+                     (if (empty? old-state)
+                       src-state
+                       (throw
+                        (ex-info err-str
+                                 (u/sym-map authenticator-branch
+                                            authenticator-branch-source)))))]
+       (when src-state
+         (au/<? (<swap!* swap-fn)))))))
