@@ -14,6 +14,7 @@
 (def client-id-schema l/string-schema)
 (def cluster-member-id-schema l/string-schema)
 (def env-name-schema l/string-schema)
+(def env-lifetime-mins-schema l/long-schema)
 (def fingerprint-schema l/bytes-schema)
 (def login-session-token-schema l/string-schema)
 (def node-id-schema l/string-schema)
@@ -149,13 +150,15 @@
 ;;;;;;;;;;;;;;; Envs ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (l/def-record-schema stored-authenticator-info-schema
+  [:authenticator-name authenticator-name-schema]
   [:authenticator-branch branch-schema]
-  [:authenticator-name authenticator-name-schema])
+  [:authenticator-branch-source branch-schema])
 
 (l/def-record-schema stored-state-provider-info-schema
   [:path-root l/keyword-schema]
+  [:state-provider-name state-provider-name-schema]
   [:state-provider-branch branch-schema]
-  [:state-provider-name state-provider-name-schema])
+  [:state-provider-branch-source branch-schema])
 
 (l/def-record-schema stored-env-info-schema
   [:env-name env-name-schema]

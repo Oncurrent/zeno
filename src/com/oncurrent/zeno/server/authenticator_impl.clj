@@ -273,3 +273,30 @@
               storage
               (get-read-state-ret-schema authenticator read-type)
               ret)))))
+
+;; I should have the authenticator-storage available and the different branches
+;; are just different keys so copying should be easy.
+(defn <copy-branch!
+  [{:keys [authenticator authenticator-storage
+           authenticator-branch authenticator-branch-source]}]
+  (au/go
+   (when authenticator-branch-source
+     (let [arg (u/sym-map authenticator authenticator-storage)
+           <get* (make-<get-authenticator-state
+                  (assoc arg :authenticator-branch
+                         authenticator-branch-source))
+           <swap!* (make-<swap-authenticator-state!
+                    (assoc arg :authenticator-branch authenticator-branch))
+           src-state (au/<? (<get*))]
+       (log/info "AM COPYING")
+       (au/<?
+        (<swap!*
+         (fn [old-state]
+           (if-not (empty? old-state)
+             (throw
+              (ex-info
+               (str "Authenticator branch `" authenticator-branch "` must "
+                    "be empty in order to be populated from the source "
+                    "branch `" authenticator-branch-source"`.")
+               (u/sym-map authenticator-branch authenticator-branch-source)))
+             src-state))))))))

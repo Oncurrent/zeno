@@ -278,17 +278,19 @@
   [authenticator-name->info
    env-name
    acc
-   {:keys [authenticator-name authenticator-branch] :as stored-info}]
+   {:keys [authenticator-name authenticator-branch
+           authenticator-branch-source] :as stored-info}]
   (let [branch (or authenticator-branch env-name)
         auth-info (authenticator-name->info authenticator-name)]
     (assoc acc authenticator-name
-           (assoc auth-info :authenticator-branch branch))))
+           (assoc auth-info
+                  :authenticator-branch branch
+                  :authenticator-branch-source authenticator-branch-source))))
 
-(defn xf-env-info
+(defn xf-perm-env-info
   [{:keys [authenticator-name->info env-info root->state-provider]}]
-  (let [{:keys [stored-authenticator-infos
-                env-lifetime-mins
-                env-name
+  (let [{:keys [env-name
+                stored-authenticator-infos
                 stored-state-provider-infos]} env-info
         env-auth-name->info (reduce
                              (partial xf-env-auth-info
@@ -309,27 +311,40 @@
                                            env-name)})))
                            {}
                            stored-state-provider-infos)]
-    (cond-> {:env-authenticator-name->info env-auth-name->info
-             :env-sp-root->info env-sp-root->info}
-      env-lifetime-mins (assoc :expiry-ms (+ (u/current-time-ms)
-                                             (* 60000 env-lifetime-mins))))))
+    {:env-authenticator-name->info env-auth-name->info
+     :env-sp-root->info env-sp-root->info}))
 
-(defn <handle-create-env [{:keys [*env-name->info server storage] :as arg}]
+(defn <copy-from-branch-sources!
+  [{:keys [authenticator-name->info env-info root->state-provider]}]
   (au/go
-    (let [env-info (:arg arg)
-          {:keys [env-name]} env-info]
-      (au/<? (storage/<swap! storage
-                             storage/env-name-to-info-key
-                             schemas/env-name-to-info-schema
-                             (fn [env-name->info]
-                               (when (contains? env-name->info env-name)
-                                 (throw (ex-info (str "Env `" env-name "` "
-                                                      "already exists.")
-                                                 (u/sym-map env-name))))
-                               (assoc env-name->info env-name env-info))))
-      (swap! *env-name->info assoc env-name
-             (xf-env-info (assoc arg :env-info env-info)))
-      true)))
+   (let [{:keys [env-authenticator-name->info env-sp-root->info]} env-info]
+     (doseq [[auth-name auth-info] env-authenticator-name->info]
+       (log/info "GOING TO COPY")
+       (when (:authenticator-branch-source auth-info)
+         (au/<? (auth-impl/<copy-branch! auth-info))))
+     (doseq [[sp-root sp-info] env-sp-root->info]
+       ;; Or whatever should be here.
+       #_(au/<? (<sp-copy-branch! sp-info))))))
+
+(defn <handle-create-env
+  [{:keys [*env-name->info arg server storage] :as fn-arg}]
+  (au/go
+   (let [{:keys [env-name]} arg]
+     (au/<? (storage/<swap! storage
+                            storage/env-name-to-info-key
+                            schemas/env-name-to-info-schema
+                            (fn [env-name->info]
+                              (when (contains? env-name->info env-name)
+                                (throw (ex-info (str "Env `" env-name "` "
+                                                     "already exists.")
+                                                (u/sym-map env-name))))
+                              (assoc env-name->info env-name arg))))
+     (swap! *env-name->info assoc env-name
+            (xf-perm-env-info (assoc fn-arg :env-info arg)))
+     (log/info "ABOUT TO COPY")
+     (au/<? (<copy-from-branch-sources!
+             (assoc fn-arg :env-info (get @*env-name->info env-name)))))
+      true))
 
 (defn <handle-delete-env [{:keys [*env-name->info server storage] :as arg}]
   (au/go
@@ -630,7 +645,7 @@
                   :stored-state-provider-infos default-spis})]
     (reduce-kv (fn [acc env-name info]
                  (assoc acc env-name
-                        (xf-env-info (assoc arg :env-info info))))
+                        (xf-perm-env-info (assoc arg :env-info info))))
                {}
                m)))
 

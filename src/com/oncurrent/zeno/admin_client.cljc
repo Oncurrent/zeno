@@ -12,7 +12,8 @@
 
 (defn xf-authenticator-infos [authenticator-infos]
   (doseq [{:zeno/keys [authenticator-name
-                       authenticator-branch]
+                       authenticator-branch
+                       authenticator-branch-source]
            :as authenticator-info}
           authenticator-infos]
     (when-not (keyword? authenticator-name)
@@ -23,16 +24,26 @@
                (not (string? authenticator-branch)))
       (throw (ex-info (str "`:zeno/authenticator-branch` must be a string. "
                            "Got `" authenticator-branch "`.")
-                      (u/sym-map authenticator-branch authenticator-infos)))))
+                      (u/sym-map authenticator-branch authenticator-infos))))
+    (when (and authenticator-branch-source
+               (not (string? authenticator-branch-source)))
+      (throw (ex-info (str "`:zeno/authenticator-branch-source` must be a "
+                           "string. Got `" authenticator-branch-source "`.")
+                      (u/sym-map authenticator-branch-source
+                                 authenticator-infos)))))
   (reduce
-   (fn [acc {:zeno/keys [authenticator-name authenticator-branch]
+   (fn [acc {:zeno/keys [authenticator-name authenticator-branch
+                         authenticator-branch-source]
              :as authenticator-info}]
-     (let [no-ns-info (u/sym-map authenticator-name authenticator-branch)]
-       (if-not (some #(= no-ns-info %) acc)
+     (let [u-select #(select-keys % [:authenticator-name])
+           unique? (fn [x coll] (some #(= (u-select x) (u-select %)) coll))
+           no-ns-info (u/sym-map authenticator-name authenticator-branch
+                                 authenticator-branch-source)]
+       (if-not (unique? no-ns-info acc)
          (conj acc no-ns-info)
          (throw
           (ex-info
-           (str "`Values in :zeno/authenticator-infos` must be "
+           (str "`name/branch in :zeno/authenticator-infos` must be "
                 "unique. `" authenticator-info "` was duplicated.")
            (u/sym-map authenticator-info authenticator-infos))))))
    []

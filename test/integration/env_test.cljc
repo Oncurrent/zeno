@@ -21,7 +21,7 @@
 ;;;; $ bin/run-test-server
 
 (comment
- (kaocha.repl/run *ns* {:color? false}))
+ (kaocha.repl/run #'test-envs {:color? false}))
 (deftest test-envs
   (au/test-async
    5000
@@ -61,8 +61,7 @@
                                           :zeno/path [:zeno/crdt :name]}]))
            _ (is (= '{name "base"} (get-state zc-perm)))
            ;; Connect to a temp env based on the permanent env
-           zc-temp (c/->zc {:source-env-name perm-env-name
-                            :env-lifetime-mins 1})
+           zc-temp (c/->zc {:source-env-name perm-env-name})
            ;; Verify that the `:name` is "base"
            _ (is (= '{name "base"} (get-state zc-temp)))
            ;; Set the `:name` to "temp" in this env
@@ -99,3 +98,72 @@
        (admin/stop! admin)
        (zc/stop! zc-perm)
        (zc/stop! zc-temp)))))
+
+(comment
+ (kaocha.repl/run #'test-envs-authenticator-copy
+                  {:capture-output? false}))
+(deftest test-envs-authenticator-copy
+  (au/test-async
+   10000
+   (au/go
+    (au/<? (c/<clear-envs!))
+    (let [base (u/compact-random-uuid)
+          perm (u/compact-random-uuid)
+          [actor1 password1] ["actor1" "password1"]
+          [actor2 password2] ["actor2" "password2"]
+          [actor3 password3] ["actor3" "password3"]
+          [actor4 password4] ["actor4" "password4"]
+          [actor5 password5] ["actor5" "password5"]
+          [actor6 password6] ["actor6" "password6"]
+          _ (is (= true (au/<? (c/<setup-env! {:env-name base}))))
+          zc-base (c/->zc {:env-name base})
+          _ (is (= true (au/<? (pwd-client/<add-actor-and-password!
+                                {:zeno/actor-id actor1
+                                 ::pwd-auth/password password1
+                                 :zeno/zeno-client zc-base}))))
+          _ (is (= true (au/<? (c/<setup-env!
+                                {:env-name perm
+                                 :authenticator-branch-source base}))))
+          zc-perm (c/->zc {:env-name perm})
+          _ (is (= true (au/<? (pwd-client/<add-actor-and-password!
+                                {:zeno/actor-id actor2
+                                 ::pwd-auth/password password2
+                                 :zeno/zeno-client zc-perm}))))
+          zc-temp (c/->zc {:source-env-name perm})
+          _ (is (= true (au/<? (pwd-client/<add-actor-and-password!
+                                {:zeno/actor-id actor3
+                                 ::pwd-auth/password password3
+                                 :zeno/zeno-client zc-temp}))))
+          ;; login true 1 on zc-base
+          ;; login true 1 on zc-perm
+          ;; login true 1 on zc-temp
+          ;; login fail 2 on zc-base
+          ;; login true 2 on zc-perm
+          ;; login true 2 on zc-temp
+          ;; login fail 3 on zc-base
+          ;; login fail 3 on zc-perm
+          ;; login true 3 on zc-temp
+          ;; add 4 to zc-base
+          ;; add 5 to zc-perm
+          ;; add 6 to zc-temp
+          ;; login true 4 on zc-base
+          ;; login fail 4 on zc-perm
+          ;; login fail 4 on zc-temp
+          ;; login fail 5 on zc-base
+          ;; login true 5 on zc-perm
+          ;; login fail 5 on zc-temp
+          ;; login 6 fail on zc-base
+          ;; login 6 fail on zc-perm
+          ;; login 6 true on zc-temp
+
+          login-ret (au/<? (pwd-client/<log-in!
+                            {::pwd-auth/password password
+                             :zeno/actor-id actor-id
+                             :zeno/zeno-client zc-perm}))
+          _ (is (not= false login-ret))
+          _ (is (= true (au/<? (pwd-client/<log-out!
+                                {:zeno/zeno-client zc-perm}))))
+          ]
+      (zc/stop! zc-base)
+      (zc/stop! zc-perm)
+      (zc/stop! zc-temp)))))
