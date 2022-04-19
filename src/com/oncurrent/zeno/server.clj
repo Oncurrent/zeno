@@ -492,7 +492,8 @@
            *env-name->info]
     :as fn-arg}]
   (fn [{:keys [close! conn-id path remote-address] :as conn}]
-    (try
+    (ca/go
+     (try
       (let [uri-map (uri/uri path)
             env-params (-> uri-map :query query-string->env-params)
             {:keys [env-lifetime-mins env-name]} env-params
@@ -501,27 +502,27 @@
                (fn [env-name->info]
                  (let [exists? (contains? env-name->info env-name)]
                    (cond
-                     exists?
-                     env-name->info ; no change needed
+                    exists?
+                    env-name->info ; no change needed
 
-                     temp? ; Create the temp env
-                     (let [env-info (->temp-env-info (u/sym-map env-name->info
-                                                                env-params))]
+                    temp? ; Create the temp env
+                    (let [env-info (->temp-env-info (u/sym-map env-name->info
+                                                               env-params))]
 
-                       (assoc env-name->info (:env-name env-params) env-info))
+                      (assoc env-name->info (:env-name env-params) env-info))
 
-                     :else
-                     (throw (ex-info
-                             (str "The env `" env-name "` does not "
-                                  "exist. It must be created via the admin "
-                                  "interface or made into a temporary env "
-                                  "by specifying `env-lifetime-mins`.")
-                             (u/sym-map env-name)))))))
+                    :else
+                    (throw (ex-info
+                            (str "The env `" env-name "` does not "
+                                 "exist. It must be created via the admin "
+                                 "interface or made into a temporary env "
+                                 "by specifying `env-lifetime-mins`.")
+                            (u/sym-map env-name)))))))
         (swap! *conn-id->auth-info assoc conn-id {})
         (swap! *conn-id->env-name assoc conn-id env-name)
         (when temp?
-          (au/<?? (<copy-from-branch-sources!
-                   (assoc fn-arg :env-info (get @*env-name->info env-name)))))
+          (au/<? (<copy-from-branch-sources!
+                  (assoc fn-arg :env-info (get @*env-name->info env-name)))))
         (log/info
          (str "Client connection opened:\n"
               (u/pprint-str
@@ -529,7 +530,7 @@
       (catch Exception e
         (log/error (str "Error in client on-connect:\n"
                         (u/ex-msg-and-stacktrace e)))
-        (close!)))))
+        (close!))))))
 
 (defn make-client-on-disconnect
   [{:keys [*conn-id->auth-info *conn-id->env-name *connected-actor-id->conn-ids]
