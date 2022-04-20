@@ -4,5 +4,5 @@
    [taoensso.timbre :as log]))
 
 (defprotocol IClientAuthorizer
-  (allowed? [this actor path path-actor op])
+  (allowed? [this actor-id path path-actor-id op])
   (get-name [this]))

@@ -41,8 +41,6 @@
           :checks [{:pred #(satisfies? storage/IStorage %)
                     :msg "must satisfy the IStorage protocol"}]}})
 
-(def default-rpc-timeout-ms 30000)
-
 (defn make-schema-requester [talk2-client]
   (fn [fp]
     (t2c/<send-msg! talk2-client :get-schema-pcf-for-fingerprint fp)))
@@ -120,21 +118,30 @@
           (recur))))))
 
 (defn make-on-connect
-  [{:keys [*talk2-client storage update-state-ch] :as arg}]
+  [{:keys [*connected? root->state-provider] :as arg}]
   (fn [{:keys [protocol url]}]
+    (reset! *connected? true)
     (ca/go
       (try
-        ;; TODO: Notify state providers and authenticators
-        (let [])
+        (doseq [[root {::sp-impl/keys [on-connect]}] root->state-provider]
+          (when on-connect
+            (on-connect url)))
         (catch #?(:clj Exception :cljs js/Error) e
           (log/error "Error in on-connect:\n"
                      (u/ex-msg-and-stacktrace e)))))))
 
 (defn make-on-disconnect
-  [{:keys [] :as arg}]
+  [{:keys [*connected? root->state-provider] :as arg}]
   (fn [{:keys [code url]}]
-    ;; TODO: Notify state providers and authenticators
-    ))
+    (reset! *connected? false)
+    (ca/go
+      (try
+        (doseq [[root {::sp-impl/keys [on-disconnect]}] root->state-provider]
+          (when on-disconnect
+            (on-disconnect code)))
+        (catch #?(:clj Exception :cljs js/Error) e
+          (log/error "Error in on-disconnect:\n"
+                     (u/ex-msg-and-stacktrace e)))))))
 
 (defn make-get-url [{:keys [get-server-base-url] :as arg}]
   (fn []
@@ -164,6 +171,89 @@
                  :on-disconnect (make-on-disconnect arg)
                  :protocol schemas/client-server-protocol})))
 
+;; TODO: DRY this up w/ com.oncurrent.zeno.server/<rpc!*
+(defn <rpc!*
+  [{:keys [arg-schema ret-schema rpc-name-kw state-provider-name
+           storage talk2-client rpc-msg-type]
+    :as arg}]
+  (au/go
+    (let [rpc-id (u/compact-random-uuid)
+          s-arg (au/<? (storage/<value->serialized-value
+                        storage arg-schema (:arg arg)))
+          rpc-arg {:arg s-arg
+                   :rpc-id rpc-id
+                   :rpc-name-kw-ns (namespace rpc-name-kw)
+                   :rpc-name-kw-name (name rpc-name-kw)
+                   :state-provider-name state-provider-name}
+          rpc-ch (t2c/<send-msg! talk2-client rpc-msg-type rpc-arg)
+          timeout-ms (or (:timeout-ms arg) u/default-rpc-timeout-ms)
+          timeout-ch (ca/timeout timeout-ms)
+          [ret ch] (au/alts? [rpc-ch timeout-ch])
+          <request-schema (make-schema-requester talk2-client)]
+      (cond
+        (= timeout-ch ch)
+        (throw (ex-info (str "RPC timed out. rpc-name-kw: `" rpc-name-kw "` "
+                             "rpc-id: `" rpc-id "`.\n")
+                        (u/sym-map rpc-id rpc-name-kw timeout-ms)))
+
+        (= :zeno/rpc-error ret)
+        (throw (ex-info (str "RPC failed. rpc-name-kw: `" rpc-name-kw "` "
+                             "rpc-id: `" rpc-id "`.\n See server log for "
+                             "more information.\n")
+                        (u/sym-map rpc-id rpc-name-kw)))
+
+        (= :zeno/rpc-unauthorized ret)
+        (throw (ex-info (str "Unauthorized RPC. rpc-name-kw: `" rpc-name-kw "` "
+                             "rpc-id: `" rpc-id "`.\n See server log for "
+                             "more information.\n")
+                        (u/sym-map rpc-id rpc-name-kw)))
+
+        :else
+        (au/<? (common/<serialized-value->value
+                {:<request-schema <request-schema
+                 :reader-schema ret-schema
+                 :serialized-value ret
+                 :storage storage}))))))
+
+;; TODO: DRY this up w/ com.oncurrent.zeno.server/<sp-send-msg
+(defn <sp-send-msg
+  [{:keys [arg msg-protocol msg-type state-provider-name
+           storage talk2-client timeout-ms]}]
+  (let [{:keys [arg-schema ret-schema]} (msg-protocol msg-type)]
+    (if ret-schema
+      (<rpc!* (-> (u/sym-map arg arg-schema ret-schema state-provider-name
+                             storage talk2-client timeout-ms)
+                  (assoc :rpc-msg-type :state-provider-rpc)
+                  (assoc :rpc-name-kw msg-type)))
+      (let [s-arg (au/<? (storage/<value->serialized-value
+                          storage arg-schema arg))
+            msg-arg {:arg s-arg
+                     :msg-type-ns (namespace msg-type)
+                     :msg-type-name (name msg-type)
+                     :state-provider-name state-provider-name}]
+        (t2c/<send-msg! talk2-client :state-provider-msg msg-arg)))))
+
+(defn initialize-state-providers!
+  [{:keys [*connected? root->state-provider storage talk2-client]}]
+  (doseq [[root sp] root->state-provider]
+    (let [{::sp-impl/keys [init! msg-protocol state-provider-name]} sp]
+      (when init!
+        (let [<send-msg (fn [{:keys [arg msg-type timeout-ms]}]
+                          (<sp-send-msg (u/sym-map arg
+                                                   msg-protocol
+                                                   msg-type
+                                                   state-provider-name
+                                                   storage
+                                                   talk2-client
+                                                   timeout-ms)))
+              prefix (str storage/state-provider-prefix
+                          (namespace state-provider-name) "-"
+                          (name state-provider-name))]
+          (init! {:<send-msg <send-msg
+                  :connected? (fn []
+                                @*connected?)
+                  :storage (storage/make-prefixed-storage prefix storage)}))))))
+
 (defn update-state! [zc cmds cb]
   ;; We put the updates on a channel to guarantee serial update order
   (ca/put! (:update-state-ch zc) (u/sym-map cmds cb)))
@@ -191,10 +281,13 @@
         *state-sub-name->info (atom {})
         *actor-id (atom nil)
         *talk2-client (atom nil)
+        *connected? (atom false)
         update-state-ch (ca/chan (ca/sliding-buffer 1000))
         actor-id-root->sp {::sp-impl/get-state-atom (constantly *actor-id)}
         arg (-> (u/sym-map *actor-id
+                           *connected?
                            *stop?
+                           *talk2-client
                            admin-password
                            client-name
                            env-lifetime-mins
@@ -208,13 +301,13 @@
                 (update :root->state-provider
                         assoc :zeno/actor-id actor-id-root->sp))
         talk2-client (when (:zeno/get-server-base-url config*)
-                       (let [arg* (assoc arg
-                                         :*talk2-client *talk2-client)]
-                         (make-talk2-client arg*)))
+                       (make-talk2-client arg))
         _ (reset! *talk2-client talk2-client)
+        _ (initialize-state-providers! (assoc arg :talk2-client talk2-client))
         on-actor-id-change (fn [actor-id]
-                             ;; TODO: Pass this to all state providers
-                             )
+                             (doseq [[root sp] root->state-provider]
+                               (when-let [oaic (::sp-impl/on-actor-id-change sp)]
+                                 (oaic actor-id))))
         zc (merge arg (u/sym-map *next-instance-num
                                  *next-topic-sub-id
                                  *state-sub-name->info
@@ -224,10 +317,13 @@
     (start-update-state-loop! zc)
     zc))
 
-(defn stop! [{:keys [*stop? talk2-client] :as zc}]
+(defn stop! [{:keys [*stop? root->state-provider talk2-client] :as zc}]
   (reset! *stop? true)
   (when talk2-client
-    (t2c/stop! talk2-client)))
+    (t2c/stop! talk2-client))
+  (doseq [[root {::sp-impl/keys [stop!]}] root->state-provider]
+    (when stop!
+      (stop!))))
 
 (defn subscribe-to-topic! [zc topic-name cb]
   (let [{:keys [*next-topic-sub-id *topic-name->sub-id->cb]} zc
@@ -265,56 +361,25 @@
   [zc]
   (boolean @(:*actor-id zc)))
 
-(defn <rpc! [{:keys [arg cb rpc-name-kw timeout-ms zc]
-              :or {timeout-ms default-rpc-timeout-ms}}]
-  (au/go
-    (when-not (:talk2-client zc)
-      (throw
-       (ex-info (str "Can't call `<rpc!` because "
-                     "`:zeno/get-server-base-url` was not provided in "
-                     "the client configuration.")
-                {})))
-    (when-not (keyword? rpc-name-kw)
-      (throw (ex-info (str "The `rpc-name-kw` parameter must be a keyword. "
-                           "Got `" (or rpc-name-kw "nil") "`.")
-                      (u/sym-map rpc-name-kw arg))))
-    (let [{:keys [rpcs storage talk2-client]} zc
-          {:keys [arg-schema ret-schema]} (get rpcs rpc-name-kw)
-          rpc-id (u/compact-random-uuid)
-          s-arg (au/<? (storage/<value->serialized-value
-                        storage arg-schema arg))
-          rpc-arg {:rpc-id rpc-id
-                   :rpc-name-kw-ns (namespace rpc-name-kw)
-                   :rpc-name-kw-name (name rpc-name-kw)
-                   :arg s-arg}
-          rpc-ch (t2c/<send-msg! talk2-client :rpc rpc-arg)
-          timeout-ch (ca/timeout timeout-ms)
-          [ret ch] (au/alts? [rpc-ch timeout-ch])
-          <request-schema (make-schema-requester talk2-client)]
-      (cond
-        (= timeout-ch ch)
-        (throw (ex-info (str "RPC timed out. rpc-name-kw: `" rpc-name-kw "` "
-                             "rpc-id: `" rpc-id "`.\n")
-                        (u/sym-map rpc-id rpc-name-kw timeout-ms)))
-
-        (= :zeno/rpc-error ret)
-        (throw (ex-info (str "RPC failed. rpc-name-kw: `" rpc-name-kw "` "
-                             "rpc-id: `" rpc-id "`.\n See server log for "
-                             "more information.\n")
-                        (u/sym-map rpc-id rpc-name-kw)))
-
-        (= :zeno/rpc-unauthorized ret)
-        (throw (ex-info (str "Unauthorized RPC. rpc-name-kw: `" rpc-name-kw "` "
-                             "rpc-id: `" rpc-id "`.\n See server log for "
-                             "more information.\n")
-                        (u/sym-map rpc-id rpc-name-kw)))
-
-        :else
-        (au/<? (common/<serialized-value->value
-                {:<request-schema <request-schema
-                 :reader-schema ret-schema
-                 :serialized-value ret
-                 :storage storage}))))))
+(defn <rpc! [{:keys [rpc-name-kw zc] :as arg}]
+  (when-not (:talk2-client zc)
+    (throw
+     (ex-info (str "Can't call `<rpc!` because "
+                   "`:zeno/get-server-base-url` was not provided in "
+                   "the client configuration.")
+              {})))
+  (when-not (keyword? rpc-name-kw)
+    (throw (ex-info (str "The `rpc-name-kw` parameter must be a keyword. "
+                         "Got `" (or rpc-name-kw "nil") "`.")
+                    (u/sym-map rpc-name-kw arg))))
+  (let [{:keys [rpcs storage talk2-client]} zc
+        {:keys [arg-schema ret-schema]} (get rpcs rpc-name-kw)]
+    (<rpc!* (-> arg
+                (assoc :arg-schema arg-schema)
+                (assoc :ret-schema ret-schema)
+                (assoc :rpc-msg-type :rpc)
+                (assoc :storage storage)
+                (assoc :talk2-client talk2-client)))))
 
 (defn rpc! [{:keys [cb] :as arg}]
   (ca/go

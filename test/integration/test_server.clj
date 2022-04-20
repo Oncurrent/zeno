@@ -26,10 +26,9 @@
     #:zeno{:certificate-str certificate-str
            :private-key-str private-key-str}))
 
-(defn <add-nums
+(defn add-nums
   [{:zeno/keys [arg]}]
-  (au/go
-   (apply + arg)))
+  (apply + arg))
 
 (defn <get-name
   [{:zeno/keys [<get-state]}]
@@ -71,8 +70,8 @@
         _ (log/info (str "Starting Zeno integration test server on port "
                          port "."))
         zs (server/->zeno-server (cond-> config
-                                 tls? (merge (get-tls-configs))))]
-    (server/set-rpc-handler! zs :add-nums <add-nums)
+                                   tls? (merge (get-tls-configs))))]
+    (server/set-rpc-handler! zs :add-nums add-nums)
     (server/set-rpc-handler! zs :get-name <get-name)
     (server/set-rpc-handler! zs :remove-name <remove-name!)
     (server/set-rpc-handler! zs :set-name <set-name!)

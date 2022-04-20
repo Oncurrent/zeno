@@ -24,6 +24,7 @@
 
 (comment
  (kaocha.repl/run #'test-envs {:color? false}))
+
 (deftest test-envs
   (au/test-async
    5000

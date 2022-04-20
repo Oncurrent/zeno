@@ -33,6 +33,7 @@
 (def mutex-reference-key-prefix "_MUTEX-")
 (def login-session-token-to-token-info-key-prefix
   "LOGIN-SESSION-TOKEN-TO-TOKEN-INFO-")
+(def state-provider-prefix "STATE-PROVIDER-")
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 

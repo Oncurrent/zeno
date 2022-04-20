@@ -25,6 +25,7 @@
 
 (def default-env-lifetime-mins 5)
 (def default-env-name "main")
+(def default-rpc-timeout-ms 30000)
 (def terminal-kw-ops #{:zeno/keys :zeno/count :zeno/concat})
 (def kw-ops (conj terminal-kw-ops :zeno/*))
 ;; TODO: Make valid-path-roots dynamic according to the client's

@@ -7,7 +7,7 @@
 
 (defrecord AffirmativeClientAuthorizer []
   client-authz/IClientAuthorizer
-  (allowed? [this actor path path-actor op]
+  (allowed? [this actor-id path path-actor-id op]
     true)
   (get-name [this]
     shared/authorizer-name))

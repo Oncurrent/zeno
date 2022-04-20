@@ -8,6 +8,7 @@
    [com.oncurrent.zeno.admin-client :as admin]
    [com.oncurrent.zeno.authenticators.password.shared :as pwd-shared]
    [com.oncurrent.zeno.client :as zc]
+   [com.oncurrent.zeno.authorizers.affirmative-authorizer.client :as aa]
    [com.oncurrent.zeno.state-providers.client-mem :as cm]
    [com.oncurrent.zeno.state-providers.client-mem.client :as cm-client]
    [com.oncurrent.zeno.state-providers.crdt :as crdt]
@@ -60,7 +61,7 @@
    (let [root->sp {:zeno/client (cm-client/->state-provider
                                  #::cm{:initial-state initial-client-state})
                    :zeno/crdt (crdt-client/->state-provider
-                               #::crdt{:authorizer nil ; TODO
+                               #::crdt{:authorizer (aa/->authorizer)
                                        :schema (or crdt-schema*
                                                    crdt-schema)})}]
      (zc/->zeno-client
@@ -72,7 +73,7 @@
   ([{:keys [env-name source-env-name env-lifetime-mins]}]
    (let [client-mem-sp (cm-client/->state-provider)
          crdt-sp (crdt-client/->state-provider
-                  #::crdt{:authorizer nil ; TODO: Fill this in
+                  #::crdt{:authorizer (aa/->authorizer)
                           :schema crdt-schema})
          root->sp {:zeno/client client-mem-sp :zeno/crdt crdt-sp}
          config #:zeno{:env-lifetime-mins env-lifetime-mins
