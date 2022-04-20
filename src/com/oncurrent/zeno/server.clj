@@ -318,9 +318,7 @@
         (let [{:keys [state-provider]} sp-info
               {::sp-impl/keys [<copy-branch!]} state-provider]
           (when <copy-branch!
-            (<copy-branch! sp-info)))
-        ;; Or whatever should be here.
-        #_(au/<? (<sp-copy-branch! sp-info))))))
+            (<copy-branch! sp-info)))))))
 
 (defn <handle-create-env
   [{:keys [*env-name->info arg server storage] :as fn-arg}]
