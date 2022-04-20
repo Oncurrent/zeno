@@ -90,7 +90,7 @@
                             (common/<get-tx-infos)
                             (au/<?)
                             (filter #(= actor-id (:actor-id %)))))]
-        (if (seq tx-infos)
+        (when (seq tx-infos)
           (do
             (au/<? (<send-msg {:msg-type :log-txs
                                :arg tx-infos}))
