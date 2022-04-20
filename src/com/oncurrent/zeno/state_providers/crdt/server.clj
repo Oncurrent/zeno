@@ -53,10 +53,12 @@
 
 (defn make-handlers [{:keys [*<send-msg *storage schema]}]
   {:record-txs
-   (fn [{:keys [<request-schema conn-id env-name] :as h-arg}]
+   (fn [{:keys [<request-schema env-info] :as h-arg}]
      (au/go
-       (log/info (str "HHHH:\n"
-                      (u/pprint-str h-arg)))
+       #_(log/info (str "HHHH:\n"
+                        (u/pprint-str
+                         (-> env-info :env-sp-root->info :zeno/crdt
+                             :state-provider-branch))))
        (let [storage @*storage
              ser-tx-infos (:arg h-arg)
              ;; Convert the serializable-tx-infos into regular tx-infos
@@ -83,7 +85,7 @@
                      (au/go
                        (common/get-value
                         {:crdt (get @*branch->crdt-store branch)
-                         :path (rest path)
+                         :path path
                          :schema schema})))
         <update-state! (fn [{:zeno/keys [branch cmds] :as us-arg}]
                          (au/go
@@ -96,11 +98,6 @@
                                       (-> (commands/process-cmds pc-arg)
                                           (:crdt)))))
                            true))
-        <set-state! (fn [{:zeno/keys [branch path value]}]
-                      (<update-state! #:zeno{:branch branch
-                                             :cmds [#:zeno{:arg value
-                                                           :op :zeno/set
-                                                           :path path}]}))
         arg (u/sym-map *storage *<send-msg schema)
         msg-handlers (make-handlers arg)
         init! (fn [{:keys [<send-msg storage]}]
@@ -110,7 +107,6 @@
                 )]
     #::sp-impl{:<get-state <get-state
                :init! init!
-               :<set-state! <set-state!
                :<update-state! <update-state!
                :msg-handlers msg-handlers
                :msg-protocol shared/msg-protocol

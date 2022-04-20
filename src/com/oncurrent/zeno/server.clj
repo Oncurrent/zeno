@@ -387,25 +387,38 @@
 
 (defn make-update-state [{:keys [env-name env-sp-root->info]}]
   (fn [{:zeno/keys [cmds] :as fn-arg}]
-    (check-update-state-arg fn-arg)
-    (let [root (-> cmds first :zeno/path first)
-          sp-info (env-sp-root->info root)
-          branch (or (:branch fn-arg)
-                     (:branch sp-info)
-                     env-name)
-          f (-> sp-info :state-provider ::sp-impl/<update-state!)]
-      (f (assoc fn-arg :branch branch)))))
+    (au/go
+      (check-update-state-arg fn-arg)
+      (let [root->cmds (reduce
+                        (fn [acc {:zeno/keys [path] :as cmd}]
+                          (let [[root & tail] path]
+                            (update acc root conj (assoc cmd :zeno/path tail))))
+                        {}
+                        cmds)]
+        (doseq [[root cmds] root->cmds]
+          (let [sp-info (env-sp-root->info root)
+                branch (or (:branch fn-arg)
+                           (:branch sp-info)
+                           env-name)
+                <us! (-> sp-info :state-provider ::sp-impl/<update-state!)]
+            (au/<? (<us! (assoc fn-arg
+                                :zeno/branch branch
+                                :zeno/cmds cmds)))))
+        true))))
 
 (defn make-get-state [{:keys [env-name env-sp-root->info]}]
   (fn [{:zeno/keys [path] :as fn-arg}]
     (check-get-state-arg fn-arg)
-    (let [root (first path)
+    (let [[root & tail] path
           sp-info (env-sp-root->info root)
           branch (or (:branch fn-arg)
                      (:branch sp-info)
                      env-name)
           f (-> sp-info :state-provider ::sp-impl/<get-state)]
-      (f (assoc fn-arg :branch branch :prefix root)))))
+      (f (assoc fn-arg
+                :zeno/branch branch
+                :zeno/path tail
+                :zeno/prefix root)))))
 
 (defn make-state-fns [arg]
   (let [<update-state! (make-update-state arg)
@@ -474,7 +487,7 @@
                 h-arg {:<request-schema <request-schema
                        :arg deser-arg
                        :conn-id conn-id
-                       :env-name env-name}
+                       :env-info env-info}
                 ret (handler h-arg)
                 val (if (au/channel? ret)
                       (au/<? ret)
@@ -519,7 +532,7 @@
                   h-arg {:<request-schema <request-schema
                          :arg deser-arg
                          :conn-id conn-id
-                         :env-name env-name}
+                         :env-info env-info}
                   ret (handler h-arg)]
               (when (au/channel? ret)
                 ;; Check for exceptions

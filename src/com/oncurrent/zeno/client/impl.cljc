@@ -377,7 +377,9 @@
     (<rpc!* (-> arg
                 (assoc :arg-schema arg-schema)
                 (assoc :ret-schema ret-schema)
-                (assoc :rpc-msg-type :rpc)))))
+                (assoc :rpc-msg-type :rpc)
+                (assoc :storage storage)
+                (assoc :talk2-client talk2-client)))))
 
 (defn rpc! [{:keys [cb] :as arg}]
   (ca/go
