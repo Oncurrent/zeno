@@ -11,7 +11,7 @@
    [taoensso.timbre :as log]))
 
 (def container-types #{:array :map :record :union})
-(def tx-info-prefix "TX-INFO-FOR-TX-ID-")
+(def tx-info-prefix "_TX-INFO-FOR-TX-ID-")
 
 (defn tx-id->tx-info-k [tx-id]
   (str tx-info-prefix tx-id))
@@ -362,11 +362,8 @@
               (recur (inc i) new-out))))))))
 
 (defn <get-tx-info [{:keys [storage tx-id]}]
-  (au/go
-    (let [tx-info (au/<? (storage/<get storage
-                                       (tx-id->tx-info-k tx-id)
-                                       shared/serializable-tx-info-schema))]
-      (assoc tx-info :tx-id tx-id))))
+  (let [k (tx-id->tx-info-k tx-id)]
+    (storage/<get storage k shared/serializable-tx-info-schema)))
 
 (defn <get-tx-infos [{:keys [storage tx-ids]}]
   (au/go

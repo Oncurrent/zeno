@@ -19,11 +19,7 @@
 (set! *warn-on-reflection* true)
 
 (def branch-log-prefix "_BRANCH-LOG-")
-(def tx-info-prefix "_TX-INFO-FOR-TX-ID-")
 (def branch-consumer-log-prefix "_BRANCH-CONSUMER-LOG-")
-
-(defn tx-id->tx-info-k [tx-id]
-  (str tx-info-prefix tx-id))
 
 (defn branch->branch-log-k [branch]
   (str branch-log-prefix branch))
@@ -34,7 +30,7 @@
 (defn <store-tx-infos [{:keys [serializable-tx-infos storage]}]
   (au/go
     (doseq [{:keys [tx-id] :as serializable-tx-info} serializable-tx-infos]
-      (let [k (tx-id->tx-info-k tx-id)]
+      (let [k (common/tx-id->tx-info-k tx-id)]
         ;; Use <swap! instead of <add! so we can handle
         ;; repeated idempotent syncs.
         (au/<? (storage/<swap! storage k shared/serializable-tx-info-schema

@@ -24,13 +24,13 @@
 (comment (kaocha.repl/run *ns*))
 
 (comment
- (kaocha.repl/run #'test-envs {:color? false}))
+  (kaocha.repl/run #'test-envs {:color? false}))
 
-(deftest ^:this test-envs
+(deftest test-envs
   (au/test-async
    5000
    (au/go
-    (au/<? (c/<clear-envs!))
+     (au/<? (c/<clear-envs!))
      (let [admin (admin/->admin-client
                   #:zeno{:admin-password c/admin-password
                          :get-server-base-url
@@ -69,8 +69,15 @@
            _ (au/<? (<wait-for-sync))
            ;; Connect to a temp env based on the permanent env
            zc-temp (c/->zc {:source-env-name perm-env-name})
-           ;; Verify that the `:name` is "base"
-           _ (is (= '{name "base"} (get-state zc-temp)))
+           temp-update-ch (ca/chan (ca/dropping-buffer 1))
+           init-temp-state (zc/subscribe-to-state! zc-temp "temp" sub-map
+                                                   #(ca/put! temp-update-ch %))
+           ;; Initially, the name is nil because no state has been synced
+           ;; to the `zc-temp` client
+           _ (is (= '{name nil} init-temp-state))
+           ;; Wait for the data from the server to sync and set the name
+           ;; to "base"
+           _ (is (= {'name "base"} (ca/<! temp-update-ch)))
            ;; Set the `:name` to "temp" in this env
            r1 (au/<? (zc/<update-state! zc-temp
                                         [{:zeno/arg "temp"
@@ -107,77 +114,77 @@
        (zc/stop! zc-temp)))))
 
 (comment
- (kaocha.repl/run #'test-envs-authenticator-copy {:capture-output? false}))
+  (kaocha.repl/run #'test-envs-authenticator-copy {:capture-output? false}))
 (deftest test-envs-authenticator-copy
   (au/test-async
    10000
    (au/go
-    (au/<? (c/<clear-envs!))
-    (let [base (u/compact-random-uuid)
-          perm (u/compact-random-uuid)
-          [actor1 password1] ["actor1" "password1"]
-          [actor2 password2] ["actor2" "password2"]
-          [actor3 password3] ["actor3" "password3"]
-          [actor4 password4] ["actor4" "password4"]
-          [actor5 password5] ["actor5" "password5"]
-          [actor6 password6] ["actor6" "password6"]
-          <add-actor-password! (fn [a p zc]
-                                 (au/go
-                                  (is (= true
-                                         (au/<?
-                                          (pwd-client/<add-actor-and-password!
-                                           {:zeno/actor-id a
-                                            ::pwd-auth/password p
-                                            :zeno/zeno-client zc}))))))
-          <test-log-in-out! (fn [a p zc should-work?]
-                              (au/go
-                               (is (= should-work?
-                                      (boolean
-                                       (au/<? (pwd-client/<log-in!
-                                               {:zeno/actor-id a
-                                                ::pwd-auth/password p
-                                                :zeno/zeno-client zc})))))
-                               (is (= true (au/<? (pwd-client/<log-out!
-                                                   {:zeno/zeno-client zc}))))))
-          _ (is (= true (au/<? (c/<setup-env! {:env-name base}))))
-          zc-base (c/->zc {:env-name base})
-          _ (au/<? (<add-actor-password! actor1 password1 zc-base))
-          _ (is (= true (au/<? (c/<setup-env!
-                                {:env-name perm
-                                 :authenticator-branch-source base}))))
-          zc-perm (c/->zc {:env-name perm})
-          _ (au/<? (<add-actor-password! actor2 password2 zc-perm))
-          zc-temp (c/->zc {:source-env-name perm})
-          _ (au/<? (<add-actor-password! actor3 password3 zc-temp))]
+     (au/<? (c/<clear-envs!))
+     (let [base (u/compact-random-uuid)
+           perm (u/compact-random-uuid)
+           [actor1 password1] ["actor1" "password1"]
+           [actor2 password2] ["actor2" "password2"]
+           [actor3 password3] ["actor3" "password3"]
+           [actor4 password4] ["actor4" "password4"]
+           [actor5 password5] ["actor5" "password5"]
+           [actor6 password6] ["actor6" "password6"]
+           <add-actor-password! (fn [a p zc]
+                                  (au/go
+                                    (is (= true
+                                           (au/<?
+                                            (pwd-client/<add-actor-and-password!
+                                             {:zeno/actor-id a
+                                              ::pwd-auth/password p
+                                              :zeno/zeno-client zc}))))))
+           <test-log-in-out! (fn [a p zc should-work?]
+                               (au/go
+                                 (is (= should-work?
+                                        (boolean
+                                         (au/<? (pwd-client/<log-in!
+                                                 {:zeno/actor-id a
+                                                  ::pwd-auth/password p
+                                                  :zeno/zeno-client zc})))))
+                                 (is (= true (au/<? (pwd-client/<log-out!
+                                                     {:zeno/zeno-client zc}))))))
+           _ (is (= true (au/<? (c/<setup-env! {:env-name base}))))
+           zc-base (c/->zc {:env-name base})
+           _ (au/<? (<add-actor-password! actor1 password1 zc-base))
+           _ (is (= true (au/<? (c/<setup-env!
+                                 {:env-name perm
+                                  :authenticator-branch-source base}))))
+           zc-perm (c/->zc {:env-name perm})
+           _ (au/<? (<add-actor-password! actor2 password2 zc-perm))
+           zc-temp (c/->zc {:source-env-name perm})
+           _ (au/<? (<add-actor-password! actor3 password3 zc-temp))]
 
-      (au/<? (<test-log-in-out! actor1 password1 zc-base true))
-      (au/<? (<test-log-in-out! actor1 password1 zc-perm true))
-      (au/<? (<test-log-in-out! actor1 password1 zc-temp true))
+       (au/<? (<test-log-in-out! actor1 password1 zc-base true))
+       (au/<? (<test-log-in-out! actor1 password1 zc-perm true))
+       (au/<? (<test-log-in-out! actor1 password1 zc-temp true))
 
-      (au/<? (<test-log-in-out! actor2 password2 zc-base false))
-      (au/<? (<test-log-in-out! actor2 password2 zc-perm true))
-      (au/<? (<test-log-in-out! actor2 password2 zc-temp true))
+       (au/<? (<test-log-in-out! actor2 password2 zc-base false))
+       (au/<? (<test-log-in-out! actor2 password2 zc-perm true))
+       (au/<? (<test-log-in-out! actor2 password2 zc-temp true))
 
-      (au/<? (<test-log-in-out! actor3 password3 zc-base false))
-      (au/<? (<test-log-in-out! actor3 password3 zc-perm false))
-      (au/<? (<test-log-in-out! actor3 password3 zc-temp true))
+       (au/<? (<test-log-in-out! actor3 password3 zc-base false))
+       (au/<? (<test-log-in-out! actor3 password3 zc-perm false))
+       (au/<? (<test-log-in-out! actor3 password3 zc-temp true))
 
-      (au/<? (<add-actor-password! actor4 password4 zc-base))
-      (au/<? (<add-actor-password! actor5 password5 zc-perm))
-      (au/<? (<add-actor-password! actor6 password6 zc-temp))
+       (au/<? (<add-actor-password! actor4 password4 zc-base))
+       (au/<? (<add-actor-password! actor5 password5 zc-perm))
+       (au/<? (<add-actor-password! actor6 password6 zc-temp))
 
-      (au/<? (<test-log-in-out! actor4 password4 zc-base true))
-      (au/<? (<test-log-in-out! actor4 password4 zc-perm false))
-      (au/<? (<test-log-in-out! actor4 password4 zc-temp false))
+       (au/<? (<test-log-in-out! actor4 password4 zc-base true))
+       (au/<? (<test-log-in-out! actor4 password4 zc-perm false))
+       (au/<? (<test-log-in-out! actor4 password4 zc-temp false))
 
-      (au/<? (<test-log-in-out! actor5 password5 zc-base false))
-      (au/<? (<test-log-in-out! actor5 password5 zc-perm true))
-      (au/<? (<test-log-in-out! actor5 password5 zc-temp false))
+       (au/<? (<test-log-in-out! actor5 password5 zc-base false))
+       (au/<? (<test-log-in-out! actor5 password5 zc-perm true))
+       (au/<? (<test-log-in-out! actor5 password5 zc-temp false))
 
-      (au/<? (<test-log-in-out! actor6 password6 zc-base false))
-      (au/<? (<test-log-in-out! actor6 password6 zc-perm false))
-      (au/<? (<test-log-in-out! actor6 password6 zc-temp true))
+       (au/<? (<test-log-in-out! actor6 password6 zc-base false))
+       (au/<? (<test-log-in-out! actor6 password6 zc-perm false))
+       (au/<? (<test-log-in-out! actor6 password6 zc-temp true))
 
-      (zc/stop! zc-base)
-      (zc/stop! zc-perm)
-      (zc/stop! zc-temp)))))
+       (zc/stop! zc-base)
+       (zc/stop! zc-perm)
+       (zc/stop! zc-temp)))))

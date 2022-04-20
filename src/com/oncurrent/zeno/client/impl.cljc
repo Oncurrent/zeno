@@ -388,8 +388,10 @@
                          "Got `" (or rpc-name-kw "nil") "`.")
                     (u/sym-map rpc-name-kw arg))))
   (let [{:keys [rpcs storage talk2-client]} zc
-        {:keys [arg-schema ret-schema]} (get rpcs rpc-name-kw)]
+        {:keys [arg-schema ret-schema]} (get rpcs rpc-name-kw)
+        <request-schema (make-schema-requester talk2-client)]
     (<rpc!* (-> arg
+                (assoc :<request-schema <request-schema)
                 (assoc :arg-schema arg-schema)
                 (assoc :ret-schema ret-schema)
                 (assoc :rpc-msg-type :rpc)

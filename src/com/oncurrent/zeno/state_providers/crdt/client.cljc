@@ -65,8 +65,8 @@
                          :sys-time-ms (u/current-time-ms)
                          :tx-id tx-id
                          :update-infos ser-update-infos}]
-            (au/<? (storage/<add! storage k shared/serializable-tx-info-schema
-                                  tx-info))
+            (au/<? (storage/<swap! storage k shared/serializable-tx-info-schema
+                                   (constantly tx-info)))
             (au/<? (storage/<swap! storage
                                    (actor-id->unsynced-log-k actor-id)
                                    shared/unsynced-log-schema

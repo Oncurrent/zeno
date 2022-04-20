@@ -325,21 +325,21 @@
 (defn <handle-create-env
   [{:keys [*env-name->info arg server storage] :as fn-arg}]
   (au/go
-   (let [{:keys [env-name]} arg]
-     (au/<? (storage/<swap! storage
-                            storage/env-name-to-info-key
-                            schemas/env-name-to-info-schema
-                            (fn [env-name->info]
-                              (when (contains? env-name->info env-name)
-                                (throw (ex-info (str "Env `" env-name "` "
-                                                     "already exists.")
-                                                (u/sym-map env-name))))
-                              (assoc env-name->info env-name arg))))
-     (swap! *env-name->info assoc env-name
-            (xf-perm-env-info (assoc fn-arg :env-info arg)))
-     (au/<? (<copy-from-branch-sources!
-             (assoc fn-arg :env-info (get @*env-name->info env-name)))))
-      true))
+    (let [{:keys [env-name]} arg]
+      (au/<? (storage/<swap! storage
+                             storage/env-name-to-info-key
+                             schemas/env-name-to-info-schema
+                             (fn [env-name->info]
+                               (when (contains? env-name->info env-name)
+                                 (throw (ex-info (str "Env `" env-name "` "
+                                                      "already exists.")
+                                                 (u/sym-map env-name))))
+                               (assoc env-name->info env-name arg))))
+      (swap! *env-name->info assoc env-name
+             (xf-perm-env-info (assoc fn-arg :env-info arg)))
+      (au/<? (<copy-from-branch-sources!
+              (assoc fn-arg :env-info (get @*env-name->info env-name)))))
+    true))
 
 (defn <handle-delete-env [{:keys [*env-name->info server storage] :as arg}]
   (au/go
@@ -602,44 +602,44 @@
     :as fn-arg}]
   (fn [{:keys [close! conn-id path remote-address] :as conn}]
     (ca/go
-     (try
-      (let [uri-map (uri/uri path)
-            env-params (-> uri-map :query query-string->env-params)
-            {:keys [env-lifetime-mins env-name]} env-params
-            temp? (boolean env-lifetime-mins)]
-        (swap! *env-name->info
-               (fn [env-name->info]
-                 (let [exists? (contains? env-name->info env-name)]
-                   (cond
-                    exists?
-                    env-name->info ; no change needed
+      (try
+        (let [uri-map (uri/uri path)
+              env-params (-> uri-map :query query-string->env-params)
+              {:keys [env-lifetime-mins env-name]} env-params
+              temp? (boolean env-lifetime-mins)]
+          (swap! *env-name->info
+                 (fn [env-name->info]
+                   (let [exists? (contains? env-name->info env-name)]
+                     (cond
+                       exists?
+                       env-name->info ; no change needed
 
-                    temp? ; Create the temp env
-                    (let [env-info (->temp-env-info (u/sym-map env-name->info
-                                                               env-params))]
+                       temp? ; Create the temp env
+                       (let [env-info (->temp-env-info (u/sym-map env-name->info
+                                                                  env-params))]
 
-                      (assoc env-name->info (:env-name env-params) env-info))
+                         (assoc env-name->info (:env-name env-params) env-info))
 
-                    :else
-                    (throw (ex-info
-                            (str "The env `" env-name "` does not "
-                                 "exist. It must be created via the admin "
-                                 "interface or made into a temporary env "
-                                 "by specifying `env-lifetime-mins`.")
-                            (u/sym-map env-name)))))))
-        (swap! *conn-id->auth-info assoc conn-id {})
-        (swap! *conn-id->env-name assoc conn-id env-name)
-        (when temp?
-          (au/<? (<copy-from-branch-sources!
-                  (assoc fn-arg :env-info (get @*env-name->info env-name)))))
-        (log/info
-         (str "Client connection opened:\n"
-              (u/pprint-str
-               (u/sym-map conn-id env-name remote-address)))))
-      (catch Exception e
-        (log/error (str "Error in client on-connect:\n"
-                        (u/ex-msg-and-stacktrace e)))
-        (close!))))))
+                       :else
+                       (throw (ex-info
+                               (str "The env `" env-name "` does not "
+                                    "exist. It must be created via the admin "
+                                    "interface or made into a temporary env "
+                                    "by specifying `env-lifetime-mins`.")
+                               (u/sym-map env-name)))))))
+          (swap! *conn-id->auth-info assoc conn-id {})
+          (swap! *conn-id->env-name assoc conn-id env-name)
+          (when temp?
+            (au/<? (<copy-from-branch-sources!
+                    (assoc fn-arg :env-info (get @*env-name->info env-name)))))
+          (log/info
+           (str "Client connection opened:\n"
+                (u/pprint-str
+                 (u/sym-map conn-id env-name remote-address)))))
+        (catch Exception e
+          (log/error (str "Error in client on-connect:\n"
+                          (u/ex-msg-and-stacktrace e)))
+          (close!))))))
 
 (defn make-client-on-disconnect
   [{:keys [*conn-id->auth-info *conn-id->env-name *connected-actor-id->conn-ids]
@@ -657,9 +657,9 @@
 (defn make-client-ep-info [{:keys [storage] :as arg}]
   {:handlers {:get-schema-pcf-for-fingerprint
               #(au/go
-                (-> (storage/<fp->schema storage (:arg %))
-                    (au/<?)
-                    (l/json)))
+                 (-> (storage/<fp->schema storage (:arg %))
+                     (au/<?)
+                     (l/json)))
 
               :log-in
               (make-auth-handler
