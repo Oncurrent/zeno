@@ -296,46 +296,50 @@
                              (let [{:keys [path-root
                                            state-provider-name
                                            state-provider-branch]} spi
-                                   sp (root->state-provider path-root)]
+                                   sp (root->state-provider path-root)
+                                   branch (or state-provider-branch
+                                              env-name)]
                                (assoc acc path-root
                                       {:state-provider sp
-                                       :state-provider-branch
-                                       (or state-provider-branch
-                                           env-name)})))
+                                       :state-provider-branch branch})))
                            {}
                            stored-state-provider-infos)]
     {:env-authenticator-name->info env-auth-name->info
      :env-sp-root->info env-sp-root->info}))
 
 (defn <copy-from-branch-sources!
-  [{:keys [authenticator-name->info env-info root->state-provider]}]
+  [{:keys [env-info]}]
   (au/go
-   (let [{:keys [env-authenticator-name->info env-sp-root->info]} env-info]
-     (doseq [[auth-name auth-info] env-authenticator-name->info]
-       (when (:authenticator-branch-source auth-info)
-         (au/<? (auth-impl/<copy-branch! auth-info))))
-     (doseq [[sp-root sp-info] env-sp-root->info]
-       ;; Or whatever should be here.
-       #_(au/<? (<sp-copy-branch! sp-info))))))
+    (let [{:keys [env-authenticator-name->info env-sp-root->info]} env-info]
+      (doseq [[auth-name auth-info] env-authenticator-name->info]
+        (when (:authenticator-branch-source auth-info)
+          (au/<? (auth-impl/<copy-branch! auth-info))))
+      (doseq [[root sp-info] env-sp-root->info]
+        (let [{:keys [state-provider]} sp-info
+              {::sp-impl/keys [<copy-branch!]} state-provider]
+          (when <copy-branch!
+            (<copy-branch! sp-info)))
+        ;; Or whatever should be here.
+        #_(au/<? (<sp-copy-branch! sp-info))))))
 
 (defn <handle-create-env
   [{:keys [*env-name->info arg server storage] :as fn-arg}]
   (au/go
-   (let [{:keys [env-name]} arg]
-     (au/<? (storage/<swap! storage
-                            storage/env-name-to-info-key
-                            schemas/env-name-to-info-schema
-                            (fn [env-name->info]
-                              (when (contains? env-name->info env-name)
-                                (throw (ex-info (str "Env `" env-name "` "
-                                                     "already exists.")
-                                                (u/sym-map env-name))))
-                              (assoc env-name->info env-name arg))))
-     (swap! *env-name->info assoc env-name
-            (xf-perm-env-info (assoc fn-arg :env-info arg)))
-     (au/<? (<copy-from-branch-sources!
-             (assoc fn-arg :env-info (get @*env-name->info env-name)))))
-      true))
+    (let [{:keys [env-name]} arg]
+      (au/<? (storage/<swap! storage
+                             storage/env-name-to-info-key
+                             schemas/env-name-to-info-schema
+                             (fn [env-name->info]
+                               (when (contains? env-name->info env-name)
+                                 (throw (ex-info (str "Env `" env-name "` "
+                                                      "already exists.")
+                                                 (u/sym-map env-name))))
+                               (assoc env-name->info env-name arg))))
+      (swap! *env-name->info assoc env-name
+             (xf-perm-env-info (assoc fn-arg :env-info arg)))
+      (au/<? (<copy-from-branch-sources!
+              (assoc fn-arg :env-info (get @*env-name->info env-name)))))
+    true))
 
 (defn <handle-delete-env [{:keys [*env-name->info server storage] :as arg}]
   (au/go
@@ -398,7 +402,7 @@
         (doseq [[root cmds] root->cmds]
           (let [sp-info (env-sp-root->info root)
                 branch (or (:branch fn-arg)
-                           (:branch sp-info)
+                           (:state-provider-branch sp-info)
                            env-name)
                 <us! (-> sp-info :state-provider ::sp-impl/<update-state!)]
             (au/<? (<us! (assoc fn-arg
@@ -412,7 +416,7 @@
     (let [[root & tail] path
           sp-info (env-sp-root->info root)
           branch (or (:branch fn-arg)
-                     (:branch sp-info)
+                     (:state-provider-branch sp-info)
                      env-name)
           f (-> sp-info :state-provider ::sp-impl/<get-state)]
       (f (assoc fn-arg
@@ -569,6 +573,16 @@
              {}
              env-auth-name->info))
 
+(defn xf-esr->info [new-branch env-sp-root->info]
+  (reduce-kv (fn [acc root sp-info]
+               (assoc acc root
+                      (-> sp-info
+                          (assoc :state-provider-branch new-branch)
+                          (assoc :state-provider-branch-source
+                                 (:state-provider-branch sp-info)))))
+             {}
+             env-sp-root->info))
+
 (defn ->temp-env-info
   [{:keys [env-name->info env-params] :as arg}]
   (let [{:keys [env-name source-env-name env-lifetime-mins]} env-params
@@ -577,7 +591,9 @@
         (assoc :env-name env-name)
         (assoc :env-lifetime-mins env-lifetime-mins)
         (update :env-authenticator-name->info
-                (partial xf-ean->info env-name)))))
+                (partial xf-ean->info env-name))
+        (update :env-sp-root->info
+                (partial xf-esr->info env-name)))))
 
 (defn make-client-on-connect
   [{:keys [*conn-id->auth-info
@@ -586,44 +602,44 @@
     :as fn-arg}]
   (fn [{:keys [close! conn-id path remote-address] :as conn}]
     (ca/go
-     (try
-      (let [uri-map (uri/uri path)
-            env-params (-> uri-map :query query-string->env-params)
-            {:keys [env-lifetime-mins env-name]} env-params
-            temp? (boolean env-lifetime-mins)]
-        (swap! *env-name->info
-               (fn [env-name->info]
-                 (let [exists? (contains? env-name->info env-name)]
-                   (cond
-                    exists?
-                    env-name->info ; no change needed
+      (try
+        (let [uri-map (uri/uri path)
+              env-params (-> uri-map :query query-string->env-params)
+              {:keys [env-lifetime-mins env-name]} env-params
+              temp? (boolean env-lifetime-mins)]
+          (swap! *env-name->info
+                 (fn [env-name->info]
+                   (let [exists? (contains? env-name->info env-name)]
+                     (cond
+                       exists?
+                       env-name->info ; no change needed
 
-                    temp? ; Create the temp env
-                    (let [env-info (->temp-env-info (u/sym-map env-name->info
-                                                               env-params))]
+                       temp? ; Create the temp env
+                       (let [env-info (->temp-env-info (u/sym-map env-name->info
+                                                                  env-params))]
 
-                      (assoc env-name->info (:env-name env-params) env-info))
+                         (assoc env-name->info (:env-name env-params) env-info))
 
-                    :else
-                    (throw (ex-info
-                            (str "The env `" env-name "` does not "
-                                 "exist. It must be created via the admin "
-                                 "interface or made into a temporary env "
-                                 "by specifying `env-lifetime-mins`.")
-                            (u/sym-map env-name)))))))
-        (swap! *conn-id->auth-info assoc conn-id {})
-        (swap! *conn-id->env-name assoc conn-id env-name)
-        (when temp?
-          (au/<? (<copy-from-branch-sources!
-                  (assoc fn-arg :env-info (get @*env-name->info env-name)))))
-        (log/info
-         (str "Client connection opened:\n"
-              (u/pprint-str
-               (u/sym-map conn-id env-name remote-address)))))
-      (catch Exception e
-        (log/error (str "Error in client on-connect:\n"
-                        (u/ex-msg-and-stacktrace e)))
-        (close!))))))
+                       :else
+                       (throw (ex-info
+                               (str "The env `" env-name "` does not "
+                                    "exist. It must be created via the admin "
+                                    "interface or made into a temporary env "
+                                    "by specifying `env-lifetime-mins`.")
+                               (u/sym-map env-name)))))))
+          (swap! *conn-id->auth-info assoc conn-id {})
+          (swap! *conn-id->env-name assoc conn-id env-name)
+          (when temp?
+            (au/<? (<copy-from-branch-sources!
+                    (assoc fn-arg :env-info (get @*env-name->info env-name)))))
+          (log/info
+           (str "Client connection opened:\n"
+                (u/pprint-str
+                 (u/sym-map conn-id env-name remote-address)))))
+        (catch Exception e
+          (log/error (str "Error in client on-connect:\n"
+                          (u/ex-msg-and-stacktrace e)))
+          (close!))))))
 
 (defn make-client-on-disconnect
   [{:keys [*conn-id->auth-info *conn-id->env-name *connected-actor-id->conn-ids]
@@ -641,9 +657,9 @@
 (defn make-client-ep-info [{:keys [storage] :as arg}]
   {:handlers {:get-schema-pcf-for-fingerprint
               #(au/go
-                (-> (storage/<fp->schema storage (:arg %))
-                    (au/<?)
-                    (l/json)))
+                 (-> (storage/<fp->schema storage (:arg %))
+                     (au/<?)
+                     (l/json)))
 
               :log-in
               (make-auth-handler
@@ -806,24 +822,31 @@
 (defn <sp-send-msg
   [{:keys [arg conn-id msg-protocol msg-type state-provider-name
            storage talk2-server timeout-ms]}]
-  (let [{:keys [arg-schema ret-schema]} (msg-protocol msg-type)]
-    (if ret-schema
-      (<rpc!* (-> (u/sym-map arg arg-schema conn-id ret-schema
-                             state-provider-name storage talk2-server
-                             timeout-ms)
-                  (assoc :rpc-msg-type :state-provider-rpc)
-                  (assoc :rpc-name-kw msg-type)))
-      (let [s-arg (au/<? (storage/<value->serialized-value
-                          storage arg-schema arg))
-            msg-arg {:arg s-arg
-                     :msg-type-ns (namespace msg-type)
-                     :msg-type-name (name msg-type)
-                     :state-provider-name state-provider-name}]
-        (t2s/<send-msg! {:arg msg-arg
-                         :conn-id conn-id
-                         :msg-type-name :state-provider-msg
-                         :server talk2-server
-                         :timeout-ms timeout-ms})))))
+  (au/go
+    (let [msg-info (msg-protocol msg-type)
+          _ (when-not msg-info
+              (throw (ex-info
+                      (str "No msg type `" msg-type "` found in msg-protocol.")
+                      {:msg-protocol-types (keys msg-protocol)
+                       :msg-type msg-type})))
+          {:keys [arg-schema ret-schema]} msg-info]
+      (if ret-schema
+        (au/<? (<rpc!* (-> (u/sym-map arg arg-schema conn-id ret-schema
+                                      state-provider-name storage talk2-server
+                                      timeout-ms)
+                           (assoc :rpc-msg-type :state-provider-rpc)
+                           (assoc :rpc-name-kw msg-type))))
+        (let [s-arg (au/<? (storage/<value->serialized-value
+                            storage arg-schema arg))
+              msg-arg {:arg s-arg
+                       :msg-type-ns (namespace msg-type)
+                       :msg-type-name (name msg-type)
+                       :state-provider-name state-provider-name}]
+          (au/<? (t2s/<send-msg! {:arg msg-arg
+                                  :conn-id conn-id
+                                  :msg-type-name :state-provider-msg
+                                  :server talk2-server
+                                  :timeout-ms timeout-ms})))))))
 
 (defn initialize-state-providers!
   [{:keys [root->state-provider storage talk2-server]}]

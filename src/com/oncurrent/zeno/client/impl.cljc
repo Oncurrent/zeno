@@ -173,7 +173,7 @@
 
 ;; TODO: DRY this up w/ com.oncurrent.zeno.server/<rpc!*
 (defn <rpc!*
-  [{:keys [arg-schema ret-schema rpc-name-kw state-provider-name
+  [{:keys [<request-schema arg-schema ret-schema rpc-name-kw state-provider-name
            storage talk2-client rpc-msg-type]
     :as arg}]
   (au/go
@@ -188,8 +188,7 @@
           rpc-ch (t2c/<send-msg! talk2-client rpc-msg-type rpc-arg)
           timeout-ms (or (:timeout-ms arg) u/default-rpc-timeout-ms)
           timeout-ch (ca/timeout timeout-ms)
-          [ret ch] (au/alts? [rpc-ch timeout-ch])
-          <request-schema (make-schema-requester talk2-client)]
+          [ret ch] (au/alts? [rpc-ch timeout-ch])]
       (cond
         (= timeout-ch ch)
         (throw (ex-info (str "RPC timed out. rpc-name-kw: `" rpc-name-kw "` "
@@ -217,29 +216,43 @@
 
 ;; TODO: DRY this up w/ com.oncurrent.zeno.server/<sp-send-msg
 (defn <sp-send-msg
-  [{:keys [arg msg-protocol msg-type state-provider-name
+  [{:keys [<request-schema arg msg-protocol msg-type state-provider-name
            storage talk2-client timeout-ms]}]
-  (let [{:keys [arg-schema ret-schema]} (msg-protocol msg-type)]
-    (if ret-schema
-      (<rpc!* (-> (u/sym-map arg arg-schema ret-schema state-provider-name
-                             storage talk2-client timeout-ms)
-                  (assoc :rpc-msg-type :state-provider-rpc)
-                  (assoc :rpc-name-kw msg-type)))
-      (let [s-arg (au/<? (storage/<value->serialized-value
-                          storage arg-schema arg))
-            msg-arg {:arg s-arg
-                     :msg-type-ns (namespace msg-type)
-                     :msg-type-name (name msg-type)
-                     :state-provider-name state-provider-name}]
-        (t2c/<send-msg! talk2-client :state-provider-msg msg-arg)))))
+  (au/go
+    (let [msg-info (msg-protocol msg-type)
+          _ (when-not msg-info
+              (throw (ex-info
+                      (str "No msg type `" msg-type "` found in msg-protocol.")
+                      {:msg-protocol-types (keys msg-protocol)
+                       :msg-type msg-type})))
+          {:keys [arg-schema ret-schema]} msg-info]
+      (if ret-schema
+        (au/<? (<rpc!* (-> (u/sym-map <request-schema arg arg-schema ret-schema
+                                      state-provider-name storage
+                                      talk2-client timeout-ms)
+                           (assoc :rpc-msg-type :state-provider-rpc)
+                           (assoc :rpc-name-kw msg-type))))
+        (let [s-arg (au/<? (storage/<value->serialized-value
+                            storage arg-schema arg))
+              msg-arg {:arg s-arg
+                       :msg-type-ns (namespace msg-type)
+                       :msg-type-name (name msg-type)
+                       :state-provider-name state-provider-name}]
+          (au/<? (t2c/<send-msg! talk2-client :state-provider-msg msg-arg)))))))
+
+(defn make-update-subscriptions! [fn-arg]
+  (fn [update-infos]
+    (state-subscriptions/do-subscription-updates! fn-arg update-infos)))
 
 (defn initialize-state-providers!
-  [{:keys [*connected? root->state-provider storage talk2-client]}]
+  [{:keys [*connected? root->state-provider storage talk2-client] :as fn-arg}]
   (doseq [[root sp] root->state-provider]
     (let [{::sp-impl/keys [init! msg-protocol state-provider-name]} sp]
       (when init!
-        (let [<send-msg (fn [{:keys [arg msg-type timeout-ms]}]
-                          (<sp-send-msg (u/sym-map arg
+        (let [<request-schema (make-schema-requester talk2-client)
+              <send-msg (fn [{:keys [arg msg-type timeout-ms]}]
+                          (<sp-send-msg (u/sym-map <request-schema
+                                                   arg
                                                    msg-protocol
                                                    msg-type
                                                    state-provider-name
@@ -249,7 +262,9 @@
               prefix (str storage/state-provider-prefix
                           (namespace state-provider-name) "-"
                           (name state-provider-name))]
-          (init! {:<send-msg <send-msg
+          (init! {:<request-schema <request-schema
+                  :<send-msg <send-msg
+                  :update-subscriptions! (make-update-subscriptions! fn-arg)
                   :connected? (fn []
                                 @*connected?)
                   :storage (storage/make-prefixed-storage prefix storage)}))))))
@@ -286,6 +301,7 @@
         actor-id-root->sp {::sp-impl/get-state-atom (constantly *actor-id)}
         arg (-> (u/sym-map *actor-id
                            *connected?
+                           *state-sub-name->info
                            *stop?
                            *talk2-client
                            admin-password
@@ -310,7 +326,6 @@
                                  (oaic actor-id))))
         zc (merge arg (u/sym-map *next-instance-num
                                  *next-topic-sub-id
-                                 *state-sub-name->info
                                  *topic-name->sub-id->cb
                                  on-actor-id-change
                                  talk2-client))]
@@ -373,8 +388,10 @@
                          "Got `" (or rpc-name-kw "nil") "`.")
                     (u/sym-map rpc-name-kw arg))))
   (let [{:keys [rpcs storage talk2-client]} zc
-        {:keys [arg-schema ret-schema]} (get rpcs rpc-name-kw)]
+        {:keys [arg-schema ret-schema]} (get rpcs rpc-name-kw)
+        <request-schema (make-schema-requester talk2-client)]
     (<rpc!* (-> arg
+                (assoc :<request-schema <request-schema)
                 (assoc :arg-schema arg-schema)
                 (assoc :ret-schema ret-schema)
                 (assoc :rpc-msg-type :rpc)

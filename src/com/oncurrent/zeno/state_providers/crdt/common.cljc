@@ -10,12 +10,16 @@
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
+(def container-types #{:array :map :record :union})
+(def tx-info-prefix "_TX-INFO-FOR-TX-ID-")
+
+(defn tx-id->tx-info-k [tx-id]
+  (str tx-info-prefix tx-id))
+
 (defn chop-root [path root]
   (if (= root (first path))
     (recur (rest path) root)
     path))
-
-(def container-types #{:array :map :record :union})
 
 (defn schema->dispatch-type [schema]
   (-> (l/schema-type schema)
@@ -200,29 +204,28 @@
   (au/go
     (when op
       (let [{:keys [norm-path op-type path value]} op
-            schema (get-op-value-schema
-                    (u/sym-map op-type norm-path schema))]
+            w-schema (get-op-value-schema
+                      (u/sym-map op-type norm-path schema))]
         (cond-> op
-          true (dissoc :path)
           true (dissoc :value)
-          schema (assoc :serialized-value
-                        (au/<? (storage/<value->serialized-value
-                                storage schema value))))))))
+          w-schema (assoc :serialized-value
+                          (au/<? (storage/<value->serialized-value
+                                  storage w-schema value))))))))
 
 (defn <serializable-crdt-op->crdt-op
   [{:keys [storage schema op] :as arg}]
   (au/go
     (when op
       (let [{:keys [norm-path op-type serialized-value]} op
-            schema (get-op-value-schema
-                    (u/sym-map op-type norm-path schema))]
+            r-schema (get-op-value-schema
+                      (u/sym-map op-type norm-path schema))]
         (cond-> op
           true (dissoc :serialized-value)
-          schema (assoc :value
-                        (au/<? (common/<serialized-value->value
-                                (assoc arg
-                                       :reader-schema schema
-                                       :serialized-value serialized-value)))))))))
+          r-schema (assoc :value
+                          (au/<? (common/<serialized-value->value
+                                  (assoc arg
+                                         :reader-schema r-schema
+                                         :serialized-value serialized-value)))))))))
 
 (defn <crdt-ops->serializable-crdt-ops [arg]
   (au/go
@@ -326,6 +329,56 @@
             (if (= last-i new-i)
               new-out
               (recur new-i new-out))))))))
+
+(defn <serializable-tx-info->tx-info
+  [{:keys [serializable-tx-info storage] :as fn-arg}]
+  (au/go
+    (let [crdt-ops (au/<? (<serializable-crdt-ops->crdt-ops
+                           (assoc fn-arg :ops
+                                  (:crdt-ops serializable-tx-info))))
+          update-infos (au/<? (<serializable-update-infos->update-infos
+                               (assoc fn-arg
+                                      :update-infos
+                                      (:update-infos serializable-tx-info))))]
+      (-> serializable-tx-info
+          (assoc :crdt-ops crdt-ops)
+          (assoc :update-infos update-infos)))))
+
+(defn <serializable-tx-infos->tx-infos
+  [{:keys [serializable-tx-infos] :as fn-arg}]
+  (au/go
+    (if (empty? serializable-tx-infos)
+      []
+      (let [last-i (dec (count serializable-tx-infos))]
+        (loop [i 0
+               out []]
+          (let [serializable-tx-info (nth serializable-tx-infos i)
+                tx-info (au/<? (<serializable-tx-info->tx-info
+                                (assoc fn-arg :serializable-tx-info
+                                       serializable-tx-info)))
+                new-out (conj out tx-info)]
+            (if (= last-i i)
+              new-out
+              (recur (inc i) new-out))))))))
+
+(defn <get-tx-info [{:keys [storage tx-id]}]
+  (let [k (tx-id->tx-info-k tx-id)]
+    (storage/<get storage k shared/serializable-tx-info-schema)))
+
+(defn <get-tx-infos [{:keys [storage tx-ids]}]
+  (au/go
+    (if (zero? (count tx-ids))
+      []
+      (let [chs (map #(<get-tx-info {:storage storage :tx-id %})
+                     tx-ids)
+            ret-ch (ca/merge chs)
+            last-i (dec (count tx-ids))]
+        (loop [i 0
+               out []]
+          (let [new-out (conj out (au/<? ret-ch))]
+            (if (= last-i i)
+              new-out
+              (recur (inc i) new-out))))))))
 
 (defn get-value [{:keys [crdt make-id path schema] :as arg}]
   (-> (get-value-info arg)

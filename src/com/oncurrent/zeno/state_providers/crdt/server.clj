@@ -6,6 +6,7 @@
    [com.oncurrent.zeno.schemas :as schemas]
    [com.oncurrent.zeno.server.state-provider-impl :as sp-impl]
    [com.oncurrent.zeno.state-providers.crdt :as crdt]
+   [com.oncurrent.zeno.state-providers.crdt.apply-ops-impl :as apply-ops]
    [com.oncurrent.zeno.state-providers.crdt.commands :as commands]
    [com.oncurrent.zeno.state-providers.crdt.common :as common]
    [com.oncurrent.zeno.state-providers.crdt.shared :as shared]
@@ -17,64 +18,108 @@
 
 (set! *warn-on-reflection* true)
 
-(def tx-info-prefix "_TX-INFO-FOR-TX-ID-")
+(def branch-log-prefix "_BRANCH-LOG-")
+(def branch-consumer-log-prefix "_BRANCH-CONSUMER-LOG-")
 
-(defn tx-id->tx-info-k [tx-id]
-  (str tx-info-prefix tx-id))
+(defn branch->branch-log-k [branch]
+  (str branch-log-prefix branch))
 
-(defn <ser-tx-info->tx-info
-  [{:keys [schema ser-tx-info storage] :as fn-arg}]
+(defn info->branch-consumer-log-k [{:keys [actor-id branch]}]
+  (str branch-consumer-log-prefix branch "-" actor-id))
+
+(defn <store-tx-infos [{:keys [serializable-tx-infos storage]}]
   (au/go
-    (let [crdt-ops (au/<? (common/<serializable-crdt-ops->crdt-ops
-                           (assoc fn-arg :ops (:crdt-ops ser-tx-info))))
-          update-infos (au/<? (common/<serializable-update-infos->update-infos
-                               (assoc fn-arg
-                                      :update-infos
-                                      (:update-infos ser-tx-info))))]
-      (-> ser-tx-info
-          (assoc :crdt-ops crdt-ops)
-          (assoc :update-infos update-infos)))))
+    (doseq [{:keys [tx-id] :as serializable-tx-info} serializable-tx-infos]
+      (let [k (common/tx-id->tx-info-k tx-id)]
+        ;; Use <swap! instead of <add! so we can handle
+        ;; repeated idempotent syncs.
+        (au/<? (storage/<swap! storage k shared/serializable-tx-info-schema
+                               (constantly serializable-tx-info)))))
+    true))
 
-(defn <ser-tx-infos->tx-infos
-  [{:keys [ser-tx-infos] :as fn-arg}]
+(defn make-log-txs-handler
+  [{:keys [*branch->crdt-store *storage schema] :as fn-arg}]
+  (fn [{:keys [<request-schema conn-id env-info] :as h-arg}]
+    (au/go
+      (let [branch (-> env-info :env-sp-root->info :zeno/crdt
+                       :state-provider-branch)
+            branch-log-k (branch->branch-log-k branch)
+            storage @*storage
+            serializable-tx-infos (:arg h-arg)
+            _ (au/<? (<store-tx-infos (u/sym-map serializable-tx-infos
+                                                 storage)))
+            ;; Convert the serializable-tx-infos into regular tx-infos
+            ;; so we can ensure that we have any required schemas
+            ;; (which will be requested from the client).
+            tx-infos (au/<? (common/<serializable-tx-infos->tx-infos
+                             (u/sym-map <request-schema schema
+                                        serializable-tx-infos storage)))
+            tx-ids (map :tx-id tx-infos)
+            ops (reduce (fn [acc {:keys [crdt-ops]}]
+                          (concat acc crdt-ops))
+                        []
+                        tx-infos)]
+        ;; TODO: Chop log into segments if it gets too long
+        (au/<? (storage/<swap! storage branch-log-k
+                               shared/segmented-log-schema
+                               (fn [old-log]
+                                 (update old-log :tx-ids concat tx-ids))))
+        (swap! *branch->crdt-store update branch
+               (fn [old-crdt]
+                 (apply-ops/apply-ops {:crdt old-crdt
+                                       :ops ops
+                                       :schema schema})))
+        true))))
+
+(defn <get-txs-since
+  [{:keys [*storage branch last-tx-id]}]
   (au/go
-    (if (empty? ser-tx-infos)
-      []
-      (let [last-i (dec (count ser-tx-infos))]
-        (loop [i 0
-               out []]
-          (let [ser-tx-info (nth ser-tx-infos i)
-                tx-info (au/<? (<ser-tx-info->tx-info
-                                (assoc fn-arg :ser-tx-info ser-tx-info)))
-                new-out (conj out tx-info)]
-            (if (= last-i i)
-              new-out
-              (recur (inc i) new-out))))))))
+    (let [storage @*storage]
+      (loop [log-k (branch->branch-log-k branch)
+             out []]
+        (let [log (au/<? (storage/<get storage log-k
+                                       shared/segmented-log-schema))
+              {:keys [parent-log-k tx-ids]} log
+              tx-ids-since (reduce
+                            (fn [acc tx-id]
+                              (if (= last-tx-id tx-id)
+                                (reduced acc)
+                                (conj acc tx-id)))
+                            []
+                            (reverse tx-ids))
+              tx-infos (au/<? (common/<get-tx-infos {:storage storage
+                                                     :tx-ids tx-ids-since}))
+              new-out (concat out tx-infos)
+              more? (= (count tx-ids-since)
+                       (count tx-ids))]
+          (if (and more? parent-log-k)
+            (recur parent-log-k new-out)
+            new-out))))))
 
-(defn make-handlers [{:keys [*<send-msg *storage schema]}]
-  {:record-txs
-   (fn [{:keys [<request-schema env-info] :as h-arg}]
-     (au/go
-       #_(log/info (str "HHHH:\n"
-                        (u/pprint-str
-                         (-> env-info :env-sp-root->info :zeno/crdt
-                             :state-provider-branch))))
-       (let [storage @*storage
-             ser-tx-infos (:arg h-arg)
-             ;; Convert the serializable-tx-infos into regular tx-infos
-             ;; so we can ensure that we have any required schemas
-             ;; (which will be requested from the client).
-             tx-infos (au/<? (<ser-tx-infos->tx-infos
-                              (u/sym-map <request-schema schema
-                                         ser-tx-infos storage)))]
-         (doseq [{:keys [tx-id] :as ser-tx-info} ser-tx-infos]
-           (let [k (tx-id->tx-info-k tx-id)]
-             ;; Use <swap! instead of <add! so we can handle
-             ;; repeated idempotent syncs.
-             (au/<? (storage/<swap! storage k shared/tx-info-schema
-                                    (fn [old-ser-tx-info]
-                                      ser-tx-info)))))
-         true)))})
+(defn make-get-consumer-txs-handler [fn-arg]
+  (fn [{:keys [arg env-info]}]
+    ;; TODO: Implement authorization
+    (let [branch (-> env-info :env-sp-root->info :zeno/crdt
+                     :state-provider-branch)]
+      (<get-txs-since (assoc fn-arg
+                             :branch branch
+                             :last-tx-id (:last-tx-id arg))))))
+
+(defn make-<copy-branch! [{:keys [*branch->crdt-store *storage]}]
+  (fn [{old-branch :state-provider-branch-source
+        new-branch :state-provider-branch}]
+    (au/go
+      (let [storage @*storage
+            old-log-k (branch->branch-log-k old-branch)
+            new-log-k (branch->branch-log-k new-branch)
+            new-log {:parent-log-k (when old-branch
+                                     old-log-k)
+                     :tx-ids []}]
+        (storage/<swap! storage new-log-k shared/segmented-log-schema
+                        (constantly new-log))
+        (swap! *branch->crdt-store (fn [m]
+                                     (assoc m new-branch
+                                            (get m old-branch))))))))
 
 (defn ->state-provider
   [{::crdt/keys [authorizer schema]}]
@@ -98,16 +143,19 @@
                                       (-> (commands/process-cmds pc-arg)
                                           (:crdt)))))
                            true))
-        arg (u/sym-map *storage *<send-msg schema)
-        msg-handlers (make-handlers arg)
+        arg (u/sym-map *branch->crdt-store *storage *<send-msg schema)
+        <copy-branch! (make-<copy-branch! arg)
+        msg-handlers {:get-consumer-txs (make-get-consumer-txs-handler arg)
+                      :log-txs (make-log-txs-handler arg)}
         init! (fn [{:keys [<send-msg storage]}]
                 (reset! *storage storage)
                 (reset! *<send-msg <send-msg)
                 ;; TODO: Load *branch->crdt-store from logs/snapshots
                 )]
-    #::sp-impl{:<get-state <get-state
-               :init! init!
+    #::sp-impl{:<copy-branch! <copy-branch!
+               :<get-state <get-state
                :<update-state! <update-state!
+               :init! init!
                :msg-handlers msg-handlers
                :msg-protocol shared/msg-protocol
                :state-provider-name shared/state-provider-name}))
