@@ -616,6 +616,8 @@
                        (let [env-info (->temp-env-info (u/sym-map env-name->info
                                                                   env-params))]
 
+                         (<copy-from-branch-sources!
+                          (assoc fn-arg :env-info env-info))
                          (assoc env-name->info (:env-name env-params) env-info))
 
                        :else
@@ -627,9 +629,6 @@
                                (u/sym-map env-name)))))))
           (swap! *conn-id->auth-info assoc conn-id {})
           (swap! *conn-id->env-name assoc conn-id env-name)
-          (when temp?
-            (au/<? (<copy-from-branch-sources!
-                    (assoc fn-arg :env-info (get @*env-name->info env-name)))))
           (log/info
            (str "Client connection opened:\n"
                 (u/pprint-str
