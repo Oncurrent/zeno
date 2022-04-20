@@ -229,7 +229,7 @@
 
 (defn <crdt-ops->serializable-crdt-ops [arg]
   (au/go
-    (let [ops (seq (:ops arg))
+    (let [ops (vec (:ops arg))
           last-i (count ops)]
       (if (zero? last-i)
         []
@@ -246,7 +246,7 @@
 
 (defn <serializable-crdt-ops->crdt-ops [arg]
   (au/go
-    (let [ops (seq (:ops arg))
+    (let [ops (vec (:ops arg))
           last-i (count ops)]
       (if (zero? last-i)
         []

@@ -31,8 +31,8 @@
   (au/go
     (doseq [{:keys [tx-id] :as serializable-tx-info} serializable-tx-infos]
       (let [k (common/tx-id->tx-info-k tx-id)]
-        ;; Use <swap! instead of <add! so we can handle
-        ;; repeated idempotent syncs.
+        ;; Use <swap! instead of <add! so we can handle repeated idempotent
+        ;; syncs. Consider properly comparing the byte arrays.
         (au/<? (storage/<swap! storage k shared/serializable-tx-info-schema
                                (constantly serializable-tx-info)))))
     true))
