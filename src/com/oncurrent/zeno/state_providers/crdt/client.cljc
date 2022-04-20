@@ -149,7 +149,7 @@
                    @*sync-session-running?)
           (recur)))
       (catch #?(:clj Exception :cljs js/Error) e
-        (log/error "Error in sync-produced-txs!:\n"
+        (log/error "Error in sync-producer-txs!:\n"
                    (u/ex-msg-and-stacktrace e))))))
 
 (defn sync-consumer-txs!
@@ -164,7 +164,7 @@
                    @*sync-session-running?)
           (recur)))
       (catch #?(:clj Exception :cljs js/Error) e
-        (log/error "Error in sync-produced-txs!:\n"
+        (log/error "Error in sync-consumer-txs!:\n"
                    (u/ex-msg-and-stacktrace e))))))
 
 (defn start-sync-session!
