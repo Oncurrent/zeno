@@ -53,13 +53,16 @@
 
 (defn make-handlers [{:keys [*<send-msg *storage schema]}]
   {:record-txs
-   (fn [{:keys [<request-schema env-info] :as h-arg}]
+   (fn [{:keys [<request-schema conn-id env-info] :as h-arg}]
      (au/go
-       #_(log/info (str "HHHH:\n"
-                        (u/pprint-str
-                         (-> env-info :env-sp-root->info :zeno/crdt
-                             :state-provider-branch))))
-       (let [storage @*storage
+       (let [branch (-> env-info :env-sp-root->info :zeno/crdt
+                        :state-provider-branch)
+             {:keys [env-name]} env-info
+             _ (log/info (str "HHHH:\n"
+                              (u/pprint-str
+                               (u/sym-map env-name conn-id branch))))
+
+             storage @*storage
              ser-tx-infos (:arg h-arg)
              ;; Convert the serializable-tx-infos into regular tx-infos
              ;; so we can ensure that we have any required schemas
@@ -98,6 +101,13 @@
                                       (-> (commands/process-cmds pc-arg)
                                           (:crdt)))))
                            true))
+        <copy-branch! (fn [{:keys [state-provider-branch
+                                   state-provider-branch-source]}]
+                        (log/info (str "CCCC:\n"
+                                       (u/pprint-str
+                                        (u/sym-map
+                                         state-provider-branch
+                                         state-provider-branch-source)))))
         arg (u/sym-map *storage *<send-msg schema)
         msg-handlers (make-handlers arg)
         init! (fn [{:keys [<send-msg storage]}]
@@ -105,9 +115,10 @@
                 (reset! *<send-msg <send-msg)
                 ;; TODO: Load *branch->crdt-store from logs/snapshots
                 )]
-    #::sp-impl{:<get-state <get-state
-               :init! init!
+    #::sp-impl{:<copy-branch! <copy-branch!
+               :<get-state <get-state
                :<update-state! <update-state!
+               :init! init!
                :msg-handlers msg-handlers
                :msg-protocol shared/msg-protocol
                :state-provider-name shared/state-provider-name}))

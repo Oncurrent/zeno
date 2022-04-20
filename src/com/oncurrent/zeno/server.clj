@@ -296,27 +296,31 @@
                              (let [{:keys [path-root
                                            state-provider-name
                                            state-provider-branch]} spi
-                                   sp (root->state-provider path-root)]
+                                   sp (root->state-provider path-root)
+                                   branch (or state-provider-branch
+                                              env-name)]
                                (assoc acc path-root
                                       {:state-provider sp
-                                       :state-provider-branch
-                                       (or state-provider-branch
-                                           env-name)})))
+                                       :state-provider-branch branch})))
                            {}
                            stored-state-provider-infos)]
     {:env-authenticator-name->info env-auth-name->info
      :env-sp-root->info env-sp-root->info}))
 
 (defn <copy-from-branch-sources!
-  [{:keys [authenticator-name->info env-info root->state-provider]}]
+  [{:keys [env-info]}]
   (au/go
-   (let [{:keys [env-authenticator-name->info env-sp-root->info]} env-info]
-     (doseq [[auth-name auth-info] env-authenticator-name->info]
-       (when (:authenticator-branch-source auth-info)
-         (au/<? (auth-impl/<copy-branch! auth-info))))
-     (doseq [[sp-root sp-info] env-sp-root->info]
-       ;; Or whatever should be here.
-       #_(au/<? (<sp-copy-branch! sp-info))))))
+    (let [{:keys [env-authenticator-name->info env-sp-root->info]} env-info]
+      (doseq [[auth-name auth-info] env-authenticator-name->info]
+        (when (:authenticator-branch-source auth-info)
+          (au/<? (auth-impl/<copy-branch! auth-info))))
+      (doseq [[root sp-info] env-sp-root->info]
+        (let [{:keys [state-provider]} sp-info
+              {::sp-impl/keys [<copy-branch!]} state-provider]
+          (when <copy-branch!
+            (<copy-branch! sp-info)))
+        ;; Or whatever should be here.
+        #_(au/<? (<sp-copy-branch! sp-info))))))
 
 (defn <handle-create-env
   [{:keys [*env-name->info arg server storage] :as fn-arg}]
@@ -398,7 +402,7 @@
         (doseq [[root cmds] root->cmds]
           (let [sp-info (env-sp-root->info root)
                 branch (or (:branch fn-arg)
-                           (:branch sp-info)
+                           (:state-provider-branch sp-info)
                            env-name)
                 <us! (-> sp-info :state-provider ::sp-impl/<update-state!)]
             (au/<? (<us! (assoc fn-arg
@@ -412,7 +416,7 @@
     (let [[root & tail] path
           sp-info (env-sp-root->info root)
           branch (or (:branch fn-arg)
-                     (:branch sp-info)
+                     (:state-provider-branch sp-info)
                      env-name)
           f (-> sp-info :state-provider ::sp-impl/<get-state)]
       (f (assoc fn-arg
@@ -569,6 +573,16 @@
              {}
              env-auth-name->info))
 
+(defn xf-esr->info [new-branch env-sp-root->info]
+  (reduce-kv (fn [acc root sp-info]
+               (assoc acc root
+                      (-> sp-info
+                          (assoc :state-provider-branch new-branch)
+                          (assoc :state-provider-branch-source
+                                 (:state-provider-branch sp-info)))))
+             {}
+             env-sp-root->info))
+
 (defn ->temp-env-info
   [{:keys [env-name->info env-params] :as arg}]
   (let [{:keys [env-name source-env-name env-lifetime-mins]} env-params
@@ -577,7 +591,9 @@
         (assoc :env-name env-name)
         (assoc :env-lifetime-mins env-lifetime-mins)
         (update :env-authenticator-name->info
-                (partial xf-ean->info env-name)))))
+                (partial xf-ean->info env-name))
+        (update :env-sp-root->info
+                (partial xf-esr->info env-name)))))
 
 (defn make-client-on-connect
   [{:keys [*conn-id->auth-info

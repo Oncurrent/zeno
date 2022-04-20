@@ -25,7 +25,7 @@
 (comment
  (kaocha.repl/run #'test-envs {:color? false}))
 
-(deftest test-envs
+(deftest ^:this test-envs
   (au/test-async
    5000
    (au/go
@@ -36,6 +36,7 @@
                          (constantly "ws://localhost:8080/admin")})
            ;; Create a permanent env to use as a base
            perm-env-name (u/compact-random-uuid)
+           _ (log/info (str "Perm: " perm-env-name))
            auth-infos [#:zeno{:authenticator-name
                               pwd-shared/authenticator-name
                               ;; If :authenticator-branch is nil, Zeno will use
