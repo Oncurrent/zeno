@@ -8,6 +8,7 @@
    [com.oncurrent.zeno.authenticators.password.client :as pwd-client]
    [com.oncurrent.zeno.authenticators.password.shared :as pwd-shared]
    [com.oncurrent.zeno.client :as zc]
+   [com.oncurrent.zeno.client.state-provider-impl :as sp-impl]
    [com.oncurrent.zeno.state-providers.crdt.shared :as crdt-shared]
    [com.oncurrent.zeno.utils :as u]
    [deercreeklabs.async-utils :as au]
@@ -36,7 +37,6 @@
                          (constantly "ws://localhost:8080/admin")})
            ;; Create a permanent env to use as a base
            perm-env-name (u/compact-random-uuid)
-           _ (log/info (str "Perm: " perm-env-name))
            auth-infos [#:zeno{:authenticator-name
                               pwd-shared/authenticator-name
                               ;; If :authenticator-branch is nil, Zeno will use
@@ -64,6 +64,9 @@
                                           :zeno/op :zeno/set
                                           :zeno/path [:zeno/crdt :name]}]))
            _ (is (= '{name "base"} (get-state zc-perm)))
+           <wait-for-sync (-> zc-perm :root->state-provider :zeno/crdt
+                              ::sp-impl/<wait-for-sync)
+           _ (au/<? (<wait-for-sync))
            ;; Connect to a temp env based on the permanent env
            zc-temp (c/->zc {:source-env-name perm-env-name})
            ;; Verify that the `:name` is "base"

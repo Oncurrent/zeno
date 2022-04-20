@@ -822,24 +822,31 @@
 (defn <sp-send-msg
   [{:keys [arg conn-id msg-protocol msg-type state-provider-name
            storage talk2-server timeout-ms]}]
-  (let [{:keys [arg-schema ret-schema]} (msg-protocol msg-type)]
-    (if ret-schema
-      (<rpc!* (-> (u/sym-map arg arg-schema conn-id ret-schema
-                             state-provider-name storage talk2-server
-                             timeout-ms)
-                  (assoc :rpc-msg-type :state-provider-rpc)
-                  (assoc :rpc-name-kw msg-type)))
-      (let [s-arg (au/<? (storage/<value->serialized-value
-                          storage arg-schema arg))
-            msg-arg {:arg s-arg
-                     :msg-type-ns (namespace msg-type)
-                     :msg-type-name (name msg-type)
-                     :state-provider-name state-provider-name}]
-        (t2s/<send-msg! {:arg msg-arg
-                         :conn-id conn-id
-                         :msg-type-name :state-provider-msg
-                         :server talk2-server
-                         :timeout-ms timeout-ms})))))
+  (au/go
+    (let [msg-info (msg-protocol msg-type)
+          _ (when-not msg-info
+              (throw (ex-info
+                      (str "No msg type `" msg-type "` found in msg-protocol.")
+                      {:msg-protocol-types (keys msg-protocol)
+                       :msg-type msg-type})))
+          {:keys [arg-schema ret-schema]} msg-info]
+      (if ret-schema
+        (au/<? (<rpc!* (-> (u/sym-map arg arg-schema conn-id ret-schema
+                                      state-provider-name storage talk2-server
+                                      timeout-ms)
+                           (assoc :rpc-msg-type :state-provider-rpc)
+                           (assoc :rpc-name-kw msg-type))))
+        (let [s-arg (au/<? (storage/<value->serialized-value
+                            storage arg-schema arg))
+              msg-arg {:arg s-arg
+                       :msg-type-ns (namespace msg-type)
+                       :msg-type-name (name msg-type)
+                       :state-provider-name state-provider-name}]
+          (au/<? (t2s/<send-msg! {:arg msg-arg
+                                  :conn-id conn-id
+                                  :msg-type-name :state-provider-msg
+                                  :server talk2-server
+                                  :timeout-ms timeout-ms})))))))
 
 (defn initialize-state-providers!
   [{:keys [root->state-provider storage talk2-server]}]
