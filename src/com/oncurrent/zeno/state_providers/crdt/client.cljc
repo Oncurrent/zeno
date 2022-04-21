@@ -78,20 +78,20 @@
 (defn <sync-unsynced-log!
   [{:keys [*client-running? *sync-session-running?
            <send-msg actor-id storage]}]
-  (au/go
-    (loop []
-      (let [unsynced-log-k (actor-id->unsynced-log-k actor-id)
-            tx-ids (au/<? (storage/<get storage
-                                        unsynced-log-k
-                                        shared/unsynced-log-schema))
-            batch (set (take 10 tx-ids))
-            tx-infos (when tx-ids
-                       (->> {:storage storage :tx-ids batch}
-                            (common/<get-tx-infos)
-                            (au/<?)
-                            (filter #(= actor-id (:actor-id %)))))]
-        (when (seq tx-infos)
-          (do
+  (ca/go
+    (try
+      (loop []
+        (let [unsynced-log-k (actor-id->unsynced-log-k actor-id)
+              tx-ids (au/<? (storage/<get storage
+                                          unsynced-log-k
+                                          shared/unsynced-log-schema))
+              batch (set (take 10 tx-ids))
+              tx-infos (when tx-ids
+                         (->> {:storage storage :tx-ids batch}
+                              (common/<get-tx-infos)
+                              (au/<?)
+                              (filter #(= actor-id (:actor-id %)))))]
+          (when (seq tx-infos)
             (au/<? (<send-msg {:msg-type :log-txs
                                :arg tx-infos}))
             (au/<? (storage/<swap! storage
@@ -103,39 +103,46 @@
                                                  acc
                                                  tx-id))
                                              []
-                                             old-log))))))
-        (when (and @*client-running?
-                   @*sync-session-running?
-                   (< (count batch) (count tx-ids)))
-          (recur))))))
+                                             old-log)))))
+          (when (and @*client-running?
+                     @*sync-session-running?
+                     (< (count batch) (count tx-ids)))
+            (recur))))
+      (catch #?(:clj Exception :cljs js/Error) e
+        (log/error (str "Error in <sync-unsynced-log!:\n"
+                        (u/ex-msg-and-stacktrace e)))))))
 
 (defn <consume-txs!
   [{:keys [*crdt-state *last-tx-id <request-schema <send-msg schema storage
            update-subscriptions!]}]
   ;; TODO: Implement batching
-  (au/go
-    (let [msg-arg  {:msg-type :get-consumer-txs
-                    :arg {:last-tx-id @*last-tx-id}}
-          serializable-tx-infos (au/<? (<send-msg msg-arg))]
-      (when (seq serializable-tx-infos)
-        (let [tx-infos (au/<? (common/<serializable-tx-infos->tx-infos
-                               (u/sym-map <request-schema schema
-                                          serializable-tx-infos storage)))
-              info (reduce (fn [acc {:keys [crdt-ops tx-id update-infos]}]
-                             (-> acc
-                                 (assoc :last-tx-id tx-id)
-                                 (update :ops concat crdt-ops)
-                                 (update :update-infos concat update-infos)))
-                           {:last-tx-id nil
-                            :ops []
-                            :update-infos []}
-                           tx-infos)]
-          (swap! *crdt-state (fn [old-crdt]
-                               (apply-ops/apply-ops {:crdt old-crdt
-                                                     :ops (:ops info)
-                                                     :schema schema})))
-          (reset! *last-tx-id (:last-tx-id info))
-          (update-subscriptions! (:update-infos info)))))))
+  (ca/go
+    (try
+      (let [msg-arg  {:msg-type :get-consumer-txs
+                      :arg {:last-tx-id @*last-tx-id}}
+            serializable-tx-infos (au/<? (<send-msg msg-arg))]
+        (when (seq serializable-tx-infos)
+          (let [tx-infos (au/<? (common/<serializable-tx-infos->tx-infos
+                                 (u/sym-map <request-schema schema
+                                            serializable-tx-infos storage)))
+                info (reduce (fn [acc {:keys [crdt-ops tx-id update-infos]}]
+                               (-> acc
+                                   (assoc :last-tx-id tx-id)
+                                   (update :ops concat crdt-ops)
+                                   (update :update-infos concat update-infos)))
+                             {:last-tx-id nil
+                              :ops []
+                              :update-infos []}
+                             tx-infos)]
+            (swap! *crdt-state (fn [old-crdt]
+                                 (apply-ops/apply-ops {:crdt old-crdt
+                                                       :ops (:ops info)
+                                                       :schema schema})))
+            (reset! *last-tx-id (:last-tx-id info))
+            (update-subscriptions! (:update-infos info)))))
+      (catch #?(:clj Exception :cljs js/Error) e
+        (log/error (str "Error in <consume-txs!:\n"
+                        (u/ex-msg-and-stacktrace e)))))))
 
 (defn sync-producer-txs!
   [{:keys [*client-running? *sync-session-running? new-tx-ch] :as fn-arg}]

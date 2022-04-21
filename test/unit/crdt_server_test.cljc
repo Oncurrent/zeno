@@ -13,7 +13,7 @@
      (:import
       (clojure.lang ExceptionInfo))))
 
-(deftest ^:this test-<get-txs-since
+(deftest test-<get-txs-since
   (au/test-async
    1000
    (ca/go
