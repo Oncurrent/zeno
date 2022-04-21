@@ -54,11 +54,13 @@
             tx-infos (au/<? (common/<serializable-tx-infos->tx-infos
                              (u/sym-map <request-schema schema
                                         serializable-tx-infos storage)))
-            tx-ids (map :tx-id tx-infos)
-            ops (reduce (fn [acc {:keys [crdt-ops]}]
-                          (concat acc crdt-ops))
-                        []
-                        tx-infos)]
+            {:keys [ops tx-ids]} (reduce (fn [acc {:keys [crdt-ops tx-id]}]
+                                           (-> acc
+                                               (update :ops concat crdt-ops)
+                                               (update :tx-ids conj tx-id)))
+                                         {:ops []
+                                          :tx-ids []}
+                                         tx-infos)]
         ;; TODO: Chop log into segments if it gets too long
         (au/<? (storage/<swap! storage branch-log-k
                                shared/segmented-log-schema
