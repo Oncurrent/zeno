@@ -33,17 +33,17 @@
    Returns a map with :norm-path and :value keys."
   ([state path]
    (get-in-state state path nil))
-  ([state path prefixes*]
-   (let [prefixes (cond
-                    (nil? prefixes*) #{}
-                    (set? prefixes*) prefixes*
-                    :else (set [prefixes*]))
+  ([state path roots*]
+   (let [roots (cond
+                    (nil? roots*) #{}
+                    (set? roots*) roots*
+                    :else (set [roots*]))
          [path-head & path-tail] path]
-     (when (and (seq prefixes)
-                (not (prefixes path-head)))
+     (when (and (seq roots)
+                (not (roots path-head)))
        (throw (ex-info (str "Illegal path. Path must start with one of "
-                            prefixes ". Got `" path "`.")
-                       (u/sym-map path prefixes path-head))))
+                            roots ". Got `" path "`.")
+                       (u/sym-map path roots path-head))))
      (reduce (fn [{:keys [value] :as acc} k]
                (let [[k* value*] (cond
                                    (or (keyword? k) (nat-int? k) (string? k))
@@ -66,23 +66,23 @@
                  (-> acc
                      (update :norm-path conj k*)
                      (assoc :value value*))))
-             {:norm-path (if (seq prefixes)
+             {:norm-path (if (seq roots)
                            [path-head]
                            [])
               :value state}
-             (if (seq prefixes)
+             (if (seq roots)
                path-tail
                path)))))
 
-(defmulti eval-cmd (fn [state {:zeno/keys [op]} prefix]
+(defmulti eval-cmd (fn [state {:zeno/keys [op]} root]
                      (if (insert-ops op)
                        :zeno/insert*
                        op)))
 
 (defmethod eval-cmd :zeno/set
-  [state {:zeno/keys [path op arg]} prefix]
-  (let [{:keys [norm-path]} (get-in-state state path prefix)
-        state-path (if prefix
+  [state {:zeno/keys [path op arg]} root]
+  (let [{:keys [norm-path]} (get-in-state state path root)
+        state-path (if root
                      (rest norm-path)
                      norm-path)
         new-state (if (seq state-path)
@@ -94,10 +94,10 @@
                    :value arg}}))
 
 (defmethod eval-cmd :zeno/remove
-  [state {:zeno/keys [path op]} prefix]
+  [state {:zeno/keys [path op]} root]
   (let [parent-path (butlast path)
         k (last path)
-        {:keys [norm-path value]} (get-in-state state parent-path prefix)
+        {:keys [norm-path value]} (get-in-state state parent-path root)
         [new-parent path-k] (cond
                               (nil? value)
                               [nil k]
@@ -118,7 +118,7 @@
                                          value "` is out of bounds.")
                                     (u/sym-map norm-i path
                                                norm-path))))))
-        state-path (if prefix
+        state-path (if root
                      (rest norm-path)
                      norm-path)
         new-state (cond
@@ -136,7 +136,7 @@
                    :value nil}}))
 
 (defmethod eval-cmd :zeno/insert*
-  [state {:zeno/keys [arg op path]} prefix]
+  [state {:zeno/keys [arg op path]} root]
   (let [parent-path (butlast path)
         i (last path)
         _ (when-not (int? i)
@@ -145,7 +145,7 @@
                          "of the path must be an integer, e.g. [:x :y -1] "
                          " or [:a :b :c 12]. Got: `" i "`.")
                     (u/sym-map parent-path i path op arg))))
-        {:keys [norm-path value]} (get-in-state state parent-path prefix)
+        {:keys [norm-path value]} (get-in-state state parent-path root)
         _ (when-not (or (sequential? value) (nil? value))
             (throw (ex-info (str "Bad path in " op ". Path `" path "` does not "
                                  "point to a sequence. Got: `" value "`.")
@@ -163,7 +163,7 @@
                   (inc clamped-i))
         [h t] (split-at split-i value)
         new-parent (vec (concat h (if range? arg [arg]) t))
-        state-path (if prefix
+        state-path (if root
                      (rest norm-path)
                      norm-path)
         new-state (if (empty? state-path)
@@ -174,9 +174,9 @@
                    :op op
                    :value arg}}))
 
-(defn eval-cmds [initial-state cmds prefix]
+(defn eval-cmds [initial-state cmds root]
   (reduce (fn [{:keys [state] :as acc} cmd]
-            (let [ret (eval-cmd state cmd prefix)]
+            (let [ret (eval-cmd state cmd root)]
               (-> acc
                   (assoc :state (:state ret))
                   (update :update-infos conj (:update-info ret)))))

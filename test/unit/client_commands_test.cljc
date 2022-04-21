@@ -52,7 +52,7 @@
                                 :value :new}}]
     (is (= expected ret))))
 
-(deftest test-simple-remove-prefix
+(deftest test-simple-remove-root
   (let [state [:a :b :c]
         cmd {:zeno/op :zeno/remove
              :zeno/path [:zeno/client -1]}
@@ -63,7 +63,7 @@
                                 :value nil}}]
     (is (= expected ret))))
 
-(deftest test-simple-remove-no-prefix
+(deftest test-simple-remove-no-root
   (let [state [:a :b :c]
         path [-1]
         ret (commands/eval-cmd state

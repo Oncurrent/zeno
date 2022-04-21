@@ -10,7 +10,7 @@
    [taoensso.timbre :as log]
    [weavejester.dependency :as dep]))
 
-(defn get-in-state [{root :prefix
+(defn get-in-state [{root :root
                      zc :zc
                      :as arg}]
   (let [{:keys [root->state-provider]} zc
@@ -114,8 +114,8 @@
     (->> (dep/topo-sort g)
          (filter #(not= :zeno/root %)))))
 
-(defn ks-at-path [{:keys [full-path kw state path prefix zc]}]
-  (let [coll (:value (get-in-state (u/sym-map state path prefix zc)))]
+(defn ks-at-path [{:keys [full-path kw state path root zc]}]
+  (let [coll (:value (get-in-state (u/sym-map state path root zc)))]
     (cond
       (map? coll)
       (keys coll)
@@ -135,8 +135,8 @@
          :missing-collection-path path
          :value coll})))))
 
-(defn count-at-path [{:keys [path prefix state zc]}]
-  (let [coll (:value (get-in-state (u/sym-map state path prefix zc)))]
+(defn count-at-path [{:keys [path root state zc]}]
+  (let [coll (:value (get-in-state (u/sym-map state path root zc)))]
     (cond
       (or (map? coll) (sequential? coll))
       (count coll)
@@ -152,8 +152,8 @@
         {:path path
          :value coll})))))
 
-(defn do-concat [{:keys [state path prefix zc]}]
-  (let [seqs (:value (get-in-state (u/sym-map state path prefix zc)))]
+(defn do-concat [{:keys [state path root zc]}]
+  (let [seqs (:value (get-in-state (u/sym-map state path root zc)))]
     (when (and (not (nil? seqs))
                (or (not (sequential? seqs))
                    (not (sequential? (first seqs)))))
@@ -165,7 +165,7 @@
          :value seqs})))
     (apply concat seqs)))
 
-(defn get-value-and-expanded-paths [zc state path prefix]
+(defn get-value-and-expanded-paths [zc state path root]
   ;; TODO: Optimize this. Only traverse the path once.
   (let [last-path-k (last path)
         join? (u/has-join? path)
@@ -177,7 +177,7 @@
                                   :kw :zeno/*
                                   :state state
                                   :path %
-                                  :prefix prefix
+                                  :root root
                                   :zc zc})]
     (cond
       (u/empty-sequence-in-path? path)
@@ -188,7 +188,7 @@
 
       (and (not terminal-kw?) (not join?))
       (let [{:keys [norm-path value]} (get-in-state
-                                       (u/sym-map state path prefix zc))]
+                                       (u/sym-map state path root zc))]
         [value [norm-path]])
 
       (and terminal-kw? (not join?))
@@ -199,17 +199,17 @@
                                  :kw :zeno/keys
                                  :state state
                                  :path path*
-                                 :prefix prefix
+                                 :root root
                                  :zc zc})
 
                     :zeno/count
                     (count-at-path {:path path*
-                                    :prefix prefix
+                                    :root root
                                     :state state
                                     :zc zc})
 
                     :zeno/concat {:path path*
-                                  :prefix prefix
+                                  :root root
                                   :state state
                                   :zc zc})]
         [value [path*]])
@@ -227,7 +227,7 @@
                  i 0]
             (let [path* (nth xpaths i)
                   ret (get-value-and-expanded-paths
-                       zc state path* prefix)
+                       zc state path* root)
                   new-out (conj out (first ret))
                   new-i (inc i)]
               (if (not= num-results new-i)
@@ -246,7 +246,7 @@
                                i 0]
                           (let [path* (nth xpaths i)
                                 ret (get-value-and-expanded-paths
-                                     zc state path* prefix)
+                                     zc state path* root)
                                 new-out (conj out (first ret))
                                 new-i (inc i)]
                             (if (not= num-results new-i)

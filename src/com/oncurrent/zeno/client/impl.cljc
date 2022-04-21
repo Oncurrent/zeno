@@ -76,7 +76,7 @@
                 {::sp-impl/keys [<update-state!]} state-provider
                 cmds (root->cmds root)
                 update-infos (au/<? (<update-state! {:zeno/cmds cmds
-                                                     :prefix root}))
+                                                     :root root}))
                 new-out (concat out update-infos)]
             (if (= last-i i)
               new-out
@@ -297,6 +297,7 @@
         *actor-id (atom nil)
         *talk2-client (atom nil)
         *connected? (atom false)
+        ;; TODO: Is there a case where this would drop data
         update-state-ch (ca/chan (ca/sliding-buffer 1000))
         actor-id-root->sp {::sp-impl/get-state-atom (constantly *actor-id)}
         arg (-> (u/sym-map *actor-id

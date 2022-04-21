@@ -35,7 +35,7 @@
 (defn make-<update-state!
   [{:keys [*actor-id *crdt-state *storage
            authorizer client-id new-tx-ch schema]}]
-  (fn [{:zeno/keys [cmds] :keys [prefix]}]
+  (fn [{:zeno/keys [cmds] :keys [root]}]
     (au/go
       (let [actor-id @*actor-id
             unauth-cmds (get-unauthorized-commands
@@ -46,7 +46,7 @@
           (let [ret (commands/process-cmds {:cmds cmds
                                             :crdt @*crdt-state
                                             :schema schema
-                                            :prefix prefix})
+                                            :root root})
                 {:keys [crdt ops update-infos]} ret
                 ;; We can use `reset!` here because there are no
                 ;; concurrent updates
@@ -184,7 +184,7 @@
   (reset! *sync-session-running? false))
 
 (defn ->state-provider
-  [{::crdt/keys [authorizer schema] :as config}]
+  [{::crdt/keys [authorizer schema root] :as config}]
   ;; TODO: Check args
   ;; TODO: Load initial state from IDB
   (when-not authorizer
@@ -198,12 +198,12 @@
                     config)))
   (let [*crdt-state (atom nil)
         *actor-id (atom :unauthenticated)
-        get-in-state (fn [{:keys [path prefix] :as gs-arg}]
+        get-in-state (fn [{:keys [path root] :as gs-arg}]
                        (common/get-value-info
                         (assoc gs-arg
                                :crdt @*crdt-state
-                               :path (common/chop-root path prefix)
-                               :norm-path [prefix]
+                               :path (common/chop-root path root)
+                               :norm-path [root]
                                :schema schema)))
         *host-fns (atom {})
         *client-running? (atom true)

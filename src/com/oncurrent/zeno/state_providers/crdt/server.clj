@@ -98,10 +98,10 @@
           (recur parent-log-k new-out)
           new-out)))))
 
-(defn make-get-consumer-txs-handler [{:keys [*storage]}]
+(defn make-get-consumer-txs-handler [{:keys [*storage root]}]
   (fn [{:keys [arg env-info]}]
     ;; TODO: Implement authorization
-    (let [branch (-> env-info :env-sp-root->info :zeno/crdt
+    (let [branch (-> env-info :env-sp-root->info root
                      :state-provider-branch)]
       (<get-txs-since {:branch branch
                        :last-tx-id (:last-tx-id arg)
@@ -124,7 +124,7 @@
                                             (get m old-branch))))))))
 
 (defn ->state-provider
-  [{::crdt/keys [authorizer schema]}]
+  [{::crdt/keys [authorizer schema root]}]
   (let [*<send-msg (atom nil)
         *branch->crdt-store (atom {})
         *storage (atom nil)
@@ -145,7 +145,7 @@
                                       (-> (commands/process-cmds pc-arg)
                                           (:crdt)))))
                            true))
-        arg (u/sym-map *branch->crdt-store *storage *<send-msg schema)
+        arg (u/sym-map *branch->crdt-store *storage *<send-msg schema root)
         <copy-branch! (make-<copy-branch! arg)
         msg-handlers {:get-consumer-txs (make-get-consumer-txs-handler arg)
                       :log-txs (make-log-txs-handler arg)}

@@ -59,7 +59,8 @@
         port (u/str->int port-str)
         crdt-sp (crdt-server/->state-provider
                  #::crdt{:authorizer (authz/->authorizer)
-                         :schema c/crdt-schema})
+                         :schema c/crdt-schema
+                         :root :zeno/crdt})
         root->sp {:zeno/crdt crdt-sp}
         config #:zeno{:admin-password c/admin-password
                       :authenticators [(password/->authenticator)]
