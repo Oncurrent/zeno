@@ -386,10 +386,11 @@
             (if (not= last-i i)
               (recur (inc i) new-out)
               (reduce (fn [acc tx-id]
-                        (let [info (get new-out tx-id)]
-                          (if info
-                            (conj acc info)
-                            acc)))
+                        (if-let [info (get new-out tx-id)]
+                          (conj acc info)
+                          (throw (ex-info (str "tx-info for tx-id `" tx-id
+                                               "` was not found in storage.")
+                                          (u/sym-map tx-id)))))
                       []
                       tx-ids))))))))
 
