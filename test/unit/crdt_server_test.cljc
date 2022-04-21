@@ -13,7 +13,7 @@
      (:import
       (clojure.lang ExceptionInfo))))
 
-(deftest test-<get-txs-since
+(deftest ^:this test-<get-txs-since
   (au/test-async
    1000
    (ca/go
@@ -41,10 +41,13 @@
                               (fn [old-log]
                                 (update old-log :tx-ids concat
                                         ["TX1" "TX2" "TX3"]))))
-       (is (= [] (au/<? (crdt-server/<get-txs-since
-                         {:storage storage
-                          :branch branch
-                          :last-tx-id nil}))))
+       (is (thrown-with-msg?
+            #?(:clj ExceptionInfo :cljs js/Error)
+            #"tx-info for tx-id `TX1` was not found"
+            (au/<? (crdt-server/<get-txs-since
+                    {:storage storage
+                     :branch branch
+                     :last-tx-id nil}))))
        ;; Add the tx-infos
        (au/<? (crdt-server/<store-tx-infos
                {:serializable-tx-infos [tx1-info tx2-info tx3-info]
