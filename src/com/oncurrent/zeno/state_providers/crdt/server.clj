@@ -96,14 +96,13 @@
           (recur parent-log-k new-out)
           new-out)))))
 
-(defn make-get-consumer-txs-handler [{:keys [*storage]}]
+(defn make-get-consumer-txs-handler [{:keys [*storage root]}]
   (fn [{:keys [arg env-info]}]
     ;; TODO: Implement authorization
-    (let [{:keys [root last-tx-id]} arg
-          branch (-> env-info :env-sp-root->info root
+    (let [branch (-> env-info :env-sp-root->info root
                      :state-provider-branch)]
       (<get-txs-since {:branch branch
-                       :last-tx-id last-tx-id
+                       :last-tx-id (:last-tx-id arg)
                        :storage @*storage}))))
 
 (defn make-<copy-branch! [{:keys [*branch->crdt-store *storage]}]

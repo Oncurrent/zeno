@@ -176,7 +176,7 @@
   (reset! *sync-session-running? false))
 
 (defn ->state-provider
-  [{::crdt/keys [authorizer schema] :as config}]
+  [{::crdt/keys [authorizer schema root] :as config}]
   ;; TODO: Check args
   ;; TODO: Load initial state from IDB
   (when-not authorizer
