@@ -100,7 +100,7 @@
                                    (fn [old-log]
                                      (reduce (fn [acc tx-id]
                                                (if (batch tx-id)
-                                                 acc
+                                                 (conj acc tx-id)
                                                  tx-id))
                                              []
                                              old-log)))))
