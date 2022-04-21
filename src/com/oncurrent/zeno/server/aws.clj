@@ -36,7 +36,11 @@
         (if (str/includes? (:__type ret) "ConditionalCheckFailedException")
           (throw (ex-info (str "Key `" k "` already exists.")
                           (u/sym-map k)))
-          (throw (ex-info (str "Unknown error in <add-k!: " (:__type ret))
+          (throw (ex-info (str "Unknown error in <add-k!: "
+                               (-> (u/sym-map table-name k)
+                                   (assoc :bytes-count (count ba)
+                                          :b64-count (count b64)
+                                          :__type ret)))
                           ret)))))))
 
 (defn <put-k!* [ddb table-name k ba]
@@ -108,8 +112,17 @@
           (<delete-k!* table-name k)
           (au/<?))))
 
+  ;; The DDB docs say: "The maximum item size in DynamoDB is 400 KB, which
+  ;; includes both attribute name binary length (UTF-8 length) and attribute
+  ;; value lengths (again binary length). The attribute name counts towards the
+  ;; size limit." So if we did 350KB here for get-max-value-bytes we will be
+  ;; safe in case the other contributing size factors are large. We also Base64
+  ;; encode the values which leads to a bloating that converges to \frac{4/3}N
+  ;; for large N. Since the calling code is going to use this value to chunk
+  ;; the raw bytes we need to lower our number to account for the 4/3 increase.
+  ;; So our number should be (3/4)*350000 = 262500 bytes.
   (get-max-value-bytes [this]
-    350000)
+    262500)
 
   (<read-k [this k]
     (au/go
