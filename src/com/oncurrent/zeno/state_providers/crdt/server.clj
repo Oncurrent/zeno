@@ -22,6 +22,11 @@
 (def branch-consumer-log-prefix "_BRANCH-CONSUMER-LOG-")
 
 (defn branch->branch-log-k [branch]
+  (when-not (string? branch)
+    (throw (ex-info
+            (str "`branch` in `branch->branch-log-k` must be a string."
+                 "Got `" (or branch "nil") "` of type `" (type branch) "`.")
+            (u/sym-map branch))))
   (str branch-log-prefix branch))
 
 (defn info->branch-consumer-log-k [{:keys [actor-id branch]}]
@@ -38,10 +43,10 @@
     true))
 
 (defn make-log-txs-handler
-  [{:keys [*branch->crdt-store *storage schema] :as fn-arg}]
+  [{:keys [*branch->crdt-store *storage root schema] :as fn-arg}]
   (fn [{:keys [<request-schema conn-id env-info] :as h-arg}]
     (au/go
-      (let [branch (-> env-info :env-sp-root->info :zeno/crdt
+      (let [branch (-> env-info :env-sp-root->info root
                        :state-provider-branch)
             branch-log-k (branch->branch-log-k branch)
             storage @*storage
