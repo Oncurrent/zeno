@@ -71,7 +71,7 @@
                                    (actor-id->unsynced-log-k actor-id)
                                    shared/unsynced-log-schema
                                    (fn [old-log]
-                                     (conj (or old-log []) tx-id))))
+                                     (conj old-log tx-id))))
             (ca/>! new-tx-ch true)
             update-infos))))))
 
@@ -100,8 +100,8 @@
                                    (fn [old-log]
                                      (reduce (fn [acc tx-id]
                                                (if (batch tx-id)
-                                                 (conj acc tx-id)
-                                                 tx-id))
+                                                 acc
+                                                 (conj acc tx-id)))
                                              []
                                              old-log)))))
           (when (and @*client-running?
