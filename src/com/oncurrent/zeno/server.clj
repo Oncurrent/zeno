@@ -420,7 +420,7 @@
       (f (assoc fn-arg
                 :zeno/branch branch
                 :zeno/path tail
-                :zeno/prefix root)))))
+                :zeno/root root)))))
 
 (defn make-state-fns [arg]
   (let [<update-state! (make-update-state arg)

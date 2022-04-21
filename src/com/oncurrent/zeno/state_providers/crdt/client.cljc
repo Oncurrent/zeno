@@ -35,7 +35,7 @@
 (defn make-<update-state!
   [{:keys [*actor-id *crdt-state *storage
            authorizer client-id new-tx-ch schema]}]
-  (fn [{:zeno/keys [cmds] :keys [prefix]}]
+  (fn [{:zeno/keys [cmds] :keys [root]}]
     (au/go
       (let [actor-id @*actor-id
             unauth-cmds (get-unauthorized-commands
@@ -46,7 +46,7 @@
           (let [ret (commands/process-cmds {:cmds cmds
                                             :crdt @*crdt-state
                                             :schema schema
-                                            :prefix prefix})
+                                            :root root})
                 {:keys [crdt ops update-infos]} ret
                 ;; We can use `reset!` here because there are no
                 ;; concurrent updates
@@ -91,19 +91,18 @@
                             (au/<?)
                             (filter #(= actor-id (:actor-id %)))))]
         (when (seq tx-infos)
-          (do
-            (au/<? (<send-msg {:msg-type :log-txs
-                               :arg tx-infos}))
-            (au/<? (storage/<swap! storage
-                                   unsynced-log-k
-                                   shared/unsynced-log-schema
-                                   (fn [old-log]
-                                     (reduce (fn [acc tx-id]
-                                               (if (batch tx-id)
-                                                 acc
-                                                 tx-id))
-                                             []
-                                             old-log))))))
+          (au/<? (<send-msg {:msg-type :log-txs
+                             :arg tx-infos}))
+          (au/<? (storage/<swap! storage
+                                 unsynced-log-k
+                                 shared/unsynced-log-schema
+                                 (fn [old-log]
+                                   (reduce (fn [acc tx-id]
+                                             (if (batch tx-id)
+                                               acc
+                                               tx-id))
+                                           []
+                                           old-log)))))
         (when (and @*client-running?
                    @*sync-session-running?
                    (< (count batch) (count tx-ids)))
@@ -191,12 +190,12 @@
                     config)))
   (let [*crdt-state (atom nil)
         *actor-id (atom :unauthenticated)
-        get-in-state (fn [{:keys [path prefix] :as gs-arg}]
+        get-in-state (fn [{:keys [path root] :as gs-arg}]
                        (common/get-value-info
                         (assoc gs-arg
                                :crdt @*crdt-state
-                               :path (common/chop-root path prefix)
-                               :norm-path [prefix]
+                               :path (common/chop-root path root)
+                               :norm-path [root]
                                :schema schema)))
         *host-fns (atom {})
         *client-running? (atom true)

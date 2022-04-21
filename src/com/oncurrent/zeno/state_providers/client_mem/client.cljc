@@ -12,9 +12,9 @@
    [taoensso.timbre :as log]))
 
 (defn make-<update-state! [{:keys [*state]}]
-  (fn [{:zeno/keys [cmds] :keys [prefix]}]
+  (fn [{:zeno/keys [cmds] :keys [root]}]
     (au/go
-     (let [ret (commands/eval-cmds @*state cmds prefix)
+     (let [ret (commands/eval-cmds @*state cmds root)
            {:keys [state update-infos]} ret]
         ;; We can use `reset!` here b/c there are no concurrent updates
         (reset! *state state)
@@ -25,7 +25,7 @@
   ([{::client-mem/keys [initial-state]}]
    (let [*state (atom initial-state)]
      #::sp-impl{:<update-state! (make-<update-state! (u/sym-map *state))
-                :get-in-state (fn [{:keys [prefix path]}]
-                                (commands/get-in-state @*state path prefix))
+                :get-in-state (fn [{:keys [root path]}]
+                                (commands/get-in-state @*state path root))
                 :get-state-atom (constantly *state)
                 :state-provider-name shared/state-provider-name})))

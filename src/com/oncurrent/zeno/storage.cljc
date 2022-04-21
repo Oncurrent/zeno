@@ -82,7 +82,7 @@
     (let [chunk-size (get-max-value-bytes raw-storage)
           chunks (ba/byte-array->fragments ba chunk-size)
           num-chunks (count chunks)
-          chunk-ids (take num-chunks (repeatedly u/compact-random-uuid))
+          chunk-ids (vec (take num-chunks (repeatedly u/compact-random-uuid)))
           <write-chunk! (fn [chunk-i bytes]
                           (let [chunk-id (nth chunk-ids chunk-i)]
                             (->> (u/sym-map bytes chunk-i)

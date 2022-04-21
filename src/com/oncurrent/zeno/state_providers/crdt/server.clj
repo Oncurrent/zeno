@@ -99,7 +99,7 @@
 (defn make-get-consumer-txs-handler [{:keys [*storage]}]
   (fn [{:keys [arg env-info]}]
     ;; TODO: Implement authorization
-    (let [{:keys [root last-tx-id]}
+    (let [{:keys [root last-tx-id]} arg
           branch (-> env-info :env-sp-root->info root
                      :state-provider-branch)]
       (<get-txs-since {:branch branch
