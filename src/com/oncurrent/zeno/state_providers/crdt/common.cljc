@@ -369,16 +369,29 @@
   (au/go
     (if (zero? (count tx-ids))
       []
-      (let [chs (map #(<get-tx-info {:storage storage :tx-id %})
-                     tx-ids)
+      (let [<get (fn [tx-id]
+                   (au/go
+                     (let [info (au/<? (<get-tx-info
+                                        (u/sym-map storage tx-id)))]
+                       [tx-id info])))
+            chs (map <get tx-ids)
             ret-ch (ca/merge chs)
             last-i (dec (count tx-ids))]
         (loop [i 0
-               out []]
-          (let [new-out (conj out (au/<? ret-ch))]
-            (if (= last-i i)
-              new-out
-              (recur (inc i) new-out))))))))
+               out {}]
+          (let [ret (au/<? ret-ch)
+                new-out (if ret
+                          (assoc out (first ret) (second ret))
+                          out)]
+            (if (not= last-i i)
+              (recur (inc i) new-out)
+              (reduce (fn [acc tx-id]
+                        (let [info (get new-out tx-id)]
+                          (if info
+                            (conj acc info)
+                            acc)))
+                      []
+                      tx-ids))))))))
 
 (defn get-value [{:keys [crdt make-id path schema] :as arg}]
   (-> (get-value-info arg)

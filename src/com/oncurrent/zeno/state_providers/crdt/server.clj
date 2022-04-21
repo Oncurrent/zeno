@@ -72,38 +72,38 @@
         true))))
 
 (defn <get-txs-since
-  [{:keys [*storage branch last-tx-id]}]
+  [{:keys [branch last-tx-id storage]}]
   (au/go
-    (let [storage @*storage]
-      (loop [log-k (branch->branch-log-k branch)
-             out []]
-        (let [log (au/<? (storage/<get storage log-k
-                                       shared/segmented-log-schema))
-              {:keys [parent-log-k tx-ids]} log
-              tx-ids-since (reduce
-                            (fn [acc tx-id]
-                              (if (= last-tx-id tx-id)
-                                (reduced acc)
-                                (conj acc tx-id)))
-                            []
-                            (reverse tx-ids))
-              tx-infos (au/<? (common/<get-tx-infos {:storage storage
-                                                     :tx-ids tx-ids-since}))
-              new-out (concat out tx-infos)
-              more? (= (count tx-ids-since)
-                       (count tx-ids))]
-          (if (and more? parent-log-k)
-            (recur parent-log-k new-out)
-            new-out))))))
+    (loop [log-k (branch->branch-log-k branch)
+           out []]
+      (let [log (au/<? (storage/<get storage log-k
+                                     shared/segmented-log-schema))
+            {:keys [parent-log-k tx-ids]} log
+            tx-ids-since (reduce
+                          (fn [acc tx-id]
+                            (if (= last-tx-id tx-id)
+                              (reduced acc)
+                              (conj acc tx-id)))
+                          '()
+                          (reverse tx-ids))
+            tx-infos (au/<? (common/<get-tx-infos {:storage storage
+                                                   :tx-ids tx-ids-since}))
+            new-out (concat out tx-infos)
+            ;; If these are the same, we didn't find the last-tx-id yet
+            more? (= (count tx-ids-since)
+                     (count tx-ids))]
+        (if (and more? parent-log-k)
+          (recur parent-log-k new-out)
+          new-out)))))
 
-(defn make-get-consumer-txs-handler [fn-arg]
+(defn make-get-consumer-txs-handler [{:keys [*storage]}]
   (fn [{:keys [arg env-info]}]
     ;; TODO: Implement authorization
     (let [branch (-> env-info :env-sp-root->info :zeno/crdt
                      :state-provider-branch)]
-      (<get-txs-since (assoc fn-arg
-                             :branch branch
-                             :last-tx-id (:last-tx-id arg))))))
+      (<get-txs-since {:branch branch
+                       :last-tx-id (:last-tx-id arg)
+                       :storage @*storage}))))
 
 (defn make-<copy-branch! [{:keys [*branch->crdt-store *storage]}]
   (fn [{old-branch :state-provider-branch-source
