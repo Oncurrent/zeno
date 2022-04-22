@@ -76,6 +76,8 @@
                  (apply-ops/apply-ops {:crdt old-crdt
                                        :ops ops
                                        :schema schema})))
+        (log/info (str "Logged " (count ops) "into branch " branch ".\n"
+                       (u/sym-map branch-log-k)))
         true))))
 
 (defn <get-txs-since
@@ -99,6 +101,14 @@
             ;; If these are the same, we didn't find the last-tx-id yet
             more? (= (count tx-ids-since)
                      (count tx-ids))]
+        #_(log/info (str "GGGG:\n"
+                         (u/pprint-str
+                          (assoc (u/sym-map branch last-tx-id log-k log
+                                            parent-log-k tx-ids
+                                            tx-ids-since more?)
+                                 :num-tx-infos (count tx-infos)
+                                 :num-new-out (count new-out)
+                                 :num-out (count out)))))
         (if (and more? parent-log-k)
           (recur parent-log-k new-out)
           new-out)))))
@@ -106,8 +116,7 @@
 (defn make-get-consumer-txs-handler [{:keys [*storage root]}]
   (fn [{:keys [arg env-info]}]
     ;; TODO: Implement authorization
-    (let [branch (-> env-info :env-sp-root->info root
-                     :state-provider-branch)]
+    (let [branch (-> env-info :env-sp-root->info root :state-provider-branch)]
       (<get-txs-since {:branch branch
                        :last-tx-id (:last-tx-id arg)
                        :storage @*storage}))))
@@ -128,8 +137,51 @@
                                      (assoc m new-branch
                                             (get m old-branch))))))))
 
+(defn <load-branch! [{:keys [*branch->crdt-store branch schema storage]}]
+  (au/go
+    (let [tx-infos (au/<? (<get-txs-since {:branch branch
+                                           :last-tx-id nil
+                                           :storage storage}))
+          ops (reduce (fn [acc {:keys [crdt-ops tx-id update-infos]}]
+                        (concat acc crdt-ops))
+                      []
+                      tx-infos)]
+      #_(log/info (str "LLLL:\n"
+                       (u/pprint-str
+                        {:branch branch
+                         :first-txi-ks (some-> tx-infos first keys)
+                         :storage-ks (keys storage)
+                         :num-tx-infos (count tx-infos)
+                         :num-ops (count ops)})))
+      (swap! *branch->crdt-store assoc branch
+             (apply-ops/apply-ops {:crdt nil
+                                   :ops ops
+                                   :schema schema}))
+      (log/info (str "Loaded " (count ops) " ops into branch `" branch "`.")))))
+
+(defn <load-state! [{:keys [*branch->crdt-store *storage schema branches]}]
+  (ca/go
+    (try
+      (let [storage @*storage]
+        (doseq [branch branches]
+          (au/<? (<load-branch!
+                  (u/sym-map *branch->crdt-store branch storage)))))
+      (catch Exception e
+        (log/error (str "Exception in <load-state!:\n"
+                        (u/ex-msg-and-stacktrace e)))))))
+
 (defn ->state-provider
   [{::crdt/keys [authorizer schema root]}]
+  (when-not (keyword? root)
+    (throw (ex-info (str "The `" ::crdt/root "` in the argument to "
+                         "`->state-provider` must be a keyword. Got: `"
+                         (or root "nil") "`.")
+                    (u/sym-map root))))
+  (when-not (l/schema? schema)
+    (throw (ex-info (str "The `" ::crdt/schema "` in the argument to "
+                         "`->state-provider` must be a valid Lancaster schema. "
+                         "Got: `" (or root "nil") "`.")
+                    (u/sym-map schema))))
   (let [*<send-msg (atom nil)
         *branch->crdt-store (atom {})
         *storage (atom nil)
@@ -154,11 +206,10 @@
         <copy-branch! (make-<copy-branch! arg)
         msg-handlers {:get-consumer-txs (make-get-consumer-txs-handler arg)
                       :log-txs (make-log-txs-handler arg)}
-        init! (fn [{:keys [<send-msg storage]}]
+        init! (fn [{:keys [<send-msg branches storage] :as init-arg}]
                 (reset! *storage storage)
                 (reset! *<send-msg <send-msg)
-                ;; TODO: Load *branch->crdt-store from logs/snapshots
-                )]
+                (<load-state! (assoc arg :branches branches)))]
     #::sp-impl{:<copy-branch! <copy-branch!
                :<get-state <get-state
                :<update-state! <update-state!

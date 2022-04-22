@@ -236,9 +236,11 @@
         (let [handler (get @*rpc-name-kw->handler rpc-name-kw)
               <request-schema (su/make-schema-requester orig-arg)
               _ (when-not handler
-                  (throw (ex-info (str "No handler found for RPC `"
-                                       rpc-name-kw "`.")
-                                  (u/sym-map rpc-name-kw))))
+                  (let [known-handlers (keys @*rpc-name-kw->handler)]
+                    (throw (ex-info (str "No handler found for RPC `"
+                                         rpc-name-kw "`.")
+                                    (u/sym-map rpc-name-kw
+                                               known-handlers)))))
               {:keys [arg-schema ret-schema]} (get rpcs rpc-name-kw)
               deser-arg (au/<? (common/<serialized-value->value
                                 {:<request-schema <request-schema
@@ -845,8 +847,20 @@
                                   :server talk2-server
                                   :timeout-ms timeout-ms})))))))
 
+(defn get-sp-branches [{:keys [*env-name->info root]}]
+  (reduce-kv (fn [acc env-name info]
+               (let [branch (some-> info
+                                    :env-sp-root->info
+                                    root
+                                    :state-provider-branch)]
+                 (if branch
+                   (conj acc branch)
+                   acc)))
+             #{}
+             @*env-name->info))
+
 (defn initialize-state-providers!
-  [{:keys [root->state-provider storage talk2-server]}]
+  [{:keys [*env-name->info root->state-provider storage talk2-server]}]
   (doseq [[root sp] root->state-provider]
     (let [{::sp-impl/keys [init! msg-protocol state-provider-name]} sp]
       (when init!
@@ -861,8 +875,10 @@
                                                    timeout-ms)))
               prefix (str storage/state-provider-prefix
                           (namespace state-provider-name) "-"
-                          (name state-provider-name))]
+                          (name state-provider-name))
+              branches (get-sp-branches (u/sym-map *env-name->info root))]
           (init! {:<send-msg <send-msg
+                  :branches branches
                   :storage (storage/make-prefixed-storage prefix storage)}))))))
 
 (defn make-name->state-provider [root->state-provider]
