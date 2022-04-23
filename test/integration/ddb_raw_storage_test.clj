@@ -7,7 +7,10 @@
    [com.oncurrent.zeno.server.aws :as aws]
    [com.oncurrent.zeno.storage :as storage]
    [com.oncurrent.zeno.utils :as u]
+   [kaocha.repl]
    [taoensso.timbre :as log]))
+
+(comment (kaocha.repl/run *ns*))
 
 (deftest test-read-write-delete
   (au/test-async

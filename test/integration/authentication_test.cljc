@@ -20,6 +20,7 @@
 ;;;; You must start the integration test server for these tests to work.
 ;;;; $ bin/run-test-server
 
+(comment (kaocha.repl/run #'test-password-authenticator {:capture-output? false}))
 (deftest test-password-authenticator
   (au/test-async
    10000
@@ -65,10 +66,12 @@
            zc2 (c/->zc (u/sym-map env-name))
            rs-ret (au/<? (password/<resume-login-session!
                           {:zeno/login-session-token login-session-token
-                           :zeno/zeno-client zc2}))]
+                           :zeno/zeno-client zc2}))
+           ]
        (is (= login-session-token (:login-session-token rs-ret)))
        (is (= false (au/<? (password/<resume-login-session!
                             {:zeno/login-session-token "an-invalid-token"
                              :zeno/zeno-client zc2}))))
        (zc/stop! zc)
-       (zc/stop! zc2)))))
+       (zc/stop! zc2)
+       ))))

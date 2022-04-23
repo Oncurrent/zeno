@@ -39,8 +39,11 @@
 
 (def max-swap-attempts 42)
 
+(defn fp->str [fp]
+  (ba/byte-array->hex-str fp))
+
 (defn make-fp->schema-k [fp]
-  (str "FP-TO-SCHEMA-" (ba/byte-array->hex-str fp)))
+  (str "FP-TO-SCHEMA-" (fp->str fp)))
 
 (defn <fp->schema* [raw-storage fp]
   (au/go
@@ -51,16 +54,23 @@
              (l/deserialize-same l/string-schema)
              (l/json->schema))))
 
-(defn <schema->fp* [raw-storage schema]
+(defn <store-fp->schema [raw-storage fp schema]
   (au/go
-    (let [fp (l/fingerprint256 schema)
-          k (make-fp->schema-k fp)]
+   (let [k (make-fp->schema-k fp)]
+     (->> (l/json schema)
+          (l/serialize l/string-schema)
+          (<put-k! raw-storage k)
+          (au/<?)))))
+
+(defn <schema->fp*
+  ([raw-storage schema]
+   (<schema->fp* raw-storage schema (l/fingerprint256 schema)))
+  ([raw-storage schema fp]
+   (au/go
+    (let [k (make-fp->schema-k fp)]
       (when-not (au/<? (<read-k raw-storage k))
-        (->> (l/json schema)
-             (l/serialize l/string-schema)
-             (<put-k! raw-storage k)
-             (au/<?)))
-      fp)))
+        (au/<? (<store-fp->schema raw-storage fp schema)))
+      fp))))
 
 (defn <read-chunks [raw-storage chunk-ids]
   (au/go
@@ -211,7 +221,7 @@
                 (recur new-num-deleted)
                 true))))))))
 
-(defrecord Storage [raw-storage]
+(defrecord Storage [raw-storage *fp->schema-cache]
   IStorage
   (<add! [this value-k schema value]
     (<add!* this value-k schema value))
@@ -220,13 +230,25 @@
     (<delete!* raw-storage k))
 
   (<fp->schema [this fp]
-    (<fp->schema* raw-storage fp))
+    (au/go
+     (if-let [schema (get @*fp->schema-cache (fp->str fp))]
+       schema
+       (let [schema (au/<? (<fp->schema* raw-storage fp))]
+         (swap! *fp->schema-cache assoc (fp->str fp) schema)
+         schema))))
 
   (<get [this k schema]
     (<get* this k schema))
 
   (<schema->fp [this schema]
-    (<schema->fp* raw-storage schema))
+    (au/go
+     (let [fp (l/fingerprint256 schema)]
+       (if-let [has? (boolean (get @*fp->schema-cache (fp->str fp)))]
+         fp
+         (do
+          (swap! *fp->schema-cache assoc (fp->str fp) schema)
+          (au/<? (<store-fp->schema raw-storage fp schema))
+          fp)))))
 
   (<swap! [this reference-k schema update-fn]
     (<swap!* this reference-k schema update-fn)))
@@ -312,7 +334,7 @@
   ([]
    (make-storage (make-mem-raw-storage)))
   ([raw-storage]
-   (->Storage raw-storage)))
+   (->Storage raw-storage (atom {}))))
 
 (defn <value->serialized-value [storage schema value]
   (au/go

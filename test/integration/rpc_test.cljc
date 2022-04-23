@@ -6,6 +6,7 @@
    [deercreeklabs.lancaster :as l]
    [com.oncurrent.zeno.client :as zc]
    [com.oncurrent.zeno.utils :as u]
+   #?(:clj [kaocha.repl])
    [taoensso.timbre :as log]
    [test-common :as c]))
 
@@ -13,10 +14,12 @@
 ;;;; You must start the integration test server for these tests to work.
 ;;;; $ bin/run-test-server
 
+(comment (kaocha.repl/run *ns*))
+
 (deftest test-rpc
   (au/test-async
    10000
-   (ca/go
+   (au/go
      (let [config #:zeno{:get-server-base-url (constantly
                                                "ws://localhost:8080")
                          :rpcs c/rpcs}

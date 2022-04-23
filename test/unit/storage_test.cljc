@@ -8,15 +8,20 @@
    [com.oncurrent.zeno.schemas :as schemas]
    [com.oncurrent.zeno.storage :as storage]
    [com.oncurrent.zeno.utils :as u]
+   #?(:clj [kaocha.repl])
    [taoensso.timbre :as log])
   #?(:clj
      (:import
       (clojure.lang ExceptionInfo))))
 
+(comment (kaocha.repl/run *ns*))
+
+(comment
+ (kaocha.repl/run #'test-writing-and-reading-items))
 (deftest test-writing-and-reading-items
   (au/test-async
    1000
-   (ca/go
+   (au/go
      (let [storage (storage/make-storage)
            v1 [2 3 45]
            m {"a" 47
@@ -42,10 +47,12 @@
                                      "m-key"
                                      (l/map-schema l/int-schema)))))))))
 
+(comment
+ (kaocha.repl/run #'test-chunked-writing-and-reading-items))
 (deftest test-chunked-writing-and-reading-items
   (au/test-async
    1000
-   (ca/go
+   (au/go
      (let [raw-storage (storage/make-mem-raw-storage 10)
            storage (storage/make-storage raw-storage)
            v1 [2 3 45 2333 2 7777 6234333]]
@@ -67,7 +74,7 @@
 (deftest test-swap
   (au/test-async
    1000
-   (ca/go
+   (au/go
      (let [storage (storage/make-storage)
            v-k "_v-key"
            v1 [2 3 45]
@@ -103,7 +110,7 @@
 (deftest test-chunked-swap
   (au/test-async
    1000
-   (ca/go
+   (au/go
      (let [raw-storage (storage/make-mem-raw-storage 10)
            storage (storage/make-storage raw-storage)
            v-k "_v-key"

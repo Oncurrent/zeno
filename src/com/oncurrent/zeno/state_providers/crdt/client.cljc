@@ -88,7 +88,7 @@
               batch (set (take 10 tx-ids))
               tx-infos (when tx-ids
                          (->> {:storage storage :tx-ids batch}
-                              (common/<get-tx-infos)
+                              (common/<get-serializable-tx-infos)
                               (au/<?)
                               (filter #(= actor-id (:actor-id %)))))]
           (when (seq tx-infos)
