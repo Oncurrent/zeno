@@ -306,8 +306,6 @@
                                        :state-provider-branch branch})))
                            {}
                            stored-state-provider-infos)]
-    ; (log/info (-> env-sp-root->info :zeno/crdt))
-    (log/info "HHHHHHHHHHHHEEEEEEEEEEEEEEERRRRRRRRRRRRRRRREEEEEEEEEe")
     {:env-authenticator-name->info env-auth-name->info
      :env-sp-root->info env-sp-root->info}))
 
@@ -474,7 +472,6 @@
         (try
           (let [sp (name->state-provider state-provider-name)
                 {::sp-impl/keys [msg-handlers msg-protocol]} sp
-                _ (log/info "<sp-rpc-handler")
                 handler (get msg-handlers rpc-name-kw)
                 _ (when-not handler
                     (throw (ex-info
@@ -495,7 +492,6 @@
                        :arg deser-arg
                        :conn-id conn-id
                        :env-info env-info}
-                _ (log/info (-> env-info :env-sp-root->info keys))
                 ret (handler h-arg)
                 val (if (au/channel? ret)
                       (au/<? ret)
@@ -520,7 +516,6 @@
               msg-type (keyword msg-type-name msg-type-ns)]
           (try
             (let [sp (name->state-provider state-provider-name)
-                  _ (log/info "<sg-msg-handler")
                   {::sp-impl/keys [msg-handlers msg-protocol]} sp
                   handler (get msg-handlers msg-type)
                   _ (when-not handler
@@ -618,12 +613,10 @@
                      (cond
                        exists?
                        (do
-                        (log/info "EXISTS")
                         env-name->info) ; no change needed
 
                        temp? ; Create the temp env
-                       (let [_ (log/info "TEMP")
-                             env-info (->temp-env-info (u/sym-map env-name->info
+                       (let [env-info (->temp-env-info (u/sym-map env-name->info
                                                                   env-params))]
 
                          (<copy-from-branch-sources!

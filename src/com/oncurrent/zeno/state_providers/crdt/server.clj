@@ -48,7 +48,6 @@
     (au/go
       (let [branch (-> env-info :env-sp-root->info root
                        :state-provider-branch)
-            _ (log/info "<log-txs-handler")
             branch-log-k (branch->branch-log-k branch)
             storage @*storage
             serializable-tx-infos (vec (:arg h-arg))
@@ -82,7 +81,6 @@
 (defn <get-serializable-txs-since
   [{:keys [branch last-tx-id storage]}]
   (au/go
-    (log/info "<get-serializable-txs-since")
     (loop [log-k (branch->branch-log-k branch)
            out []]
       (let [log (au/<? (storage/<get storage log-k
@@ -110,7 +108,6 @@
   (fn [{:keys [arg env-info]}]
     ;; TODO: Implement authorization
     (let [branch (-> env-info :env-sp-root->info root :state-provider-branch)]
-      (log/info "<get-consumer-txs-handler" root)
       (<get-serializable-txs-since {:branch branch
                                     :last-tx-id (:last-tx-id arg)
                                     :storage @*storage}))))
@@ -120,7 +117,6 @@
         new-branch :state-provider-branch}]
     (au/go
       (let [storage @*storage
-            _ (log/info "<copy-branch!")
             old-log-k (branch->branch-log-k old-branch)
             new-log-k (branch->branch-log-k new-branch)
             new-log {:parent-log-k (when old-branch
@@ -148,7 +144,6 @@
                              (-> (u/sym-map fp branch storage)
                                  (assoc :state-provider
                                         shared/state-provider-name)))))
-         _ (log/info "<load-branch!")
          serializable-tx-infos (au/<? (-> (<get-serializable-txs-since
                                            {:branch branch
                                             :last-tx-id nil
