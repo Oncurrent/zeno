@@ -361,17 +361,17 @@
               new-out
               (recur (inc i) new-out))))))))
 
-(defn <get-tx-info [{:keys [storage tx-id]}]
+(defn <get-serializable-tx-info [{:keys [storage tx-id]}]
   (let [k (tx-id->tx-info-k tx-id)]
     (storage/<get storage k shared/serializable-tx-info-schema)))
 
-(defn <get-tx-infos [{:keys [storage tx-ids]}]
+(defn <get-serializable-tx-infos [{:keys [storage tx-ids]}]
   (au/go
     (if (zero? (count tx-ids))
       []
       (let [<get (fn [tx-id]
                    (au/go
-                     (let [info (au/<? (<get-tx-info
+                     (let [info (au/<? (<get-serializable-tx-info
                                         (u/sym-map storage tx-id)))]
                        [tx-id info])))
             chs (map <get tx-ids)

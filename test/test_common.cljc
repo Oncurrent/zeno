@@ -12,6 +12,7 @@
    [com.oncurrent.zeno.state-providers.client-mem :as cm]
    [com.oncurrent.zeno.state-providers.client-mem.client :as cm-client]
    [com.oncurrent.zeno.state-providers.crdt :as crdt]
+   [com.oncurrent.zeno.state-providers.crdt.shared :as crdt-shared]
    [com.oncurrent.zeno.state-providers.crdt.client :as crdt-client]
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
@@ -102,9 +103,12 @@
          auth-infos [#:zeno{:authenticator-name pwd-shared/authenticator-name
                             :authenticator-branch-source
                             authenticator-branch-source}]
+         sp-infos [#:zeno{:path-root :zeno/crdt
+                          :state-provider-name crdt-shared/state-provider-name}]
          ret (au/<? (admin/<create-env!
                      #:zeno{:admin-client admin
                             :authenticator-infos auth-infos
+                            :state-provider-infos sp-infos
                             :env-name env-name}))]
       (admin/stop! admin)
       ret)))

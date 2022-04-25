@@ -42,7 +42,7 @@
                                (constantly serializable-tx-info)))))
     true))
 
-(defn make-log-txs-handler
+(defn make-<log-txs-handler
   [{:keys [*branch->crdt-store *storage root schema] :as fn-arg}]
   (fn [{:keys [<request-schema conn-id env-info] :as h-arg}]
     (au/go
@@ -50,7 +50,7 @@
                        :state-provider-branch)
             branch-log-k (branch->branch-log-k branch)
             storage @*storage
-            serializable-tx-infos (:arg h-arg)
+            serializable-tx-infos (vec (:arg h-arg))
             _ (au/<? (<store-tx-infos (u/sym-map serializable-tx-infos
                                                  storage)))
             ;; Convert the serializable-tx-infos into regular tx-infos
@@ -76,11 +76,9 @@
                  (apply-ops/apply-ops {:crdt old-crdt
                                        :ops ops
                                        :schema schema})))
-        (log/info (str "Logged " (count ops) "into branch " branch ".\n"
-                       (u/sym-map branch-log-k)))
         true))))
 
-(defn <get-txs-since
+(defn <get-serializable-txs-since
   [{:keys [branch last-tx-id storage]}]
   (au/go
     (loop [log-k (branch->branch-log-k branch)
@@ -95,31 +93,24 @@
                               (conj acc tx-id)))
                           '()
                           (reverse tx-ids))
-            tx-infos (au/<? (common/<get-tx-infos {:storage storage
-                                                   :tx-ids tx-ids-since}))
+            tx-infos (au/<? (common/<get-serializable-tx-infos
+                             {:storage storage
+                              :tx-ids tx-ids-since}))
             new-out (concat out tx-infos)
             ;; If these are the same, we didn't find the last-tx-id yet
             more? (= (count tx-ids-since)
                      (count tx-ids))]
-        #_(log/info (str "GGGG:\n"
-                         (u/pprint-str
-                          (assoc (u/sym-map branch last-tx-id log-k log
-                                            parent-log-k tx-ids
-                                            tx-ids-since more?)
-                                 :num-tx-infos (count tx-infos)
-                                 :num-new-out (count new-out)
-                                 :num-out (count out)))))
         (if (and more? parent-log-k)
           (recur parent-log-k new-out)
           new-out)))))
 
-(defn make-get-consumer-txs-handler [{:keys [*storage root]}]
+(defn make-<get-consumer-txs-handler [{:keys [*storage root]}]
   (fn [{:keys [arg env-info]}]
     ;; TODO: Implement authorization
     (let [branch (-> env-info :env-sp-root->info root :state-provider-branch)]
-      (<get-txs-since {:branch branch
-                       :last-tx-id (:last-tx-id arg)
-                       :storage @*storage}))))
+      (<get-serializable-txs-since {:branch branch
+                                    :last-tx-id (:last-tx-id arg)
+                                    :storage @*storage}))))
 
 (defn make-<copy-branch! [{:keys [*branch->crdt-store *storage]}]
   (fn [{old-branch :state-provider-branch-source
@@ -139,25 +130,35 @@
 
 (defn <load-branch! [{:keys [*branch->crdt-store branch schema storage]}]
   (au/go
-    (let [tx-infos (au/<? (<get-txs-since {:branch branch
-                                           :last-tx-id nil
-                                           :storage storage}))
-          ops (reduce (fn [acc {:keys [crdt-ops tx-id update-infos]}]
-                        (concat acc crdt-ops))
-                      []
-                      tx-infos)]
-      #_(log/info (str "LLLL:\n"
-                       (u/pprint-str
-                        {:branch branch
-                         :first-txi-ks (some-> tx-infos first keys)
-                         :storage-ks (keys storage)
-                         :num-tx-infos (count tx-infos)
-                         :num-ops (count ops)})))
+   (let [<request-schema (fn [fp]
+                           (throw
+                            (ex-info
+                             (str
+                              "Schema for fingerprint `" fp "` not found while "
+                              "loading state provider branch data. There is no "
+                              "peer to request it from since the server is "
+                              "just starting up. The storage that contains the "
+                              "data should also contain the schema but it does "
+                              "not. Perhaps there was or is a bug when writing "
+                              "data to begin with.")
+                             (-> (u/sym-map fp branch storage)
+                                 (assoc :state-provider
+                                        shared/state-provider-name)))))
+         serializable-tx-infos (au/<? (-> (<get-serializable-txs-since
+                                           {:branch branch
+                                            :last-tx-id nil
+                                            :storage storage})))
+         tx-infos (au/<? (common/<serializable-tx-infos->tx-infos
+                          (u/sym-map <request-schema schema
+                                     serializable-tx-infos storage)))
+         ops (reduce (fn [acc {:keys [crdt-ops tx-id update-infos]}]
+                       (concat acc crdt-ops))
+                     []
+                     tx-infos)]
       (swap! *branch->crdt-store assoc branch
              (apply-ops/apply-ops {:crdt nil
                                    :ops ops
-                                   :schema schema}))
-      (log/info (str "Loaded " (count ops) " ops into branch `" branch "`.")))))
+                                   :schema schema})))))
 
 (defn <load-state! [{:keys [*branch->crdt-store *storage schema branches]}]
   (ca/go
@@ -165,7 +166,7 @@
       (let [storage @*storage]
         (doseq [branch branches]
           (au/<? (<load-branch!
-                  (u/sym-map *branch->crdt-store branch storage)))))
+                  (u/sym-map *branch->crdt-store branch schema storage)))))
       (catch Exception e
         (log/error (str "Exception in <load-state!:\n"
                         (u/ex-msg-and-stacktrace e)))))))
@@ -204,8 +205,8 @@
                            true))
         arg (u/sym-map *branch->crdt-store *storage *<send-msg schema root)
         <copy-branch! (make-<copy-branch! arg)
-        msg-handlers {:get-consumer-txs (make-get-consumer-txs-handler arg)
-                      :log-txs (make-log-txs-handler arg)}
+        msg-handlers {:get-consumer-txs (make-<get-consumer-txs-handler arg)
+                      :log-txs (make-<log-txs-handler arg)}
         init! (fn [{:keys [<send-msg branches storage] :as init-arg}]
                 (reset! *storage storage)
                 (reset! *<send-msg <send-msg)

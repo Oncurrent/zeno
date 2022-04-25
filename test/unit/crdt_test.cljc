@@ -8,10 +8,13 @@
    [com.oncurrent.zeno.state-providers.crdt.commands :as commands]
    [com.oncurrent.zeno.state-providers.crdt.common :as crdt]
    [com.oncurrent.zeno.utils :as u]
+   #?(:clj [kaocha.repl])
    [taoensso.timbre :as log])
   #?(:clj
      (:import
       (clojure.lang ExceptionInfo))))
+
+(comment (kaocha.repl/run *ns*))
 
 (l/def-record-schema the-rec-schema
   [:foo/a l/int-schema]

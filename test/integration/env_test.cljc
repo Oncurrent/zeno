@@ -113,7 +113,7 @@
        (zc/stop! zc-temp)))))
 
 (comment
-  (kaocha.repl/run #'test-envs-authenticator-copy {:capture-output? false}))
+  (kaocha.repl/run #'test-envs-authenticator-copy))
 (deftest test-envs-authenticator-copy
   (au/test-async
    10000

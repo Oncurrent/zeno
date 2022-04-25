@@ -434,7 +434,7 @@
                                                            :path path}]}))]
     (u/sym-map <get-state <set-state! <update-state!)))
 
-(defn make-auth-handler
+(defn make-<auth-handler
   [{:keys [*conn-id->env-name *env-name->info f] :as arg}]
   (let [base-info (select-keys arg [:*conn-id->auth-info
                                     :*connected-actor-id->conn-ids
@@ -446,7 +446,7 @@
             state-fns (make-state-fns env-info)]
         (f (merge base-info env-info state-fns handler-arg))))))
 
-(defn make-rpc-handler
+(defn make-<rpc-handler
   [{:keys [*conn-id->env-name *env-name->info] :as arg}]
   (let [base-info (select-keys arg [:*conn-id->auth-info
                                     :*connected-actor-id->conn-ids
@@ -460,7 +460,7 @@
             state-fns (make-state-fns env-info)]
         (<handle-rpc! (merge base-info state-fns handler-arg))))))
 
-(defn make-sp-rpc-handler
+(defn make-<sp-rpc-handler
   [{:keys [*conn-id->env-name *env-name->info name->state-provider storage]
     :as make-handler-arg}]
   (fn [{:keys [conn-id] :as handler-arg}]
@@ -505,7 +505,7 @@
                             (u/ex-msg-and-stacktrace e)))
             :zeno/rpc-error))))))
 
-(defn make-sp-msg-handler
+(defn make-<sp-msg-handler
   [{:keys [*conn-id->env-name *env-name->info name->state-provider storage]
     :as make-handler-arg}]
   (let [<request-schema (su/make-schema-requester make-handler-arg)]
@@ -612,7 +612,8 @@
                    (let [exists? (contains? env-name->info env-name)]
                      (cond
                        exists?
-                       env-name->info ; no change needed
+                       (do
+                        env-name->info) ; no change needed
 
                        temp? ; Create the temp env
                        (let [env-info (->temp-env-info (u/sym-map env-name->info
@@ -633,8 +634,7 @@
           (swap! *conn-id->env-name assoc conn-id env-name)
           (log/info
            (str "Client connection opened:\n"
-                (u/pprint-str
-                 (u/sym-map conn-id env-name remote-address)))))
+                (u/pprint-str (u/sym-map conn-id env-name remote-address)))))
         (catch Exception e
           (log/error (str "Error in client on-connect:\n"
                           (u/ex-msg-and-stacktrace e)))
@@ -661,33 +661,33 @@
                      (l/json)))
 
               :log-in
-              (make-auth-handler
+              (make-<auth-handler
                (assoc arg :f auth-impl/<handle-log-in))
 
               :log-out
-              (make-auth-handler
+              (make-<auth-handler
                (assoc arg :f auth-impl/<handle-log-out))
 
               :read-authenticator-state
-              (make-auth-handler
+              (make-<auth-handler
                (assoc arg :f auth-impl/<handle-read-authenticator-state))
 
 
               :resume-login-session
-              (make-auth-handler
+              (make-<auth-handler
                (assoc arg :f auth-impl/<handle-resume-login-session))
 
               :rpc
-              (make-rpc-handler arg)
+              (make-<rpc-handler arg)
 
               :state-provider-msg
-              (make-sp-msg-handler arg)
+              (make-<sp-msg-handler arg)
 
               :state-provider-rpc
-              (make-sp-rpc-handler arg)
+              (make-<sp-rpc-handler arg)
 
               :update-authenticator-state
-              (make-auth-handler
+              (make-<auth-handler
                (assoc arg :f auth-impl/<handle-update-authenticator-state))}
    :on-connect (make-client-on-connect arg)
    :on-disconnect (make-client-on-disconnect arg)

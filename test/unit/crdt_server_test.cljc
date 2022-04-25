@@ -13,7 +13,7 @@
      (:import
       (clojure.lang ExceptionInfo))))
 
-(deftest test-<get-txs-since
+(deftest test-<get-serializable-txs-since
   (au/test-async
    1000
    (ca/go
@@ -27,11 +27,11 @@
                      :tx-id "TX2"}
            tx3-info {:actor-id actor-id
                      :tx-id "TX3"}]
-       (is (= [] (au/<? (crdt-server/<get-txs-since
+       (is (= [] (au/<? (crdt-server/<get-serializable-txs-since
                          {:storage storage
                           :branch branch
                           :last-tx-id nil}))))
-       (is (= [] (au/<? (crdt-server/<get-txs-since
+       (is (= [] (au/<? (crdt-server/<get-serializable-txs-since
                          {:storage storage
                           :branch branch
                           :last-tx-id "INVALID-TX-ID"}))))
@@ -44,7 +44,7 @@
        (is (thrown-with-msg?
             #?(:clj ExceptionInfo :cljs js/Error)
             #"tx-info for tx-id `TX1` was not found"
-            (au/<? (crdt-server/<get-txs-since
+            (au/<? (crdt-server/<get-serializable-txs-since
                     {:storage storage
                      :branch branch
                      :last-tx-id nil}))))
@@ -52,19 +52,21 @@
        (au/<? (crdt-server/<store-tx-infos
                {:serializable-tx-infos [tx1-info tx2-info tx3-info]
                 :storage storage}))
-       (is (= [tx1-info tx2-info tx3-info] (au/<? (crdt-server/<get-txs-since
-                                                   {:storage storage
-                                                    :branch branch
-                                                    :last-tx-id nil}))))
-       (is (= [tx2-info tx3-info] (au/<? (crdt-server/<get-txs-since
-                                          {:storage storage
-                                           :branch branch
-                                           :last-tx-id "TX1"}))))
-       (is (= [tx3-info] (au/<? (crdt-server/<get-txs-since
+       (is (= [tx1-info tx2-info tx3-info]
+              (au/<? (crdt-server/<get-serializable-txs-since
+                      {:storage storage
+                       :branch branch
+                       :last-tx-id nil}))))
+       (is (= [tx2-info tx3-info]
+              (au/<? (crdt-server/<get-serializable-txs-since
+                      {:storage storage
+                       :branch branch
+                       :last-tx-id "TX1"}))))
+       (is (= [tx3-info] (au/<? (crdt-server/<get-serializable-txs-since
                                  {:storage storage
                                   :branch branch
                                   :last-tx-id "TX2"}))))
-       (is (= [] (au/<? (crdt-server/<get-txs-since
+       (is (= [] (au/<? (crdt-server/<get-serializable-txs-since
                          {:storage storage
                           :branch branch
                           :last-tx-id "TX3"}))))))))

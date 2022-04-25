@@ -76,11 +76,11 @@
             update-infos))))))
 
 (defn <sync-unsynced-log!
-  [{:keys [*client-running? *sync-session-running?
+  [{:keys [*client-running? *sync-session-fencing-token
            <send-msg actor-id storage]}]
   (ca/go
     (try
-      (loop []
+      (loop [fencing-token @*sync-session-fencing-token]
         (let [unsynced-log-k (actor-id->unsynced-log-k actor-id)
               tx-ids (au/<? (storage/<get storage
                                           unsynced-log-k
@@ -88,7 +88,7 @@
               batch (set (take 10 tx-ids))
               tx-infos (when tx-ids
                          (->> {:storage storage :tx-ids batch}
-                              (common/<get-tx-infos)
+                              (common/<get-serializable-tx-infos)
                               (au/<?)
                               (filter #(= actor-id (:actor-id %)))))]
           (when (seq tx-infos)
@@ -105,9 +105,9 @@
                                              []
                                              old-log)))))
           (when (and @*client-running?
-                     @*sync-session-running?
+                     (= fencing-token @*sync-session-fencing-token)
                      (< (count batch) (count tx-ids)))
-            (recur))))
+            (recur @*sync-session-fencing-token))))
       (catch #?(:clj Exception :cljs js/Error) e
         (log/error (str "Error in <sync-unsynced-log!:\n"
                         (u/ex-msg-and-stacktrace e)))))))
@@ -145,43 +145,46 @@
                         (u/ex-msg-and-stacktrace e)))))))
 
 (defn sync-producer-txs!
-  [{:keys [*client-running? *sync-session-running? new-tx-ch] :as fn-arg}]
+  [{:keys [*client-running? *sync-session-fencing-token new-tx-ch] :as fn-arg}]
   (ca/go
     (try
-      (reset! *sync-session-running? true)
-      (loop []
+      (loop [fencing-token @*sync-session-fencing-token]
         (au/<? (<sync-unsynced-log! fn-arg))
         (au/alts? [new-tx-ch (ca/timeout 2000)])
         (when (and @*client-running?
-                   @*sync-session-running?)
-          (recur)))
+                   (= fencing-token @*sync-session-fencing-token))
+          (recur @*sync-session-fencing-token)))
       (catch #?(:clj Exception :cljs js/Error) e
         (log/error "Error in sync-producer-txs!:\n"
                    (u/ex-msg-and-stacktrace e))))))
 
 (defn sync-consumer-txs!
-  [{:keys [*client-running? *sync-session-running? server-tx-ch] :as fn-arg}]
+  [{:keys [*client-running? *sync-session-fencing-token server-tx-ch]
+    :as fn-arg}]
   (ca/go
     (try
-      (reset! *sync-session-running? true)
-      (loop []
+      (loop [fencing-token @*sync-session-fencing-token]
         (au/<? (<consume-txs! fn-arg))
         (au/alts? [server-tx-ch (ca/timeout 100)])
         (when (and @*client-running?
-                   @*sync-session-running?)
-          (recur)))
+                   (= fencing-token @*sync-session-fencing-token))
+          (recur @*sync-session-fencing-token)))
       (catch #?(:clj Exception :cljs js/Error) e
         (log/error "Error in sync-consumer-txs!:\n"
                    (u/ex-msg-and-stacktrace e))))))
 
 (defn start-sync-session!
-  [{:keys [*client-running? *sync-session-running? new-tx-ch] :as fn-arg}]
-  (when-not @*sync-session-running?
-    (sync-producer-txs! fn-arg)
-    (sync-consumer-txs! fn-arg)))
+  [{:keys [*client-running? *sync-session-fencing-token new-tx-ch] :as fn-arg}]
+  (let [[running? _n] @*sync-session-fencing-token]
+    (when-not running?
+      (swap! *sync-session-fencing-token (fn [[_running? n]]
+                                           [true (inc n)]))
+      (sync-producer-txs! fn-arg)
+      (sync-consumer-txs! fn-arg))))
 
-(defn end-sync-session! [{:keys [*sync-session-running?]}]
-  (reset! *sync-session-running? false))
+(defn end-sync-session! [{:keys [*sync-session-fencing-token]}]
+  (swap! *sync-session-fencing-token (fn [[_running? n]]
+                                       [false n])))
 
 (defn ->state-provider
   [{::crdt/keys [authorizer schema root] :as config}]
@@ -208,7 +211,7 @@
         *host-fns (atom {})
         *client-running? (atom true)
         *storage (atom nil)
-        *sync-session-running? (atom false)
+        *sync-session-fencing-token (atom [false 0])
         *last-tx-id (atom nil)
         client-id (u/compact-random-uuid)
         init! (fn [{:keys [<request-schema <send-msg
@@ -233,7 +236,7 @@
                                  *client-running?
                                  *crdt-state
                                  *last-tx-id
-                                 *sync-session-running?
+                                 *sync-session-fencing-token
                                  <request-schema
                                  <send-msg
                                  connected?
@@ -254,10 +257,10 @@
                                  (recur))))))
         on-actor-id-change (fn [actor-id]
                              (let [sync-arg (->sync-arg)]
+                               (end-sync-session! sync-arg)
                                (reset! *actor-id actor-id)
                                (reset! *crdt-state nil)
                                (reset! *last-tx-id nil)
-                               (end-sync-session! sync-arg)
                                (start-sync-session! sync-arg)))
         stop! (fn []
                 (reset! *client-running? false)
