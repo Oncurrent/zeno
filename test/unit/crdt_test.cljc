@@ -530,3 +530,11 @@
                                              sys-time-ms))
         v (crdt/get-value (u/sym-map crdt path schema))
         _ (is (= nil v))]))
+
+(deftest chop-root
+  (let [f crdt/chop-root]
+    (is (= [] (f [] nil)))
+    (is (= [] (f [:zeno/crdt] :zeno/crdt)))
+    (is (= [:pigs] (f [:zeno/crdt :pigs] :zeno/crdt)))
+    (is (= [:zeno/crdt :pigs] (f [:zeno/crdt :pigs] :pigs)))
+    (is (= [:pigs] (f [:zeno/crdt :zeno/crdt :zeno/crdt :pigs] :zeno/crdt)))))
