@@ -180,6 +180,13 @@
 
 (defn get-member-schema [{:keys [crdt path schema]}]
   (let [branch (:union-branch crdt)]
+    ;; TODO: These cond branches are all about getting reads to work properly.
+    ;; See for example unit.crdt-commands-test/test-set-empty-record-with-map-of-records
+    ;; You need to be able to read a nested path when the root of the path is
+    ;; nil. You need to be able to pass in nil as a key to e.g. a map in case
+    ;; an early subscription returned nil then you used it as a key in the next
+    ;; one. The todo here is figure if there's a more elegant way then these
+    ;; rather hard coded handlings of what you get in the above cases.
     (cond
       (and branch (empty? path)) (l/member-schema-at-branch schema branch)
       (empty? path) nil
