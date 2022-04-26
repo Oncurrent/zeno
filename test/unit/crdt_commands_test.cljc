@@ -78,7 +78,6 @@
     (is (= nil (crdt/get-value (update get-arg :path conj "a"))))
     (is (= nil (crdt/get-value (update get-arg :path conj nil))))))
 
-;; Broken
 (comment
  (krun #'test-set-empty-record-with-map-of-records))
 (deftest test-set-empty-record-with-map-of-records
@@ -93,7 +92,6 @@
     (is (= {} (crdt/get-value (update get-arg :path conj "a"))))
     (is (= nil (crdt/get-value (update get-arg :path conj nil))))))
 
-;; Broken
 (comment
  (krun #'test-set-then-reset-empty-record-with-empty-map-of-records))
 (deftest test-set-then-reset-empty-record-with-empty-map-of-records
@@ -115,7 +113,6 @@
     (is (= {} (crdt/get-value (update get-arg :path conj "a"))))
     (is (= nil (crdt/get-value (update get-arg :path conj nil))))))
 
-;; Broken
 (comment
  (krun #'test-set-empty-record-then-path-set-with-empty-map-of-records))
 (deftest test-set-empty-record-then-path-set-with-empty-map-of-records
@@ -137,9 +134,6 @@
     (is (= {} (crdt/get-value (update get-arg :path conj "a"))))
     (is (= nil (crdt/get-value (update get-arg :path conj nil))))))
 
-;; If I populate the record field with an empty map it passes just fine. But
-;; now I get nils back in all three cases for my empty map which I did not
-;; expect given my first test of using an empty map directly.
 (comment
  (krun #'test-set-record-with-empty-map-of-records))
 (deftest test-set-record-with-empty-map-of-records
