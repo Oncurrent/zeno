@@ -179,18 +179,23 @@
           (recur (inc union-branch)))))))
 
 (defn get-member-schema [{:keys [crdt path schema]}]
-  (if-let [branch (:union-branch crdt)]
-    (l/member-schema-at-branch schema branch)
-    (:member-schema (get-union-branch-and-schema-for-key {:k (first path)
-                                                          :schema schema}))))
+  (let [branch (:union-branch crdt)]
+    (cond
+      (and branch (empty? path)) (l/member-schema-at-branch schema branch)
+      (empty? path) nil
+      (and (not (empty? path)) (nil? (first path))) nil
+      :else (:member-schema (get-union-branch-and-schema-for-key
+                             {:k (first path)
+                              :schema schema})))))
 
 (defmethod get-value-info :union
-  [{:keys [crdt path] :as arg}]
+  [{:keys [crdt norm-path path schema] :as arg}]
   (if (empty? crdt)
     {:norm-path path
      :value nil}
     (let [member-schema (get-member-schema arg)]
-      (get-value-info (assoc arg :schema member-schema)))))
+      (when member-schema
+        (get-value-info (assoc arg :schema member-schema))))))
 
 (defn get-op-value-schema [{:keys [op-type norm-path schema]}]
   (case op-type
@@ -394,6 +399,6 @@
                       []
                       tx-ids))))))))
 
-(defn get-value [{:keys [crdt make-id path schema] :as arg}]
-  (-> (get-value-info arg)
+(defn get-value [{:keys [crdt make-id path norm-path schema] :as arg}]
+  (-> (get-value-info (assoc arg :norm-path (or norm-path [])))
       (:value)))

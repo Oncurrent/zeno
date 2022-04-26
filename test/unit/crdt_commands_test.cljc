@@ -32,7 +32,6 @@
        (filter #(= op-type (:op-type %)))
        (->norm-paths)))
 
-
 (l/def-record-schema pet-schema
   [:name l/string-schema]
   [:species l/string-schema])
@@ -48,6 +47,111 @@
 (l/def-record-schema pet-trainer-schema
   [:name l/string-schema]
   [:specialties specialties-schema])
+
+(l/def-map-schema pet-owners-schema pet-owner-schema)
+(l/def-record-schema pet-school-schema
+  [:pet-owners (l/map-schema pet-owner-schema)])
+
+(comment (krun #'test-empty-map-of-records))
+(deftest test-empty-map-of-records
+  (let [get-arg {:crdt {} :path [] :schema pet-owners-schema}]
+    (is (= {} (crdt/get-value get-arg)))
+    (is (= {} (crdt/get-value (update get-arg :path conj "a"))))
+    (is (= nil (crdt/get-value (update get-arg :path conj nil))))))
+
+(comment (krun #'test-set-empty-map-of-records))
+(deftest test-set-empty-map-of-records
+  (let [arg {:cmds [{:zeno/arg {}
+                     :zeno/op :zeno/set
+                     :zeno/path []}]
+             :schema pet-owners-schema}
+        {:keys [crdt]} (commands/process-cmds arg)
+        get-arg {:crdt crdt :path [] :schema (:schema arg)}]
+    (is (= {} (crdt/get-value get-arg)))
+    (is (= {} (crdt/get-value (update get-arg :path conj "a"))))
+    (is (= nil (crdt/get-value (update get-arg :path conj nil))))))
+
+(comment (krun #'test-empty-record-with-map-of-records))
+(deftest test-empty-record-with-map-of-records
+  (let [get-arg {:crdt {} :path [:pet-owners] :schema pet-school-schema}]
+    (is (= nil (crdt/get-value get-arg)))
+    (is (= nil (crdt/get-value (update get-arg :path conj "a"))))
+    (is (= nil (crdt/get-value (update get-arg :path conj nil))))))
+
+;; Broken
+(comment
+ (krun #'test-set-empty-record-with-map-of-records))
+(deftest test-set-empty-record-with-map-of-records
+  (let [arg {:cmds [{:zeno/arg {}
+                     :zeno/op :zeno/set
+                     :zeno/path []}]
+             :schema pet-school-schema}
+        {:keys [crdt]} (commands/process-cmds arg)
+        get-arg {:crdt crdt :path [:pet-owners] :schema (:schema arg)}]
+    (log/info (u/pprint-str* crdt))
+    (is (= nil (crdt/get-value get-arg)))
+    (is (= {} (crdt/get-value (update get-arg :path conj "a"))))
+    (is (= nil (crdt/get-value (update get-arg :path conj nil))))))
+
+;; Broken
+(comment
+ (krun #'test-set-then-reset-empty-record-with-empty-map-of-records))
+(deftest test-set-then-reset-empty-record-with-empty-map-of-records
+  (let [arg1 {:cmds [{:zeno/arg {}
+                      :zeno/op :zeno/set
+                      :zeno/path []}]
+              :schema pet-school-schema}
+        {crdt1 :crdt} (commands/process-cmds arg1)
+        _ (log/info (str "\n" (u/pprint-str* crdt1)))
+        arg2 (assoc arg1
+                    :cmds [{:zeno/arg {:pet-owners {}}
+                            :zeno/op :zeno/set
+                            :zeno-path []}]
+                    :crdt crdt1)
+        {crdt2 :crdt} (commands/process-cmds arg2)
+        get-arg {:crdt crdt2 :path [:pet-owners] :schema (:schema arg1)}]
+    (log/info (str "\n" (u/pprint-str* crdt2)))
+    (is (= nil (crdt/get-value get-arg)))
+    (is (= {} (crdt/get-value (update get-arg :path conj "a"))))
+    (is (= nil (crdt/get-value (update get-arg :path conj nil))))))
+
+;; Broken
+(comment
+ (krun #'test-set-empty-record-then-path-set-with-empty-map-of-records))
+(deftest test-set-empty-record-then-path-set-with-empty-map-of-records
+  (let [arg1 {:cmds [{:zeno/arg {}
+                      :zeno/op :zeno/set
+                      :zeno/path []}]
+              :schema pet-school-schema}
+        {crdt1 :crdt} (commands/process-cmds arg1)
+        _ (log/info (str "\n" (u/pprint-str* crdt1)))
+        arg2 (assoc arg1
+                    :cmds [{:zeno/arg {}
+                            :zeno/op :zeno/set
+                            :zeno-path [:pet-owners]}]
+                    :crdt crdt1)
+        {crdt2 :crdt} (commands/process-cmds arg2)
+        get-arg {:crdt crdt2 :path [:pet-owners] :schema (:schema arg1)}]
+    (log/info (str "\n" (u/pprint-str* crdt2)))
+    (is (= nil (crdt/get-value get-arg)))
+    (is (= {} (crdt/get-value (update get-arg :path conj "a"))))
+    (is (= nil (crdt/get-value (update get-arg :path conj nil))))))
+
+;; If I populate the record field with an empty map it passes just fine. But
+;; now I get nils back in all three cases for my empty map which I did not
+;; expect given my first test of using an empty map directly.
+(comment
+ (krun #'test-set-record-with-empty-map-of-records))
+(deftest test-set-record-with-empty-map-of-records
+  (let [arg {:cmds [{:zeno/arg {:pet-owners {}}
+                     :zeno/op :zeno/set
+                     :zeno/path []}]
+             :schema pet-school-schema}
+        {:keys [crdt]} (commands/process-cmds arg)
+        get-arg {:crdt crdt :path [:pet-owners] :schema (:schema arg)}]
+    (is (= nil (crdt/get-value get-arg)))
+    (is (= nil (crdt/get-value (update get-arg :path conj "a"))))
+    (is (= nil (crdt/get-value (update get-arg :path conj nil))))))
 
 (comment (krun #'test-crdt-set))
 (deftest test-crdt-set
