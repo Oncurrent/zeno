@@ -114,7 +114,7 @@
                          "in the path.")
                     (u/sym-map add-id path value))))
   (associative-apply-op (assoc arg :get-child-schema
-                               #(l/schema-at-path schema [%]))))
+                               (fn [_] (l/child-schema schema)))))
 
 (defn associative-delete-value
   [{:keys [add-id get-child-schema crdt path] :as arg}]
@@ -123,17 +123,17 @@
 (defmethod apply-op [:map :delete-value]
   [{:keys [schema] :as arg}]
   (associative-delete-value (assoc arg :get-child-schema
-                                   #(l/schema-at-path schema [%]))))
+                                   (fn [_] (l/child-schema schema)))))
 
 (defmethod apply-op [:map :add-array-edge]
   [{:keys [add-id crdt path schema value] :as arg}]
   (associative-apply-op (assoc arg :get-child-schema
-                               #(l/schema-at-path schema [%]))))
+                               (fn [_] (l/child-schema schema)))))
 
 (defmethod apply-op [:map :delete-array-edge]
   [{:keys [add-id crdt path schema value] :as arg}]
   (associative-apply-op (assoc arg :get-child-schema
-                               #(l/schema-at-path schema [%]))))
+                               (fn [_] (l/child-schema schema)))))
 
 (defmethod apply-op [:record :add-value]
   [{:keys [add-id path schema value] :as arg}]
@@ -142,22 +142,22 @@
                          "given in the path.")
                     (u/sym-map add-id path value))))
   (associative-apply-op (assoc arg :get-child-schema
-                               #(l/schema-at-path schema [%]))))
+                               #(l/child-schema schema %))))
 
 (defmethod apply-op [:record :delete-value]
   [{:keys [schema] :as arg}]
   (associative-delete-value (assoc arg :get-child-schema
-                                   #(l/schema-at-path schema [%]))))
+                                   #(l/child-schema schema %))))
 
 (defmethod apply-op [:record :add-array-edge]
   [{:keys [add-id crdt path schema value] :as arg}]
   (associative-apply-op (assoc arg :get-child-schema
-                               #(l/schema-at-path schema [%]))))
+                               #(l/child-schema schema %))))
 
 (defmethod apply-op [:record :delete-array-edge]
   [{:keys [add-id crdt path schema value] :as arg}]
   (associative-apply-op (assoc arg :get-child-schema
-                               #(l/schema-at-path schema [%]))))
+                               #(l/child-schema schema %))))
 
 (defmethod apply-op [:array :add-value]
   [{:keys [add-id path schema value] :as arg}]
@@ -166,13 +166,11 @@
                          "in the path.")
                     (u/sym-map add-id path value))))
   (associative-apply-op (assoc arg :get-child-schema
-                               (fn [k]
-                                 (l/schema-at-path schema [0])))))
+                               (fn [_] (l/child-schema schema)))))
 
 (defmethod apply-op [:array :delete-value]
   [{:keys [schema] :as arg}]
-  (let [get-child-schema (fn [k]
-                           (l/schema-at-path schema [0]))]
+  (let [get-child-schema (fn [_] (l/child-schema schema))]
     (associative-delete-value (assoc arg :get-child-schema get-child-schema))))
 
 (defn check-edge [{:keys [add-id path] :as arg}]
@@ -190,8 +188,7 @@
   [{:keys [add-id crdt path schema value] :as arg}]
   (if (seq path)
     (associative-apply-op (assoc arg :get-child-schema
-                                 (fn [k]
-                                   (l/schema-at-path schema [0]))))
+                                 (fn [_] (l/child-schema schema))))
     ;; We use a slightly different CRDT implementation here because we
     ;; need to be able to resurrect deleted edges. The `:single-value`
     ;; CRDT does not keep info for deleted items.
@@ -217,8 +214,7 @@
   [{:keys [add-id cmd crdt path schema value] :as arg}]
   (if (seq path)
     (associative-delete-value (assoc arg :get-child-schema
-                                     (fn [k]
-                                       (l/schema-at-path schema [0]))))
+                                     (fn [_] (l/child-schema schema))))
     ;; We use a slightly different CRDT implementation here because we
     ;; need to be able to resurrect deleted edges. The `:single-value`
     ;; CRDT does not keep info for deleted items.

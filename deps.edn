@@ -11,7 +11,7 @@
   crypto-password/crypto-password {:mvn/version "0.3.0"}
   deercreeklabs/async-utils {:mvn/version "0.1.23"}
   deercreeklabs/baracus {:mvn/version "0.3.1"}
-  deercreeklabs/lancaster {:mvn/version "0.9.15"}
+  deercreeklabs/lancaster {:local/root "../lancaster"} #_{:mvn/version "0.9.15"}
   deercreeklabs/stockroom {:mvn/version "0.3.6"}
   lambdaisland/uri {:mvn/version "1.13.95"}
   mvxcvi/puget {:mvn/version "1.3.2"}

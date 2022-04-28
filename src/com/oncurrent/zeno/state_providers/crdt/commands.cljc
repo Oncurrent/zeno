@@ -91,7 +91,7 @@
 
 (defmethod get-delete-ops :map
   [{:keys [schema] :as arg}]
-  (let [values-schema (l/schema-at-path schema ["x"])]
+  (let [values-schema (l/child-schema schema)]
     (associative-get-delete-ops
      (assoc arg
             :get-child-path-info (fn [[k & sub-path]]
@@ -105,7 +105,7 @@
           :get-child-path-info (fn [[k & sub-path]]
                                  (u/sym-map k sub-path))
           :get-child-schema (fn [k]
-                              (or (l/schema-at-path schema [k])
+                              (or (l/child-schema schema k)
                                   (throw (ex-info (str "Bad record key `" k
                                                        "` in path `"
                                                        path "`.")
@@ -148,7 +148,7 @@
 
 (defmethod get-delete-ops :array
   [{:keys [make-id cmd crdt path schema sys-time-ms] :as arg}]
-  (let [items-schema (l/schema-at-path schema [0])
+  (let [items-schema (l/child-schema schema)
         ordered-node-ids (array/get-ordered-node-ids arg)
         node-ops (associative-get-delete-ops
                   (assoc arg
@@ -229,7 +229,7 @@
 
 (defmethod get-add-ops :map
   [{:keys [cmd-arg cmd-path crdt norm-path path schema] :as arg}]
-  (let [values-schema (l/schema-at-path schema ["x"])]
+  (let [values-schema (l/child-schema schema)]
     (if (seq path)
       (let [[k & ks] path]
         (-> (get-add-ops (assoc arg
@@ -269,7 +269,7 @@
                                    :crdt (get-in crdt [:children k])
                                    :norm-path (conj norm-path k)
                                    :path ks
-                                   :schema (l/schema-at-path schema [k])))
+                                   :schema (l/child-schema schema k)))
           ((fn [ops]
              (xf-op-paths {:prefix k
                            :ops ops})))))
@@ -282,7 +282,7 @@
                  :path cmd-path})))
       (reduce (fn [acc k]
                 (let [v (get cmd-arg k)
-                      child-schema (l/schema-at-path schema [k])
+                      child-schema (l/child-schema schema k)
                       add-ops (get-add-ops
                            (assoc arg
                                   :cmd-arg v
@@ -318,7 +318,7 @@
   [{:keys [cmd-arg cmd-path crdt make-id norm-path path
            schema sys-time-ms]
     :as arg}]
-  (let [items-schema (l/schema-at-path schema [0])
+  (let [items-schema (l/child-schema schema)
         ordered-node-ids (array/get-ordered-node-ids arg)]
     (if (seq path)
       (let [[i & sub-path] path
@@ -424,7 +424,7 @@
   (let [{repair-ops :ops
          repaired-crdt :crdt} (do-repair arg)
         [i & sub-path] path
-        items-schema (l/schema-at-path schema [0])
+        items-schema (l/child-schema schema)
         node-id (make-id)
         add-ops (get-add-ops
                  (assoc arg
@@ -468,7 +468,7 @@
   (let [{repair-ops :ops
          repaired-crdt :crdt} (do-repair arg)
         [i & sub-path] path
-        items-schema (l/schema-at-path schema [0])
+        items-schema (l/child-schema schema)
         info (reduce
               (fn [acc v]
                 (let [node-id (make-id)

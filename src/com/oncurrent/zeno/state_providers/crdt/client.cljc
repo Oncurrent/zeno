@@ -43,22 +43,32 @@
         (if (seq unauth-cmds)
           (throw (ex-info "Transaction aborted due to unauthorized cmds."
                           (u/sym-map cmds unauth-cmds actor-id)))
-          (let [ret (commands/process-cmds {:cmds cmds
+          (let [_ (log/info "11111111")
+                ret (commands/process-cmds {:cmds cmds
                                             :crdt @*crdt-state
                                             :schema schema
                                             :root root})
+                _ (log/info "222222222")
                 {:keys [crdt ops update-infos]} ret
+                _ (log/info "333333333333")
                 ;; We can use `reset!` here because there are no
                 ;; concurrent updates
                 _ (reset! *crdt-state crdt)
+                _ (log/info "444444444444")
                 tx-id (u/compact-random-uuid)
+                _ (log/info "5555555555")
                 k (common/tx-id->tx-info-k tx-id)
+                _ (log/info "6666666")
                 storage @*storage
+                _ (log/info "777777777")
+                ; _ (log/info (u/pprint-str* ops))
                 ser-ops (au/<? (common/<crdt-ops->serializable-crdt-ops
                                 (u/sym-map ops schema storage)))
+                _ (log/info "88888888888")
                 ser-update-infos (au/<?
                                   (common/<update-infos->serializable-update-infos
                                    (u/sym-map schema storage update-infos)))
+                _ (log/info "999999999")
                 tx-info {:actor-id actor-id
                          :client-id client-id
                          :crdt-ops ser-ops
@@ -118,13 +128,19 @@
   ;; TODO: Implement batching
   (ca/go
     (try
-      (let [msg-arg  {:msg-type :get-consumer-txs
-                      :arg {:last-tx-id @*last-tx-id}}
-            serializable-tx-infos (au/<? (<send-msg msg-arg))]
+     (let [->s (fn [a b] (/ (- b a) 1000.0))
+           start (u/current-time-ms)
+           msg-arg  {:msg-type :get-consumer-txs
+                     :arg {:last-tx-id @*last-tx-id}}
+           serializable-tx-infos (au/<? (<send-msg msg-arg))
+           t1 (u/current-time-ms)
+           _ (log/info "fetch txs:" (->s start t1))]
         (when (seq serializable-tx-infos)
           (let [tx-infos (au/<? (common/<serializable-tx-infos->tx-infos
                                  (u/sym-map <request-schema schema
                                             serializable-tx-infos storage)))
+                t2 (u/current-time-ms)
+                _ (log/info "ser-txi->txi:" (->s t1 t2))
                 info (reduce (fn [acc {:keys [crdt-ops tx-id update-infos]}]
                                (-> acc
                                    (assoc :last-tx-id tx-id)
@@ -138,8 +154,10 @@
                                  (apply-ops/apply-ops {:crdt old-crdt
                                                        :ops (:ops info)
                                                        :schema schema})))
+            (log/info "apply-ops:" (->s t2 (u/current-time-ms)))
             (reset! *last-tx-id (:last-tx-id info))
-            (update-subscriptions! (:update-infos info)))))
+            (update-subscriptions! (:update-infos info))
+            (log/info "total:" (->s start (u/current-time-ms))))))
       (catch #?(:clj Exception :cljs js/Error) e
         (log/error (str "Error in <consume-txs!:\n"
                         (u/ex-msg-and-stacktrace e)))))))
@@ -165,7 +183,7 @@
     (try
       (loop [fencing-token @*sync-session-fencing-token]
         (au/<? (<consume-txs! fn-arg))
-        (au/alts? [server-tx-ch (ca/timeout 100)])
+        (au/alts? [server-tx-ch (ca/timeout 3000)])
         (when (and @*client-running?
                    (= fencing-token @*sync-session-fencing-token))
           (recur @*sync-session-fencing-token)))

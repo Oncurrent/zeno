@@ -107,14 +107,14 @@
 
 (defmethod get-value-info :map
   [{:keys [schema] :as arg}]
-  (let [get-child-schema #(l/schema-at-path schema [%])]
+  (let [get-child-schema (fn [_] (l/child-schema schema))]
     (associative-get-value-info
      (assoc arg :get-child-schema get-child-schema))))
 
 (defmethod get-value-info :record
   [{:keys [schema path] :as arg}]
   (let [get-child-schema (fn [k]
-                           (or (l/schema-at-path schema [k])
+                           (or (l/child-schema schema k)
                                (throw (ex-info (str "Bad record key `" k
                                                     "` in path `"
                                                     path "`.")
@@ -207,7 +207,10 @@
 (defn get-op-value-schema [{:keys [op-type norm-path schema]}]
   (case op-type
     :add-array-edge shared/crdt-array-edge-schema
-    :add-value (l/schema-at-path schema norm-path)
+    :add-value (do
+                (log/info (str "\n" (u/pprint-str* {:norm-path norm-path
+                                     :at-path-schema (l/schema-at-path schema norm-path)})))
+                (l/schema-at-path schema norm-path))
     :delete-array-edge nil
     :delete-value nil))
 
@@ -310,7 +313,7 @@
 
 (defn <update-infos->serializable-update-infos [{:keys [update-infos] :as arg}]
   (au/go
-    (let [infos (seq update-infos)
+    (let [infos (vec update-infos)
           last-i (count infos)]
       (if (zero? last-i)
         []
@@ -327,7 +330,7 @@
 
 (defn <serializable-update-infos->update-infos [arg]
   (au/go
-    (let [infos (seq (:update-infos arg))
+    (let [infos (vec (:update-infos arg))
           last-i (count infos)]
       (if (zero? last-i)
         []
@@ -361,10 +364,11 @@
   (au/go
     (if (empty? serializable-tx-infos)
       []
-      (let [last-i (dec (count serializable-tx-infos))]
+      (let [last-i (dec (count serializable-tx-infos))
+            serializable-tx-infos* (vec serializable-tx-infos)]
         (loop [i 0
                out []]
-          (let [serializable-tx-info (nth serializable-tx-infos i)
+          (let [serializable-tx-info (nth serializable-tx-infos* i)
                 tx-info (au/<? (<serializable-tx-info->tx-info
                                 (assoc fn-arg :serializable-tx-info
                                        serializable-tx-info)))

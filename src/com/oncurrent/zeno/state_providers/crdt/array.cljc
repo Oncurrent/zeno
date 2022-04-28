@@ -271,7 +271,7 @@
       ordered-node-ids)))
 
 (defn get-live-nodes [{:keys [crdt schema] :as arg}]
-  (let [child-schema (l/schema-at-path schema [0])]
+  (let [child-schema (l/child-schema schema)]
     (reduce-kv
      (fn [acc node-id child-crdt]
        (if (-> (assoc arg
@@ -377,8 +377,8 @@
   [{:keys [norm-path path schema] :as arg}]
   (let [ordered-node-ids (get-ordered-node-ids (assoc arg :repair? true))
         arg* (assoc arg
-                    :get-child-schema (fn [k]
-                                        (l/schema-at-path schema [0])))]
+                    :get-child-schema (fn [_]
+                                        (l/child-schema schema)))]
     (if (empty? path)
       (let [id->v (:value (get-sub-value-info arg*))]
         {:norm-path norm-path
