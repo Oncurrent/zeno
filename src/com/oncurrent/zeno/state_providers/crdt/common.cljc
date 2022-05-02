@@ -204,13 +204,10 @@
       (when member-schema
         (get-value-info (assoc arg :schema member-schema))))))
 
-(defn get-op-value-schema [{:keys [op-type norm-path schema]}]
+(defn get-op-value-schema [{:keys [op-type schema path]}]
   (case op-type
     :add-array-edge shared/crdt-array-edge-schema
-    :add-value (do
-                (log/info (str "\n" (u/pprint-str* {:norm-path norm-path
-                                     :at-path-schema (l/schema-at-path schema norm-path)})))
-                (l/schema-at-path schema norm-path))
+    :add-value (l/schema-at-path schema path)
     :delete-array-edge nil
     :delete-value nil))
 
@@ -218,9 +215,9 @@
   [{:keys [storage schema op]}]
   (au/go
     (when op
-      (let [{:keys [norm-path op-type path value]} op
+      (let [{:keys [path op-type path value]} op
             w-schema (get-op-value-schema
-                      (u/sym-map op-type norm-path schema))]
+                      (u/sym-map op-type path schema))]
         (cond-> op
           true (dissoc :value)
           w-schema (assoc :serialized-value
@@ -231,9 +228,9 @@
   [{:keys [storage schema op] :as arg}]
   (au/go
     (when op
-      (let [{:keys [norm-path op-type serialized-value]} op
+      (let [{:keys [path op-type serialized-value]} op
             r-schema (get-op-value-schema
-                      (u/sym-map op-type norm-path schema))]
+                      (u/sym-map op-type path schema))]
         (cond-> op
           true (dissoc :serialized-value)
           r-schema (assoc :value

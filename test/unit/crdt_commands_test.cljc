@@ -87,7 +87,6 @@
              :schema pet-school-schema}
         {:keys [crdt]} (commands/process-cmds arg)
         get-arg {:crdt crdt :path [:pet-owners] :schema (:schema arg)}]
-    (log/info (u/pprint-str* crdt))
     (is (= nil (crdt/get-value get-arg)))
     (is (= {} (crdt/get-value (update get-arg :path conj "a"))))
     (is (= nil (crdt/get-value (update get-arg :path conj nil))))))
@@ -108,7 +107,6 @@
                     :crdt crdt1)
         {crdt2 :crdt} (commands/process-cmds arg2)
         get-arg {:crdt crdt2 :path [:pet-owners] :schema (:schema arg1)}]
-    (log/info (str "\n" (u/pprint-str* crdt2)))
     (is (= nil (crdt/get-value get-arg)))
     (is (= {} (crdt/get-value (update get-arg :path conj "a"))))
     (is (= nil (crdt/get-value (update get-arg :path conj nil))))))
@@ -121,7 +119,6 @@
                       :zeno/path []}]
               :schema pet-school-schema}
         {crdt1 :crdt} (commands/process-cmds arg1)
-        _ (log/info (str "\n" (u/pprint-str* crdt1)))
         arg2 (assoc arg1
                     :cmds [{:zeno/arg {}
                             :zeno/op :zeno/set
@@ -129,7 +126,6 @@
                     :crdt crdt1)
         {crdt2 :crdt} (commands/process-cmds arg2)
         get-arg {:crdt crdt2 :path [:pet-owners] :schema (:schema arg1)}]
-    (log/info (str "\n" (u/pprint-str* crdt2)))
     (is (= nil (crdt/get-value get-arg)))
     (is (= {} (crdt/get-value (update get-arg :path conj "a"))))
     (is (= nil (crdt/get-value (update get-arg :path conj nil))))))
