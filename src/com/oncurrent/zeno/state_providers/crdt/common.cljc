@@ -207,7 +207,7 @@
 (defn get-op-value-schema [{:keys [op-type schema path]}]
   (case op-type
     :add-array-edge shared/crdt-array-edge-schema
-    :add-value (l/schema-at-path schema path)
+    :add-value (l/schema-at-path schema path {:branches? true})
     :delete-array-edge nil
     :delete-value nil))
 
@@ -215,7 +215,7 @@
   [{:keys [storage schema op]}]
   (au/go
     (when op
-      (let [{:keys [path op-type path value]} op
+      (let [{:keys [path op-type value]} op
             w-schema (get-op-value-schema
                       (u/sym-map op-type path schema))]
         (cond-> op
@@ -278,9 +278,13 @@
   (au/go
     (when update-info
       (let [{:keys [norm-path value]} update-info
+            _ (log/info value)
+            _ (log/info (keys update-info))
+            _ (log/info norm-path)
             value-schema (when-not (nil? value)
                            (l/schema-at-path schema
                                              (rest norm-path)))
+            ; _ (log/info (u/pprint-str* value-schema))
             range? (#{:zeno/insert-range-after
                       :zeno/insert-range-before} (:op update-info))
             range-schema (when range?
