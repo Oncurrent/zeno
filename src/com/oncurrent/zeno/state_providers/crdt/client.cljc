@@ -43,32 +43,22 @@
         (if (seq unauth-cmds)
           (throw (ex-info "Transaction aborted due to unauthorized cmds."
                           (u/sym-map cmds unauth-cmds actor-id)))
-          (let [_ (log/info "11111111")
-                ret (commands/process-cmds {:cmds cmds
+          (let [ret (commands/process-cmds {:cmds cmds
                                             :crdt @*crdt-state
                                             :schema schema
                                             :root root})
-                _ (log/info "222222222")
                 {:keys [crdt ops update-infos]} ret
-                _ (log/info "333333333333")
                 ;; We can use `reset!` here because there are no
                 ;; concurrent updates
                 _ (reset! *crdt-state crdt)
-                _ (log/info "444444444444")
                 tx-id (u/compact-random-uuid)
-                _ (log/info "5555555555")
                 k (common/tx-id->tx-info-k tx-id)
-                _ (log/info "6666666")
                 storage @*storage
-                _ (log/info "777777777")
-                ; _ (log/info (u/pprint-str* ops))
                 ser-ops (au/<? (common/<crdt-ops->serializable-crdt-ops
                                 (u/sym-map ops schema storage)))
-                _ (log/info "88888888888")
                 ser-update-infos (au/<?
                                   (common/<update-infos->serializable-update-infos
                                    (u/sym-map schema storage update-infos)))
-                _ (log/info "999999999")
                 tx-info {:actor-id actor-id
                          :client-id client-id
                          :crdt-ops ser-ops
