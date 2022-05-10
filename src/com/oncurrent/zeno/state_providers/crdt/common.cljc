@@ -198,7 +198,7 @@
 (defmethod get-value-info :union
   [{:keys [crdt norm-path path schema] :as arg}]
   (if (empty? crdt)
-    {:norm-path path
+    {:norm-path norm-path
      :value nil}
     (let [member-schema (get-member-schema arg)]
       (when member-schema
