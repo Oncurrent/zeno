@@ -121,6 +121,10 @@
 
 (defn <client-resume-login-session
   [{:keys [login-session-token zeno-client]}]
-  (t2c/<send-msg! (:talk2-client zeno-client)
-                  :resume-login-session
-                  login-session-token))
+  (au/go
+   (when-let [ret (au/<? (t2c/<send-msg! (:talk2-client zeno-client)
+                                         :resume-login-session
+                                         login-session-token))]
+     (set-actor-id!
+      (assoc zeno-client :actor-id (:actor-id ret)))
+     ret)))

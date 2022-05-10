@@ -118,9 +118,9 @@
   ;; TODO: Implement batching
   (ca/go
     (try
-      (let [msg-arg  {:msg-type :get-consumer-txs
-                      :arg {:last-tx-id @*last-tx-id}}
-            serializable-tx-infos (au/<? (<send-msg msg-arg))]
+     (let [msg-arg  {:msg-type :get-consumer-txs
+                     :arg {:last-tx-id @*last-tx-id}}
+           serializable-tx-infos (au/<? (<send-msg msg-arg))]
         (when (seq serializable-tx-infos)
           (let [tx-infos (au/<? (common/<serializable-tx-infos->tx-infos
                                  (u/sym-map <request-schema schema
@@ -165,7 +165,7 @@
     (try
       (loop [fencing-token @*sync-session-fencing-token]
         (au/<? (<consume-txs! fn-arg))
-        (au/alts? [server-tx-ch (ca/timeout 100)])
+        (au/alts? [server-tx-ch (ca/timeout 3000)])
         (when (and @*client-running?
                    (= fencing-token @*sync-session-fencing-token))
           (recur @*sync-session-fencing-token)))
