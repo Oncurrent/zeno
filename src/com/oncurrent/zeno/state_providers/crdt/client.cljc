@@ -118,19 +118,13 @@
   ;; TODO: Implement batching
   (ca/go
     (try
-     (let [->s (fn [a b] (/ (- b a) 1000.0))
-           start (u/current-time-ms)
-           msg-arg  {:msg-type :get-consumer-txs
+     (let [msg-arg  {:msg-type :get-consumer-txs
                      :arg {:last-tx-id @*last-tx-id}}
-           serializable-tx-infos (au/<? (<send-msg msg-arg))
-           t1 (u/current-time-ms)
-           _ (log/info "fetch txs:" (->s start t1))]
+           serializable-tx-infos (au/<? (<send-msg msg-arg))]
         (when (seq serializable-tx-infos)
           (let [tx-infos (au/<? (common/<serializable-tx-infos->tx-infos
                                  (u/sym-map <request-schema schema
                                             serializable-tx-infos storage)))
-                t2 (u/current-time-ms)
-                _ (log/info "ser-txi->txi:" (->s t1 t2))
                 info (reduce (fn [acc {:keys [crdt-ops tx-id update-infos]}]
                                (-> acc
                                    (assoc :last-tx-id tx-id)
@@ -144,10 +138,8 @@
                                  (apply-ops/apply-ops {:crdt old-crdt
                                                        :ops (:ops info)
                                                        :schema schema})))
-            (log/info "apply-ops:" (->s t2 (u/current-time-ms)))
             (reset! *last-tx-id (:last-tx-id info))
-            (update-subscriptions! (:update-infos info))
-            (log/info "total:" (->s start (u/current-time-ms))))))
+            (update-subscriptions! (:update-infos info)))))
       (catch #?(:clj Exception :cljs js/Error) e
         (log/error (str "Error in <consume-txs!:\n"
                         (u/ex-msg-and-stacktrace e)))))))

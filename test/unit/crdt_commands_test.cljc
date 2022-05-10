@@ -99,7 +99,6 @@
                       :zeno/path []}]
               :schema pet-school-schema}
         {crdt1 :crdt} (commands/process-cmds arg1)
-        _ (log/info (str "\n" (u/pprint-str* crdt1)))
         arg2 (assoc arg1
                     :cmds [{:zeno/arg {:pet-owners {}}
                             :zeno/op :zeno/set
