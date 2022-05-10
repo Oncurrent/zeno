@@ -165,7 +165,7 @@
     (try
       (loop [fencing-token @*sync-session-fencing-token]
         (au/<? (<consume-txs! fn-arg))
-        (au/alts? [server-tx-ch (ca/timeout 3000)])
+        (au/alts? [server-tx-ch (ca/timeout 100)])
         (when (and @*client-running?
                    (= fencing-token @*sync-session-fencing-token))
           (recur @*sync-session-fencing-token)))
