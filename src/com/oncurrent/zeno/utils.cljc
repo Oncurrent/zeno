@@ -407,6 +407,11 @@
               {}
               parts))))
 
+(defn chop-root [path root]
+  (if (or (empty? path) (not= root (first path)))
+    path
+    (recur (rest path) root)))
+
 ;;;;;;;;;;;;;;;;;;;; Platform detection ;;;;;;;;;;;;;;;;;;;;
 
 (defn jvm? []

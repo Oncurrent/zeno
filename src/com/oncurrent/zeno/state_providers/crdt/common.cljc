@@ -16,11 +16,6 @@
 (defn tx-id->tx-info-k [tx-id]
   (str tx-info-prefix tx-id))
 
-(defn chop-root [path root]
-  (if (or (empty? path) (not= root (first path)))
-    path
-    (recur (rest path) root)))
-
 (defn schema->dispatch-type [schema]
   (-> (l/schema-type schema)
       (container-types)

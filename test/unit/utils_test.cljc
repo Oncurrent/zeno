@@ -87,3 +87,11 @@
       (is (= expected (u/expand-path (constantly nil) path))))
     (catch #?(:clj Exception :cljs js/Error) e
       (is (= :unexpected e)))))
+
+(deftest chop-root
+  (let [f u/chop-root]
+    (is (= [] (f [] nil)))
+    (is (= [] (f [:zeno/crdt] :zeno/crdt)))
+    (is (= [:pigs] (f [:zeno/crdt :pigs] :zeno/crdt)))
+    (is (= [:zeno/crdt :pigs] (f [:zeno/crdt :pigs] :pigs)))
+    (is (= [:pigs] (f [:zeno/crdt :zeno/crdt :zeno/crdt :pigs] :zeno/crdt)))))

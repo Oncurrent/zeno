@@ -621,7 +621,7 @@
   (do-insert arg))
 
 (defn process-cmd [{:keys [cmd root] :as arg}]
-  (let [path (-> cmd :zeno/path (c/chop-root root))]
+  (let [path (-> cmd :zeno/path (u/chop-root root))]
     (process-cmd* (-> arg
                       (assoc :cmd-arg (:zeno/arg cmd))
                       (assoc :cmd-path path)

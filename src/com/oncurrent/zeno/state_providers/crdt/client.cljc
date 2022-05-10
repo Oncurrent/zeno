@@ -205,7 +205,7 @@
                        (common/get-value-info
                         (assoc gs-arg
                                :crdt @*crdt-state
-                               :path (common/chop-root path root)
+                               :path (u/chop-root path root)
                                :norm-path [root]
                                :schema schema)))
         *host-fns (atom {})

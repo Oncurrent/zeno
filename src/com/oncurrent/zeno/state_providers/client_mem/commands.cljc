@@ -83,7 +83,7 @@
   [state {:zeno/keys [path op arg]} root]
   (let [{:keys [norm-path]} (get-in-state state path root)
         state-path (if root
-                     (rest norm-path)
+                     (u/chop-root norm-path root)
                      norm-path)
         new-state (if (seq state-path)
                     (assoc-in state state-path arg)
@@ -119,7 +119,7 @@
                                     (u/sym-map norm-i path
                                                norm-path))))))
         state-path (if root
-                     (rest norm-path)
+                     (u/chop-root norm-path root)
                      norm-path)
         new-state (cond
                     (nil? new-parent)
@@ -164,7 +164,7 @@
         [h t] (split-at split-i value)
         new-parent (vec (concat h (if range? arg [arg]) t))
         state-path (if root
-                     (rest norm-path)
+                     (u/chop-root norm-path root)
                      norm-path)
         new-state (if (empty? state-path)
                     new-parent
