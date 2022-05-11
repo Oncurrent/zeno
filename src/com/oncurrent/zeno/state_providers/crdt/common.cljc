@@ -196,8 +196,10 @@
     {:norm-path norm-path
      :value nil}
     (let [member-schema (get-member-schema arg)]
-      (when member-schema
-        (get-value-info (assoc arg :schema member-schema))))))
+      (if member-schema
+        (get-value-info (assoc arg :schema member-schema))
+        {:norm-path norm-path
+         :value nil}))))
 
 (defn get-op-value-schema [{:keys [op-type schema path]}]
   (case op-type
