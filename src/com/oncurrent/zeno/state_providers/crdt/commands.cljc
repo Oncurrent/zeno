@@ -62,8 +62,7 @@
                current-add-id-to-value-info)))
 
 (defn associative-get-delete-ops
-  [{:keys [crdt get-child-path-info get-child-schema
-           norm-path path schema array?]
+  [{:keys [crdt get-child-path-info get-child-schema path schema array?]
     :as arg}]
   (let [get-child-ops (fn [{:keys [k i sub-path]}]
                         (-> (get-delete-ops
@@ -204,7 +203,7 @@
     (set/union node-ops edge-ops)))
 
 (defmethod get-delete-ops :union
-  [{:keys [crdt norm-path path schema] :as arg}]
+  [{:keys [crdt path schema] :as arg}]
   (let [{:keys [union-branch]} crdt
         member-schema (when union-branch
                         (l/member-schema-at-branch schema union-branch))]
@@ -219,7 +218,7 @@
       #{})))
 
 (defmethod get-add-ops :single-value
-  [{:keys [cmd-arg make-id norm-path sys-time-ms]}]
+  [{:keys [cmd-arg make-id sys-time-ms]}]
   #{{:add-id (make-id)
      :norm-path '()
      :op-type :add-value
@@ -228,13 +227,12 @@
      :value cmd-arg}})
 
 (defmethod get-add-ops :map
-  [{:keys [cmd-arg cmd-path crdt norm-path path schema] :as arg}]
+  [{:keys [cmd-arg cmd-path crdt path schema] :as arg}]
   (let [values-schema (l/child-schema schema)]
     (if (seq path)
       (let [[k & ks] path]
         (-> (get-add-ops (assoc arg
                                 :crdt (get-in crdt [:children k])
-                                :norm-path (conj norm-path k)
                                 :path ks
                                 :schema values-schema))
             ((fn [ops]
@@ -262,14 +260,13 @@
                    cmd-arg)))))
 
 (defmethod get-add-ops :record
-  [{:keys [cmd-arg cmd-path crdt norm-path path schema] :as arg}]
+  [{:keys [cmd-arg cmd-path crdt path schema] :as arg}]
   (if (seq path)
     (let [[k & ks] path]
       (-> (get-add-ops (assoc arg
-                                   :crdt (get-in crdt [:children k])
-                                   :norm-path (conj norm-path k)
-                                   :path ks
-                                   :schema (l/child-schema schema k)))
+                              :crdt (get-in crdt [:children k])
+                              :path ks
+                              :schema (l/child-schema schema k)))
           ((fn [ops]
              (xf-op-paths {:prefix k
                            :ops ops})))))
@@ -284,12 +281,11 @@
                 (let [v (get cmd-arg k)
                       child-schema (l/child-schema schema k)
                       add-ops (get-add-ops
-                           (assoc arg
-                                  :cmd-arg v
-                                  :crdt (get-in crdt [:children k])
-                                  :norm-path (conj norm-path k)
-                                  :path []
-                                  :schema child-schema))]
+                               (assoc arg
+                                      :cmd-arg v
+                                      :crdt (get-in crdt [:children k])
+                                      :path []
+                                      :schema child-schema))]
                   (set/union acc
                              (xf-op-paths {:prefix k
                                            :ops add-ops}))))
