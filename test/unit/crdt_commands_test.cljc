@@ -1157,28 +1157,6 @@
                                            :path []
                                            :schema (:schema arg)})))))
 
-(comment
- (krun #'test-get-join))
-(deftest test-get-join
-  (let [value {:pet-owners {"steve-id" {:name "steve"
-                                        :pets [{:name "p1"
-                                                :species "s1"}
-                                               {:name "p2"
-                                                :species "s2"}]}
-                            "bob-id" {:name "bob"
-                                      :pets [{:name "p3"
-                                              :species "s3"}]}}}
-        arg {:cmds [{:zeno/arg value
-                     :zeno/op :zeno/set
-                     :zeno/path [:zeno/crdt]}]
-             :root :zeno/crdt
-             :schema pet-school-schema}
-        {:keys [crdt]} (commands/process-cmds arg)
-        expected-value (get-in value [:pet-owners "steve-id"])]
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path [:pet-owners ["steve-id"]]
-                                           :schema (:schema arg)})))))
-
 ;; BROKEN
 (comment (krun #'test-get-empty-array))
 (deftest test-get-empty-array
