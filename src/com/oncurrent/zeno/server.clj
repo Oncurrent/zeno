@@ -389,7 +389,7 @@
   ;; TODO: Implement
   )
 
-(defn make-update-state [{:keys [env-name env-sp-root->info]}]
+(defn make-<update-state! [{:keys [env-name env-sp-root->info]}]
   (fn [{:zeno/keys [cmds] :as fn-arg}]
     (au/go
       (check-update-state-arg fn-arg)
@@ -410,23 +410,167 @@
                                 :zeno/cmds cmds)))))
         true))))
 
-(defn make-get-state [{:keys [env-name env-sp-root->info]}]
+(defn <ks-at-path [{:keys [full-path kw path root <get-state]}]
+  (au/go
+   (let [coll (:value (au/<? (<get-state (u/sym-map path root))))]
+     (cond
+      (map? coll)
+      (keys coll)
+
+      (sequential? coll)
+      (range (count coll))
+
+      (nil? coll)
+      []
+
+      :else
+      (throw
+       (ex-info
+        (str "`" kw "` is in the path, but "
+             "there is not a collection at " path ".")
+        {:full-path full-path
+         :missing-collection-path path
+         :value coll}))))))
+
+(defn <count-at-path [{:keys [path root <get-state]}]
+  (au/go
+   (let [coll (:value (au/<? (<get-state (u/sym-map path root))))]
+     (cond
+      (or (map? coll) (sequential? coll))
+      (count coll)
+
+      (nil? coll)
+      0
+
+      :else
+      (throw
+       (ex-info
+        (str "`:zeno/count` terminates path, but there is not a collection at "
+             path ".")
+        {:path path
+         :value coll}))))))
+
+(defn <do-concat [{:keys [path root <get-state]}]
+  (au/go
+   (let [seqs (:value (au/<? (<get-state (u/sym-map path root))))]
+     (when (and (not (nil? seqs))
+                (or (not (sequential? seqs))
+                    (not (sequential? (first seqs)))))
+       (throw
+        (ex-info
+         (str "`:zeno/concat` terminates path, but there "
+              "is not a sequence of sequences at " path ".")
+         {:path path
+          :value seqs})))
+     (apply concat seqs))))
+
+(defn <get-value-and-expanded-paths [{:keys [path root <get-state] :as fn-arg}]
+  ;; TODO: Optimize this. Only traverse the path once.
+  ;; TODO: Unify with what is in state_subscriptions.cljc?
+  (au/go
+   (let [last-path-k (last path)
+         join? (u/has-join? path)
+         wildcard-parent (-> (partition-by #(= :zeno/* %) path)
+                             (first))
+         wildcard? (not= path wildcard-parent)
+         terminal-kw? (u/terminal-kw-ops last-path-k)
+         <ks-at-path* #(<ks-at-path {:full-path path
+                                     :kw :zeno/*
+                                     :path %
+                                     :root root
+                                     :<get-state <get-state})]
+     (cond
+      (u/empty-sequence-in-path? path)
+      [nil [path]]
+
+      (and (not terminal-kw?) (not join?))
+      (let [{:keys [norm-path value]} (au/<? (<get-state
+                                              (u/sym-map path root)))]
+        [value [norm-path]])
+
+      (and terminal-kw? (not join?))
+      (let [path* (butlast path)
+            value (case last-path-k
+                    :zeno/keys
+                    (au/<? (<ks-at-path {:full-path path
+                                         :kw :zeno/keys
+                                         :path path*
+                                         :root root
+                                         :<get-state <get-state}))
+
+                    :zeno/count
+                    (au/<? (<count-at-path {:path path*
+                                            :root root
+                                            :<get-state <get-state}))
+
+                    :zeno/concat
+                    (au/<? (<do-concat {:path path*
+                                        :root root
+                                        :<get-state <get-state})))]
+        [value [path*]])
+
+      (and (not terminal-kw?) join?)
+      (let [xpaths (au/<? (u/<expand-path <ks-at-path* path))
+            num-results (count xpaths)
+            xpaths* (if wildcard?
+                      [wildcard-parent]
+                      xpaths)]
+        (if (zero? num-results)
+          [[] xpaths*]
+          ;; Use loop to stay in go block
+          (loop [out []
+                 i 0]
+            (let [path* (nth xpaths i)
+                  ret (au/<? (<get-value-and-expanded-paths
+                              (assoc fn-arg :path path*)))
+                  new-out (conj out (first ret))
+                  new-i (inc i)]
+              (if (not= num-results new-i)
+                (recur new-out new-i)
+                [new-out xpaths*])))))
+
+      (and terminal-kw? join?)
+      (let [xpaths (au/<? (u/<expand-path <ks-at-path* (butlast path)))
+            num-results (count xpaths)
+            xpaths* (if wildcard?
+                      [wildcard-parent]
+                      xpaths)]
+        (if (zero? num-results)
+          [[] xpaths*]
+          (let [results (loop [out [] ;; Use loop to stay in go block
+                               i 0]
+                          (let [path* (nth xpaths i)
+                                ret (au/<? (<get-value-and-expanded-paths
+                                            (assoc fn-arg :path path*)))
+                                new-out (conj out (first ret))
+                                new-i (inc i)]
+                            (if (not= num-results new-i)
+                              (recur new-out new-i)
+                              new-out)))
+                v (case last-path-k
+                    :zeno/keys (range (count results))
+                    :zeno/count (count results)
+                    :zeno/concat (apply concat results))]
+            [v xpaths*])))))))
+
+(defn make-<get-state [{:keys [env-name env-sp-root->info]}]
   (fn [{:zeno/keys [path] :as fn-arg}]
-    (check-get-state-arg fn-arg)
-    (let [[root & tail] path
-          sp-info (env-sp-root->info root)
-          branch (or (:branch fn-arg)
-                     (:state-provider-branch sp-info)
-                     env-name)
-          f (-> sp-info :state-provider ::sp-impl/<get-state)]
-      (f (assoc fn-arg
-                :zeno/branch branch
-                :zeno/path tail
-                :zeno/root root)))))
+    (au/go
+     (check-get-state-arg fn-arg)
+     (let [[root & tail] path
+           sp-info (env-sp-root->info root)
+           branch (or (:branch fn-arg)
+                      (:state-provider-branch sp-info)
+                      env-name)
+           <get-state* (-> sp-info :state-provider ::sp-impl/<get-state)
+           <get-state (fn [{p :path r :root}]
+                        (<get-state* #:zeno{:branch branch :path p :root r}))]
+       (first (au/<? (<get-value-and-expanded-paths
+                      {:path tail :root root :<get-state <get-state})))))))
 
 (defn make-state-fns [arg]
-  (let [<update-state! (make-update-state arg)
-        <get-state (make-get-state arg)
+  (let [<update-state! (make-<update-state! arg)
+        <get-state (make-<get-state arg)
         <set-state! (fn [{:zeno/keys [branch path value]}]
                       (<update-state! #:zeno{:branch branch
                                              :cmds [#:zeno{:arg value

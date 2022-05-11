@@ -188,9 +188,10 @@
         *storage (atom nil)
         <get-state (fn [{:zeno/keys [branch path]}]
                      (au/go
-                       (common/get-value
+                       (common/get-value-info
                         {:crdt (get @*branch->crdt-store branch)
                          :path path
+                         :norm-path []
                          :schema schema})))
         <update-state! (fn [{:zeno/keys [branch cmds] :as us-arg}]
                          (au/go

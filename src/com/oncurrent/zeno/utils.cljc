@@ -219,6 +219,27 @@
         true (update :template conj coll-index)
         true (update :coll-index inc)))))
 
+(defn <parse-path [<ks-at-path path]
+  (au/go
+    (let [path-len (count path)
+          ;; Use loop to stay in go block
+          info (loop [acc initial-path-info
+                      i 0]
+                 (let [element (nth path i)
+                       element* (cond
+                                  (set? element)
+                                  (seq element)
+                                  (= :zeno/* element)
+                                  (au/<? (<ks-at-path (:in-progress acc)))
+                                  :else
+                                  element)
+                       new-acc (update-parse-path-acc acc element*)
+                       new-i (inc i)]
+                   (if (= path-len new-i)
+                     new-acc
+                     (recur new-acc new-i))))]
+      (post-process-path-info info))))
+
 (defn parse-path [ks-at-path path]
   (let [info (reduce
               (fn [acc element]
@@ -244,6 +265,13 @@
                                       element)))
                       '() template)))
        (cartesian-product colls)))
+
+(defn <expand-path [<ks-at-path path]
+  (au/go
+   (if-not (has-join? path)
+     [path]
+     (let [{:keys [template colls]} (au/<? (<parse-path <ks-at-path path))]
+       (expand-template template colls)))))
 
 (defn expand-path [ks-at-path path]
   (if-not (has-join? path)

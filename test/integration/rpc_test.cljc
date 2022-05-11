@@ -14,8 +14,8 @@
 ;;;; You must start the integration test server for these tests to work.
 ;;;; $ bin/run-test-server
 
-(comment (kaocha.repl/run *ns*))
-
+(comment
+ (kaocha.repl/run *ns*))
 (deftest test-rpc
   (au/test-async
    10000

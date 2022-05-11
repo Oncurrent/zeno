@@ -49,6 +49,7 @@
   [:specialties specialties-schema])
 
 (l/def-map-schema pet-owners-schema pet-owner-schema)
+
 (l/def-record-schema pet-school-schema
   [:pet-owners (l/map-schema pet-owner-schema)])
 
@@ -1155,3 +1156,18 @@
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:schema arg)})))))
+
+;; BROKEN
+(comment (krun #'test-get-empty-array))
+(deftest test-get-empty-array
+  (let [value {:pet-owners {"bob-id" {:name "bob"
+                                      :pets []}}}
+        arg {:cmds [{:zeno/arg value
+                     :zeno/op :zeno/set
+                     :zeno/path [:zeno/crdt]}]
+             :root :zeno/crdt
+             :schema pet-school-schema}
+        {:keys [crdt]} (commands/process-cmds arg)]
+    (is (= value (crdt/get-value {:crdt crdt
+                                  :path []
+                                  :schema (:schema arg)})))))
