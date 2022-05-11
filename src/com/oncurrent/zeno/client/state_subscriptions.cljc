@@ -208,10 +208,11 @@
                                     :state state
                                     :zc zc})
 
-                    :zeno/concat {:path path*
-                                  :root root
-                                  :state state
-                                  :zc zc})]
+                    :zeno/concat
+                    (do-concat {:path path*
+                                :root root
+                                :state state
+                                :zc zc}))]
         [value [path*]])
 
       (and (not terminal-kw?) join?)
