@@ -1182,3 +1182,27 @@
     (is (= value (crdt/get-value {:crdt crdt
                                   :path []
                                   :schema (:schema arg)})))))
+
+(comment
+ (krun #'test-record-nested-negative-insert-after))
+(deftest test-record-nested-negative-insert-after
+  (let [value "id"
+        arg {:cmds [{:zeno/arg value
+                     :zeno/op :zeno/insert-after
+                     :zeno/path [:zeno/crdt :a -1]}]
+             :root :zeno/crdt
+             :schema (l/record-schema :r1
+                                      [[:a (l/array-schema
+                                            l/string-schema)]])}
+        {:keys [crdt ops]} (commands/process-cmds arg)
+        expected-value {:a [value]}
+        applied-crdt (apply-ops/apply-ops {:crdt {}
+                                           :ops ops
+                                           :schema (:schema arg)})]
+    (is (= crdt applied-crdt))
+    (is (= value (crdt/get-value {:crdt crdt
+                                  :path [:a -1]
+                                  :schema (:schema arg)})))
+    (is (= expected-value (crdt/get-value {:crdt crdt
+                                           :path []
+                                           :schema (:schema arg)})))))

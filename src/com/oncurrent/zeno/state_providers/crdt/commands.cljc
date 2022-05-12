@@ -565,7 +565,8 @@
         (update :ops (fn [ops]
                        (xf-op-paths {:prefix union-branch
                                      :ops ops
-                                     :union? true}))))))
+                                     :union? true})))
+        (assoc-in [:crdt :union-branch] union-branch))))
 
 (defmethod do-insert :single-value
   [{:keys [cmd-arg cmd-type schema path] :as arg}]
