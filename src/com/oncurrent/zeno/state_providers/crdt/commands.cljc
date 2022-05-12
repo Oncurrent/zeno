@@ -367,7 +367,12 @@
                   cmd-arg)
             {:keys [node-ids node-ops]} info
             initial-eops (if (empty? node-ids)
-                           #{}
+                           #{{:add-id (make-id)
+                              :op-type :add-array-edge
+                              :path '()
+                              :sys-time-ms (or sys-time-ms (u/current-time-ms))
+                              :value {:head-node-id array/array-start-node-id
+                                      :tail-node-id array/array-end-node-id}}}
                            #{{:add-id (make-id)
                               :op-type :add-array-edge
                               :path '()

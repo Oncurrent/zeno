@@ -58,12 +58,14 @@
   [{:keys [get-child-schema crdt norm-path path] :as arg}]
   (if (empty? path)
     (let [value (reduce-kv
-                 (fn [acc k _]
+                 (fn [acc k x]
                    (let [v (-> (assoc arg :path [k])
                                (get-value-info)
                                (:value))]
                      (if (or (nil? v)
-                             (and (coll? v) (empty? v)))
+                             (and (coll? v)
+                                  (empty? v)
+                                  (empty? (:current-edge-add-ids x))))
                        acc
                        (assoc acc k v))))
                  {}
