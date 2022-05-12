@@ -1157,17 +1157,28 @@
                                            :path []
                                            :schema (:schema arg)})))))
 
-;; BROKEN
-(comment (krun #'test-get-empty-array))
-(deftest test-get-empty-array
-  (let [value {:pet-owners {"bob-id" {:name "bob"
-                                      :pets []}}}
+(comment (krun #'test-empty-array))
+(deftest test-empty-array
+  (let [value []
         arg {:cmds [{:zeno/arg value
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}]
              :root :zeno/crdt
-             :schema pet-school-schema}
+             :schema (l/array-schema l/string-schema)}
         {:keys [crdt]} (commands/process-cmds arg)]
+    (is (= value (crdt/get-value {:crdt crdt
+                                  :path []
+                                  :schema (:schema arg)})))))
+
+(comment (krun #'test-empty-array-as-value))
+(deftest test-empty-array-as-value
+  (let [value {"a" []}
+        arg {:cmds [{:zeno/arg value
+                     :zeno/op :zeno/set
+                     :zeno/path [:zeno/crdt]}]
+             :root :zeno/crdt
+             :schema (l/map-schema (l/array-schema l/string-schema))}
+        {:keys [crdt ops]} (commands/process-cmds arg)]
     (is (= value (crdt/get-value {:crdt crdt
                                   :path []
                                   :schema (:schema arg)})))))
