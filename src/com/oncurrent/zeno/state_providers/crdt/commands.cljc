@@ -227,7 +227,7 @@
      :value cmd-arg}})
 
 (defmethod get-add-ops :map
-  [{:keys [cmd-arg cmd-path crdt path schema] :as arg}]
+  [{:keys [cmd-arg cmd-path cmd-type crdt path schema] :as arg}]
   (let [values-schema (l/child-schema schema)]
     (if (seq path)
       (let [[k & ks] path]
@@ -240,9 +240,9 @@
                              :ops ops})))))
       (let [edn-schema (l/edn schema)
             pred (c/edn-schema->pred edn-schema)
-            _ (when-not (pred cmd-arg)
+            _ (when (and (= :zeno/set cmd-type) (not (pred cmd-arg)))
                 (throw (ex-info
-                        (str ":arg (` " (or cmd-arg "nil") "`) is not the "
+                        (str ":arg (`" (or cmd-arg "nil") "`) is not the "
                              "correct type for this command.")
                         {:arg cmd-arg
                          :path cmd-path})))]
@@ -260,7 +260,7 @@
                    cmd-arg)))))
 
 (defmethod get-add-ops :record
-  [{:keys [cmd-arg cmd-path crdt path schema] :as arg}]
+  [{:keys [cmd-arg cmd-path cmd-type crdt path schema] :as arg}]
   (if (seq path)
     (let [[k & ks] path]
       (-> (get-add-ops (assoc arg
@@ -271,7 +271,7 @@
              (xf-op-paths {:prefix k
                            :ops ops})))))
     (do
-      (when-not (associative? cmd-arg)
+      (when (and (= :zeno/set cmd-type) (not (associative? cmd-arg)))
         (throw (ex-info
                 (str "Command path indicates a record, but `:arg` is "
                      "not associative. Got `" (or cmd-arg "nil") "`.")
@@ -311,12 +311,12 @@
                          :union? true}))))))
 
 (defmethod get-add-ops :array
-  [{:keys [cmd-arg cmd-path crdt make-id norm-path path
+  [{:keys [cmd-arg cmd-path cmd-type crdt make-id norm-path path
            schema sys-time-ms]
     :as arg}]
   (let [items-schema (l/child-schema schema)
         ordered-node-ids (array/get-ordered-node-ids arg)]
-    (if (seq path)
+    (if (and (= :zeno/set cmd-type) (seq path))
       (let [[i & sub-path] path
             ni (u/get-normalized-array-index
                 {:array-len (count ordered-node-ids)
@@ -336,7 +336,7 @@
                       :prefix k
                       :i ni
                       :ops add-ops}))
-      (let [_ (when-not (sequential? cmd-arg)
+      (let [_ (when (and (= :zeno/set cmd-type) (not (sequential? cmd-arg)))
                 (throw (ex-info
                         (str "Command path indicates an array, but arg is "
                              "not sequential. Got `" (or cmd-arg "nil") "`.")
@@ -364,7 +364,7 @@
                           (update :node-ids conj node-id))))
                   {:node-ids []
                    :node-ops #{}}
-                  cmd-arg)
+                  (if (sequential? cmd-arg) cmd-arg [cmd-arg]))
             {:keys [node-ids node-ops]} info
             initial-eops (if (empty? node-ids)
                            #{{:add-id (make-id)
@@ -406,9 +406,9 @@
                          (l/schema-type schema) "`.")
                     (u/sym-map path cmd-arg cmd-type cmd-path))))
   (let [[i & sub-path] path]
-    (when (seq sub-path)
+    (when (and (seq sub-path) (not (int? i)))
       (throw (ex-info
-              (str "In " cmd-type " update expressions, the path"
+              (str "In " cmd-type " update expressions, the path "
                    "must end with an array index. Got `" path "`.")
               (u/sym-map path cmd-type cmd-arg cmd-path))))
     (when-not (int? i)
@@ -430,7 +430,7 @@
         add-ops (get-add-ops
                  (assoc arg
                         :crdt repaired-crdt
-                        :path []
+                        :path sub-path
                         :schema items-schema))
         ordered-node-ids (array/get-ordered-node-ids arg)
         array-len (count ordered-node-ids)
