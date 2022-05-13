@@ -1242,7 +1242,6 @@
                                            :ops ops
                                            :schema (:schema arg)})]
     (is (= crdt applied-crdt))
-    (log/info (str "\n" (u/pprint-str* crdt)))
     (is (= value (crdt/get-value {:crdt crdt
                                   :path [0 -1]
                                   :schema (:schema arg)})))

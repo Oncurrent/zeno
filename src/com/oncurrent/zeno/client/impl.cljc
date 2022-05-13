@@ -299,33 +299,30 @@
         *connected? (atom false)
         ;; TODO: Is there a case where this would drop data
         update-state-ch (ca/chan (ca/sliding-buffer 1000))
-        actor-id-root->sp {::sp-impl/get-state-atom (constantly *actor-id)}
-        arg (-> (u/sym-map *actor-id
-                           *connected?
-                           *state-sub-name->info
-                           *stop?
-                           *talk2-client
-                           admin-password
-                           client-name
-                           env-lifetime-mins
-                           env-name
-                           get-server-base-url
-                           root->state-provider
-                           rpcs
-                           storage
-                           source-env-name
-                           update-state-ch)
-                (update :root->state-provider
-                        assoc :zeno/actor-id actor-id-root->sp))
+        arg (u/sym-map *actor-id
+                       *connected?
+                       *state-sub-name->info
+                       *stop?
+                       *talk2-client
+                       admin-password
+                       client-name
+                       env-lifetime-mins
+                       env-name
+                       get-server-base-url
+                       root->state-provider
+                       rpcs
+                       storage
+                       source-env-name
+                       update-state-ch)
         talk2-client (when (:zeno/get-server-base-url config*)
                        (make-talk2-client arg))
         _ (reset! *talk2-client talk2-client)
         _ (initialize-state-providers! (assoc arg :talk2-client talk2-client))
         <on-actor-id-change (fn [actor-id]
                               (au/go
-                               (doseq [[root sp] root->state-provider]
-                                 (when-let [<oaic (::sp-impl/<on-actor-id-change sp)]
-                                   (au/<? (<oaic actor-id))))))
+                                (doseq [[root sp] root->state-provider]
+                                  (when-let [<oaic (::sp-impl/<on-actor-id-change sp)]
+                                    (au/<? (<oaic actor-id))))))
         zc (merge arg (u/sym-map *next-instance-num
                                  *next-topic-sub-id
                                  *topic-name->sub-id->cb

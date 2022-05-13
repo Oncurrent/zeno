@@ -114,8 +114,8 @@
     (->> (dep/topo-sort g)
          (filter #(not= :zeno/root %)))))
 
-(defn ks-at-path [{:keys [full-path kw state path root zc]}]
-  (let [coll (:value (get-in-state (u/sym-map state path root zc)))]
+(defn ks-at-path [{:keys [full-path kw path root zc]}]
+  (let [coll (:value (get-in-state (u/sym-map path root zc)))]
     (cond
       (map? coll)
       (keys coll)
@@ -135,8 +135,8 @@
          :missing-collection-path path
          :value coll})))))
 
-(defn count-at-path [{:keys [path root state zc]}]
-  (let [coll (:value (get-in-state (u/sym-map state path root zc)))]
+(defn count-at-path [{:keys [path root zc]}]
+  (let [coll (:value (get-in-state (u/sym-map path root zc)))]
     (cond
       (or (map? coll) (sequential? coll))
       (count coll)
@@ -152,8 +152,8 @@
         {:path path
          :value coll})))))
 
-(defn do-concat [{:keys [state path root zc]}]
-  (let [seqs (:value (get-in-state (u/sym-map state path root zc)))]
+(defn do-concat [{:keys [path root zc]}]
+  (let [seqs (:value (get-in-state (u/sym-map path root zc)))]
     (when (and (not (nil? seqs))
                (or (not (sequential? seqs))
                    (not (sequential? (first seqs)))))
@@ -165,7 +165,7 @@
          :value seqs})))
     (apply concat seqs)))
 
-(defn get-value-and-expanded-paths [zc state path root]
+(defn get-value-and-expanded-paths [zc path root]
   ;; TODO: Optimize this. Only traverse the path once.
   (let [last-path-k (last path)
         join? (u/has-join? path)
@@ -175,7 +175,6 @@
         terminal-kw? (u/terminal-kw-ops last-path-k)
         ks-at-path* #(ks-at-path {:full-path path
                                   :kw :zeno/*
-                                  :state state
                                   :path %
                                   :root root
                                   :zc zc})]
@@ -184,11 +183,11 @@
       [nil [path]]
 
       (= [:zeno/actor-id] path)
-      [@state [path]]
+      [@(:*actor-id zc) [path]]
 
       (and (not terminal-kw?) (not join?))
       (let [{:keys [norm-path value]} (get-in-state
-                                       (u/sym-map state path root zc))]
+                                       (u/sym-map path root zc))]
         [value [norm-path]])
 
       (and terminal-kw? (not join?))
@@ -197,7 +196,6 @@
                     :zeno/keys
                     (ks-at-path {:full-path path
                                  :kw :zeno/keys
-                                 :state state
                                  :path path*
                                  :root root
                                  :zc zc})
@@ -205,13 +203,11 @@
                     :zeno/count
                     (count-at-path {:path path*
                                     :root root
-                                    :state state
                                     :zc zc})
 
                     :zeno/concat
                     (do-concat {:path path*
                                 :root root
-                                :state state
                                 :zc zc}))]
         [value [path*]])
 
@@ -228,7 +224,7 @@
                  i 0]
             (let [path* (nth xpaths i)
                   ret (get-value-and-expanded-paths
-                       zc state path* root)
+                       zc path* root)
                   new-out (conj out (first ret))
                   new-i (inc i)]
               (if (not= num-results new-i)
@@ -247,7 +243,7 @@
                                i 0]
                           (let [path* (nth xpaths i)
                                 ret (get-value-and-expanded-paths
-                                     zc state path* root)
+                                     zc path* root)
                                 new-out (conj out (first ret))
                                 new-i (inc i)]
                             (if (not= num-results new-i)
@@ -275,25 +271,16 @@
                         (resolve-symbols-in-path {:path path
                                                   :state acc-state})
                         path)
-        [root & tail] resolved-path
-        state-provider (root root->state-provider)
-        _ (when-not state-provider
-            (throw (ex-info (str "No state provider found "
-                                 "for root `" (or root "nil")
-                                 "`.")
-                            {:root root
-                             :known-roots (keys root->state-provider)})))
-        {::sp-impl/keys [get-state-atom]} state-provider
-        state-src (get-state-atom)]
-    (u/sym-map state-src resolved-path root)))
+        [root & tail] resolved-path]
+    (u/sym-map resolved-path root)))
 
 (defn get-state-and-expanded-paths
   [zc independent-pairs ordered-dependent-pairs]
   (let [reducer* (fn [resolve-path? acc [sym path]]
                    (let [info (get-path-info zc (:state acc) path resolve-path?)
-                         {:keys [state-src resolved-path root]} info
+                         {:keys [resolved-path root]} info
                          [v xps] (get-value-and-expanded-paths
-                                  zc state-src resolved-path root)]
+                                  zc resolved-path root)]
                      (-> acc
                          (update :state assoc sym v)
                          (update :expanded-paths concat xps))))

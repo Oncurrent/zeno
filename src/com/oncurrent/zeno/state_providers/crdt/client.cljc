@@ -258,19 +258,18 @@
                                  (recur))))))
         <on-actor-id-change (fn [actor-id]
                               (au/go
-                               (end-sync-session! (->sync-arg))
-                               (au/<? (<wait-for-sync))
-                               (reset! *actor-id actor-id)
-                               (reset! *crdt-state nil)
-                               (reset! *last-tx-id nil)
-                               (start-sync-session! (->sync-arg))))
+                                (end-sync-session! (->sync-arg))
+                                (au/<? (<wait-for-sync))
+                                (reset! *actor-id actor-id)
+                                (reset! *crdt-state nil)
+                                (reset! *last-tx-id nil)
+                                (start-sync-session! (->sync-arg))))
         stop! (fn []
                 (reset! *client-running? false)
                 (end-sync-session! (->sync-arg)))]
     #::sp-impl{:<update-state! (make-<update-state! mus-arg)
                :<wait-for-sync <wait-for-sync
                :get-in-state get-in-state
-               :get-state-atom (constantly *crdt-state)
                :init! init!
                :msg-handlers {}
                :msg-protocol shared/msg-protocol

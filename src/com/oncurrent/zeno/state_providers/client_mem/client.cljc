@@ -27,5 +27,4 @@
      #::sp-impl{:<update-state! (make-<update-state! (u/sym-map *state))
                 :get-in-state (fn [{:keys [root path]}]
                                 (commands/get-in-state @*state path root))
-                :get-state-atom (constantly *state)
                 :state-provider-name shared/state-provider-name})))
