@@ -252,16 +252,18 @@
                                    tx-ids (au/<? (storage/<get
                                                   @*storage k
                                                   shared/unsynced-log-schema))]
-                               (when (seq tx-ids)
+                               (when (and (seq tx-ids)
+                                          (first @*sync-session-fencing-token))
                                  (ca/<! (ca/timeout 10))
                                  (recur))))))
-        on-actor-id-change (fn [actor-id]
-                             (let [sync-arg (->sync-arg)]
-                               (end-sync-session! sync-arg)
+        <on-actor-id-change (fn [actor-id]
+                              (au/go
+                               (end-sync-session! (->sync-arg))
+                               (au/<? (<wait-for-sync))
                                (reset! *actor-id actor-id)
                                (reset! *crdt-state nil)
                                (reset! *last-tx-id nil)
-                               (start-sync-session! sync-arg)))
+                               (start-sync-session! (->sync-arg))))
         stop! (fn []
                 (reset! *client-running? false)
                 (end-sync-session! (->sync-arg)))]
@@ -272,7 +274,7 @@
                :init! init!
                :msg-handlers {}
                :msg-protocol shared/msg-protocol
-               :on-actor-id-change on-actor-id-change
+               :<on-actor-id-change <on-actor-id-change
                :on-connect (fn [url]
                              (start-sync-session! (->sync-arg)))
                :on-disconnect (fn [code]

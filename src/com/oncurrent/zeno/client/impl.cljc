@@ -321,14 +321,15 @@
                        (make-talk2-client arg))
         _ (reset! *talk2-client talk2-client)
         _ (initialize-state-providers! (assoc arg :talk2-client talk2-client))
-        on-actor-id-change (fn [actor-id]
-                             (doseq [[root sp] root->state-provider]
-                               (when-let [oaic (::sp-impl/on-actor-id-change sp)]
-                                 (oaic actor-id))))
+        <on-actor-id-change (fn [actor-id]
+                              (au/go
+                               (doseq [[root sp] root->state-provider]
+                                 (when-let [<oaic (::sp-impl/<on-actor-id-change sp)]
+                                   (au/<? (<oaic actor-id))))))
         zc (merge arg (u/sym-map *next-instance-num
                                  *next-topic-sub-id
                                  *topic-name->sub-id->cb
-                                 on-actor-id-change
+                                 <on-actor-id-change
                                  talk2-client))]
     (start-update-state-loop! zc)
     zc))

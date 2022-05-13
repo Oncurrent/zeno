@@ -11,9 +11,9 @@
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
-(defn set-actor-id! [{:keys [*actor-id actor-id on-actor-id-change]}]
+(defn <set-actor-id! [{:keys [*actor-id actor-id <on-actor-id-change]}]
   (reset! *actor-id (or actor-id :unauthenticated))
-  (on-actor-id-change actor-id))
+  (<on-actor-id-change actor-id))
 
 (defn <client-log-in
   [{:keys [authenticator-name login-info login-info-schema
@@ -30,7 +30,7 @@
       (when ret
         (let [{:keys [serialized-extra-info login-session-info]} ret
               {:keys [actor-id]} login-session-info
-              _ (set-actor-id! (assoc zeno-client :actor-id actor-id))
+              _ (au/<? (<set-actor-id! (assoc zeno-client :actor-id actor-id)))
               <request-schema (cimpl/make-schema-requester talk2-client)
               extra-info (when (and login-ret-extra-info-schema
                                     serialized-extra-info)
@@ -44,8 +44,9 @@
 (defn <client-log-out [{:keys [*actor-id storage talk2-client] :as zeno-client}]
   ;; TODO: Delete stored transaction log data
   ;; TODO: Update subscribers that actor-id has changed
-  (set-actor-id! (assoc zeno-client :actor-id :unauthenticated))
-  (t2c/<send-msg! talk2-client :log-out nil))
+  (au/go
+   (au/<? (<set-actor-id! (assoc zeno-client :actor-id :unauthenticated)))
+   (au/<? (t2c/<send-msg! talk2-client :log-out nil))))
 
 (defn <client-update-authenticator-state
   [{:keys [authenticator-name return-value-schema update-info-schema
@@ -125,6 +126,5 @@
    (when-let [ret (au/<? (t2c/<send-msg! (:talk2-client zeno-client)
                                          :resume-login-session
                                          login-session-token))]
-     (set-actor-id!
-      (assoc zeno-client :actor-id (:actor-id ret)))
+     (au/<? (<set-actor-id! (assoc zeno-client :actor-id (:actor-id ret))))
      ret)))
