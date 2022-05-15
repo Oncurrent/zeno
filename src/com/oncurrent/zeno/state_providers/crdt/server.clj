@@ -24,8 +24,9 @@
 (defn branch->branch-log-k [branch]
   (when-not (string? branch)
     (throw (ex-info
-            (str "`branch` in `branch->branch-log-k` must be a string."
-                 "Got `" (or branch "nil") "` of type `" (type branch) "`.")
+            (str "`branch` in `branch->branch-log-k` must be a string. "
+                 "Got `" (or branch "nil") "` of type `"
+                 (or (type branch) "nil") "`.")
             (u/sym-map branch))))
   (str branch-log-prefix branch))
 

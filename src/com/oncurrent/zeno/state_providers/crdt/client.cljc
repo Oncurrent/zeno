@@ -32,8 +32,18 @@
           []
           cmds))
 
+(defn update-v [{:keys [crdt schema update-infos v]}]
+  (reduce
+   (fn [acc {:keys [norm-path op]}]
+     (let [{:keys [value]} (common/get-value-info {:crdt crdt
+                                                   :path norm-path
+                                                   :schema schema})]
+       (assoc-in acc norm-path value)))
+   v
+   update-infos))
+
 (defn make-<update-state!
-  [{:keys [*actor-id *crdt-state *storage
+  [{:keys [*actor-id *crdt-state *storage *v
            authorizer client-id new-tx-ch schema]}]
   (fn [{:zeno/keys [cmds] :keys [root]}]
     (au/go
@@ -51,6 +61,9 @@
                 ;; We can use `reset!` here because there are no
                 ;; concurrent updates
                 _ (reset! *crdt-state crdt)
+                _ (swap! *v (fn [v]
+                              (update-v
+                               (u/sym-map crdt schema update-infos v))))
                 tx-id (u/compact-random-uuid)
                 k (common/tx-id->tx-info-k tx-id)
                 storage @*storage
@@ -186,6 +199,39 @@
   (swap! *sync-session-fencing-token (fn [[_running? n]]
                                        [false n])))
 
+(defn throw-bad-path-key [path k]
+  (let [disp-k (or k "nil")]
+    (throw (ex-info
+            (str "Illegal key `" disp-k "` in path `" path "`. Only integers, "
+                 "keywords, symbols, and strings are valid path keys.")
+            (u/sym-map k path)))))
+
+(defn make-get-in-state [{:keys [*v]}]
+  (fn get-in-state [{:keys [path root] :as gis-arg}]
+    (reduce (fn [{:keys [value] :as acc} k]
+              (let [[k* value*] (cond
+                                  (or (keyword? k) (nat-int? k) (string? k))
+                                  [k (when value
+                                       (get value k))]
+
+                                  (and (int? k) (neg? k))
+                                  (let [arg {:array-len (count value)
+                                             :i k}
+                                        i (u/get-normalized-array-index arg)]
+                                    [i (nth value i)])
+
+                                  (nil? k)
+                                  [nil nil]
+
+                                  :else
+                                  (throw-bad-path-key path k))]
+                (-> acc
+                    (update :norm-path conj k*)
+                    (assoc :value value*))))
+            {:norm-path []
+             :value @*v}
+            path)))
+
 (defn ->state-provider
   [{::crdt/keys [authorizer schema root] :as config}]
   ;; TODO: Check args
@@ -201,13 +247,7 @@
                     config)))
   (let [*crdt-state (atom nil)
         *actor-id (atom :unauthenticated)
-        get-in-state (fn [{:keys [path root] :as gs-arg}]
-                       (common/get-value-info
-                        (assoc gs-arg
-                               :crdt @*crdt-state
-                               :path (u/chop-root path root)
-                               :norm-path [root]
-                               :schema schema)))
+        *v (atom nil)
         *host-fns (atom {})
         *client-running? (atom true)
         *storage (atom nil)
@@ -224,7 +264,7 @@
         new-tx-ch (ca/chan (ca/dropping-buffer 1))
         ;; TODO: Connect this to the server
         server-tx-ch (ca/chan (ca/dropping-buffer 1))
-        mus-arg (u/sym-map *actor-id *crdt-state *host-fns *storage
+        mus-arg (u/sym-map *actor-id *crdt-state *host-fns *storage *v
                            authorizer client-id new-tx-ch schema)
         ->sync-arg #(let [actor-id @*actor-id
                           storage @*storage
@@ -269,7 +309,7 @@
                 (end-sync-session! (->sync-arg)))]
     #::sp-impl{:<update-state! (make-<update-state! mus-arg)
                :<wait-for-sync <wait-for-sync
-               :get-in-state get-in-state
+               :get-in-state (make-get-in-state (u/sym-map *v))
                :init! init!
                :msg-handlers {}
                :msg-protocol shared/msg-protocol

@@ -24,6 +24,7 @@
 (defmulti check-key (fn [{:keys [schema]}]
                       (schema->dispatch-type schema)))
 
+;; Returns a map w/ `:norm-path` and `:value`
 (defmulti get-value-info (fn [{:keys [schema]}]
                            (schema->dispatch-type schema)))
 
@@ -35,7 +36,7 @@
                            (or key "nil") "`.")
                       (u/sym-map add-id key op-type path))))
     (when-not (int? key)
-      (throw (ex-info (str "Array index must be an integer. Got: `"
+      (throw (ex-info (str "Array index must be an integr. Got: `"
                            (or key "nil") "`.")
                       (u/sym-map add-id key op-type path))))))
 
