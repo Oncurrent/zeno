@@ -9,9 +9,8 @@
    [com.oncurrent.zeno.storage :as storage]
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log])
-  #?(:clj
-     (:import
-      (clojure.lang ExceptionInfo))))
+  (:import
+   (clojure.lang ExceptionInfo)))
 
 (deftest test-<get-serializable-txs-since
   (au/test-async
@@ -42,7 +41,7 @@
                                 (update old-log :tx-ids concat
                                         ["TX1" "TX2" "TX3"]))))
        (is (thrown-with-msg?
-            #?(:clj ExceptionInfo :cljs js/Error)
+            ExceptionInfo
             #"tx-info for tx-id `TX1` was not found"
             (au/<? (crdt-server/<get-serializable-txs-since
                     {:storage storage
