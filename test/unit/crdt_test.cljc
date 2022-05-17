@@ -259,38 +259,31 @@
         path []
         expected-v ["A" "X" "Y" "C"]]
     (let [crdt {:add-id-to-edge
-                {"a10" {:head-node-id "NodeX", :tail-node-id "NodeB"},
-                 "a4" {:head-node-id "-START-", :tail-node-id "NodeA"},
-                 "a7" {:head-node-id "NodeC", :tail-node-id "-END-"},
-                 "a12" {:head-node-id "NodeA", :tail-node-id "NodeY"},
-                 "a9" {:head-node-id "NodeA", :tail-node-id "NodeX"},
-                 "a5" {:head-node-id "NodeA", :tail-node-id "NodeB"},
-                 "a13" {:head-node-id "NodeY", :tail-node-id "NodeC"},
-                 "a6" {:head-node-id "NodeB", :tail-node-id "NodeC"}},
+                {"a10" {:head-node-id "NodeX" :tail-node-id "NodeB"}
+                 "a4" {:head-node-id "-START-" :tail-node-id "NodeA"}
+                 "a7" {:head-node-id "NodeC" :tail-node-id "-END-"}
+                 "a12" {:head-node-id "NodeA" :tail-node-id "NodeY"}
+                 "a9" {:head-node-id "NodeA" :tail-node-id "NodeX"}
+                 "a5" {:head-node-id "NodeA" :tail-node-id "NodeB"}
+                 "a13" {:head-node-id "NodeY" :tail-node-id "NodeC"}
+                 "a6" {:head-node-id "NodeB" :tail-node-id "NodeC"}}
                 :children
-                (into
-                 (array-map)
-                 {
-                  "NodeX"
-                  {:current-add-id-to-value-info
-                   {"a8" {:sys-time-ms 1640205282858, :value "X"}}},
-
-                  "NodeY"
-                  {:current-add-id-to-value-info
-                   {"a11" {:sys-time-ms 1640205282858, :value "Y"}}},
-
-                  "NodeC"
-                  {:current-add-id-to-value-info
-                   {"a3" {:sys-time-ms 1640205282858, :value "C"}}},
-
-                  "NodeB" {:current-add-id-to-value-info {}, :deleted-add-ids #{"a2"}},
-
-                  "NodeA"
-                  {:current-add-id-to-value-info
-                   {"a1" {:sys-time-ms 1640205282858, :value "A"}}}
-
-                  }),
-                :current-edge-add-ids #{"a10" "a4" "a7" "a12" "a9" "a13"},
+                (into (array-map)
+                      {"NodeX"
+                       {:current-add-id-to-value-info
+                        {"a8" {:sys-time-ms 1640205282858 :value "X"}}}
+                       "NodeY"
+                       {:current-add-id-to-value-info
+                        {"a11" {:sys-time-ms 1640205282858 :value "Y"}}}
+                       "NodeC"
+                       {:current-add-id-to-value-info
+                        {"a3" {:sys-time-ms 1640205282858 :value "C"}}}
+                       "NodeB" {:current-add-id-to-value-info {}
+                                :deleted-add-ids #{"a2"}}
+                       "NodeA"
+                       {:current-add-id-to-value-info
+                        {"a1" {:sys-time-ms 1640205282858 :value "A"}}}})
+                :current-edge-add-ids #{"a10" "a4" "a7" "a12" "a9" "a13"}
                 :deleted-edge-add-ids #{"a5" "a6"}}]
       (is (= expected-v (crdt/get-value (u/sym-map crdt make-id path schema)))))))
 
