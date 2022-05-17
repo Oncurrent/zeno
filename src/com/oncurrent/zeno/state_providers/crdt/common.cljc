@@ -410,3 +410,17 @@
 (defn get-value [{:keys [crdt make-id path norm-path schema] :as arg}]
   (-> (get-value-info (assoc arg :norm-path (or norm-path [])))
       (:value)))
+
+(defn update-v [{:keys [crdt root schema update-infos v]}]
+  (reduce
+   (fn [acc {:keys [norm-path]}]
+     (let [path (u/chop-root norm-path root)
+           {:keys [value]} (get-value-info {:crdt crdt
+                                            :path path
+                                            :schema schema})]
+       (log/info (str "####:\n"
+                      (u/pprint-str
+                       (u/sym-map v norm-path value))))
+       (assoc-in acc path value)))
+   v
+   update-infos))

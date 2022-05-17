@@ -614,7 +614,8 @@
                              {:env-info env-info}))))))
 
 (defn make-<sp-rpc-handler
-  [{:keys [*conn-id->env-name *env-name->info name->state-provider storage]
+  [{:keys [*conn-id->auth-info *conn-id->env-name *env-name->info
+           name->state-provider storage]
     :as make-handler-arg}]
   (fn [{:keys [conn-id] :as handler-arg}]
     (au/go
@@ -635,8 +636,9 @@
                 env-name (get @*conn-id->env-name conn-id)
                 env-info (-> (get @*env-name->info env-name)
                              (assoc :env-name env-name))
-
-                eni-keys (keys @*env-name->info)
+                auth-info (some-> @*conn-id->auth-info
+                                  (get conn-id))
+                actor-id (:actor-id auth-info)
                 {:keys [arg-schema ret-schema]} (get msg-protocol rpc-name-kw)
                 deser-arg (au/<? (common/<serialized-value->value
                                   {:<request-schema <request-schema
@@ -644,6 +646,7 @@
                                    :serialized-value arg
                                    :storage storage}))
                 h-arg {:<request-schema <request-schema
+                       :actor-id actor-id
                        :arg deser-arg
                        :conn-id conn-id
                        :env-info env-info}
@@ -1100,17 +1103,21 @@
     (u/sym-map *rpc-name-kw->handler
                member-id
                mutex-clients
+               root->state-provider
                rpcs
                storage
                talk2-server
                ws-url)))
 
-(defn stop! [{:keys [mutex-clients talk2-server]}]
+(defn stop! [{:keys [mutex-clients root->state-provider talk2-server]}]
   (when mutex-clients
     (doseq [mutex-client mutex-clients]
       (dm/stop! mutex-client)))
   (when talk2-server
-    (t2s/stop! talk2-server)))
+    (t2s/stop! talk2-server))
+  (doseq [[root {::sp-impl/keys [stop!]}] root->state-provider]
+    (when stop!
+      (stop!))))
 
 (defn set-rpc-handler! [zeno-server rpc-name-kw handler]
   (let [{:keys [*rpc-name-kw->handler]} zeno-server]

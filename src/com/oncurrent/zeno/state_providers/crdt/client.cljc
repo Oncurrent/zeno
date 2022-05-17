@@ -39,17 +39,6 @@
           []
           cmds))
 
-(defn update-v [{:keys [crdt root schema update-infos v]}]
-  (reduce
-   (fn [acc {:keys [norm-path op]}]
-     (let [{:keys [value]} (common/get-value-info
-                            {:crdt crdt
-                             :path (u/chop-root norm-path root)
-                             :schema schema})]
-       (assoc-in acc norm-path value)))
-   v
-   update-infos))
-
 (defn throw-not-initialized! [{:keys [root]}]
   (throw (ex-info (str "State provider for root `" root
                        "` is not initialized.")
@@ -87,7 +76,7 @@
                 ;; concurrent updates
                 _ (reset! *crdt-state crdt)
                 _ (swap! *v (fn [v]
-                              (update-v
+                              (common/update-v
                                (u/sym-map crdt root schema update-infos v))))
                 tx-id (u/compact-random-uuid)
                 k (common/tx-id->tx-info-k tx-id)
@@ -187,9 +176,15 @@
                          :sync-whole-log? (= actor-id aid)
                          :unsynced-log-k unsynced-log-k))))))))
 
+(defn <load-snapshot! [{:keys [snapshot-info]}]
+  (au/go
+    (let [{:keys [url]} snapshot-info]
+      ;; TODO: Fetch and apply snapshot
+      )))
+
 (defn <sync-consumer-txs!*
   [{:keys [*actor-id *client-running? *connected? *crdt-state *host-fns
-           *last-tx-id *storage *v root schema]
+           *last-tx-i *storage *v root schema]
     :as arg}]
   (au/go
     (au/<? (<wait-for-init arg))
@@ -197,37 +192,42 @@
       (let [actor-id @*actor-id
             storage @*storage
             {:keys [<request-schema <send-msg update-subscriptions!]} @*host-fns
-            msg-arg  {:msg-type :get-consumer-txs
-                      :arg {:last-tx-id @*last-tx-id}}
-            serializable-tx-infos (au/<? (<send-msg msg-arg))]
-        (when (seq serializable-tx-infos)
-          (let [tx-infos (au/<? (common/<serializable-tx-infos->tx-infos
-                                 (u/sym-map <request-schema schema
-                                            serializable-tx-infos storage)))
-                info (reduce (fn [acc {:keys [crdt-ops tx-id update-infos]}]
-                               (-> acc
-                                   (assoc :last-tx-id tx-id)
-                                   (update :ops concat crdt-ops)
-                                   (update :update-infos concat update-infos)))
-                             {:last-tx-id nil
-                              :ops []
-                              :update-infos []}
-                             tx-infos)]
-            (swap! *crdt-state (fn [old-crdt]
-                                 (apply-ops/apply-ops {:crdt old-crdt
-                                                       :ops (:ops info)
-                                                       :schema schema})))
-            (swap! *v (fn [v]
-                        (update-v {:crdt @*crdt-state
-                                   :root root
-                                   :schema schema
-                                   :update-infos (:update-infos info)
-                                   :v v})))
-            (reset! *last-tx-id (:last-tx-id info))
-            (update-subscriptions! (:update-infos info))))))))
+            msg-arg  {:msg-type :get-consumer-sync-info
+                      :arg {:last-tx-i @*last-tx-i}}
+            sync-info (au/<? (<send-msg msg-arg))
+            {:keys [last-snapshot-info tx-infos-since-snapshot]} sync-info]
+        (when last-snapshot-info
+          (au/<? (<load-snapshot!
+                  (assoc arg :snapshot-info last-snapshot-info))))
+        #_(when (seq tx-infos-since-snapshot)
+            (let [tx-infos (au/<? (common/<serializable-tx-infos->tx-infos
+                                   (u/sym-map <request-schema schema
+                                              tx-infos-since-snapshot storage)))
+                  info (reduce (fn [acc {:keys [crdt-ops tx-id update-infos]}]
+                                 (-> acc
+                                     (assoc :last-tx-id tx-id)
+                                     (update :ops concat crdt-ops)
+                                     (update :update-infos concat update-infos)))
+                               {:last-tx-id nil
+                                :ops []
+                                :update-infos []}
+                               tx-infos)]
+              (swap! *crdt-state (fn [old-crdt]
+                                   (apply-ops/apply-ops {:crdt old-crdt
+                                                         :ops (:ops info)
+                                                         :schema schema})))
+              (swap! *v (fn [v]
+                          (update-v {:crdt @*crdt-state
+                                     :root root
+                                     :schema schema
+                                     :update-infos (:update-infos info)
+                                     :v v})))
+              (reset! *last-tx-i xxx)
+              (update-subscriptions! (:update-infos info))))))))
 
-(defn load-local-data! [{:keys [*host-fns signal-consumer-sync!]}]
+(defn load-local-data! [{:keys [*host-fns signal-consumer-sync!] :as arg}]
   (ca/go
+    (au/<? (<wait-for-init arg))
     (try
       (let [{:keys [update-subscriptions!]} @*host-fns
             update-infos []]
@@ -290,7 +290,7 @@
         *crdt-state (atom nil)
         *env-name (atom nil)
         *host-fns (atom {})
-        *last-tx-id (atom nil)
+        *last-tx-i (atom nil)
         *storage (atom nil)
         *v (atom nil)
         client-id (u/compact-random-uuid)
@@ -303,14 +303,14 @@
                                              update-subscriptions!))
                 (reset! *storage storage))
         sync-arg (u/sym-map *actor-id *client-running? *connected? *crdt-state
-                            *host-fns *env-name *last-tx-id *storage *v
+                            *host-fns *env-name *last-tx-i *storage *v
                             root schema)
         psync-ret (u/start-task-loop!
-                   {:loop-delay-ms 1000
+                   {:loop-delay-ms 3000
                     :loop-name "<sync-producer-txs!"
                     :task-fn #(<sync-producer-txs!* sync-arg)})
         csync-ret (u/start-task-loop!
-                   {:loop-delay-ms 1000
+                   {:loop-delay-ms 3000
                     :loop-name "<sync-consumer-txs!"
                     :task-fn #(<sync-consumer-txs!* sync-arg)})
         {stop-producer-sync! :stop!
@@ -334,20 +334,19 @@
                                    (do
                                      (ca/<! (ca/timeout 50))
                                      (recur))))))))
+        lld-arg (assoc sync-arg :signal-consumer-sync! signal-consumer-sync!)
         <on-actor-id-change (fn [actor-id]
                               (au/go
                                 (reset! *actor-id actor-id)
                                 (reset! *crdt-state nil)
                                 (reset! *v nil)
-                                (reset! *last-tx-id nil)
-                                (load-local-data!
-                                 (assoc sync-arg
-                                        :signal-consumer-sync!
-                                        signal-consumer-sync!))))
+                                (reset! *last-tx-i nil)
+                                (load-local-data! lld-arg)))
         stop! (fn []
                 (reset! *client-running? false)
                 (stop-producer-sync!)
                 (stop-consumer-sync!))]
+    (load-local-data! lld-arg)
     #::sp-impl{:<update-state! (make-<update-state! mus-arg)
                :<wait-for-sync <wait-for-sync
                :get-in-state (make-get-in-state (u/sym-map *v))
