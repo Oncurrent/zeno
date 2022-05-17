@@ -158,7 +158,7 @@
            query-str))))
 
 (defn make-talk2-client
-  [{:keys [*talk2-client env-name get-server-base-url storage] :as arg}]
+  [{:keys [storage] :as arg}]
   (let [handlers {:get-schema-pcf-for-fingerprint
                   (fn [fn-arg]
                     (au/go
@@ -245,7 +245,8 @@
     (state-subscriptions/do-subscription-updates! fn-arg update-infos)))
 
 (defn initialize-state-providers!
-  [{:keys [*connected? root->state-provider storage talk2-client] :as fn-arg}]
+  [{:keys [*connected? env-name root->state-provider storage talk2-client]
+    :as fn-arg}]
   (doseq [[root sp] root->state-provider]
     (let [{::sp-impl/keys [init! msg-protocol state-provider-name]} sp]
       (when init!
@@ -267,6 +268,7 @@
                   :update-subscriptions! (make-update-subscriptions! fn-arg)
                   :connected? (fn []
                                 @*connected?)
+                  :env-name env-name
                   :storage (storage/make-prefixed-storage prefix storage)}))))))
 
 (defn update-state! [zc cmds cb]

@@ -18,10 +18,17 @@
 
 (def unsynced-log-prefix "_UNSYNCED-LOG-")
 
-(defn actor-id->unsynced-log-k [actor-id]
-  (str unsynced-log-prefix (if (= :unauthenticated actor-id)
-                             "UNAUTHENTICATED"
-                             actor-id)))
+(defn ->unsynced-log-k [{:keys [env-name]}]
+  (str unsynced-log-prefix env-name))
+
+(defn get-actor-id-str [actor-id]
+  (if (= :unauthenticated actor-id)
+    "UNAUTHENTICATED"
+    actor-id))
+
+(defn <get-unsynced-log [{:keys [*env-name *storage]}]
+  (let [k (->unsynced-log-k {:env-name @*env-name})]
+    (storage/<get @*storage k shared/unsynced-log-schema)))
 
 (defn get-unauthorized-commands [{:keys [actor-id authorizer cmds]}]
   (reduce (fn [acc {:zeno/keys [path op] :as cmd}]
@@ -32,22 +39,40 @@
           []
           cmds))
 
-(defn update-v [{:keys [crdt schema update-infos v]}]
+(defn update-v [{:keys [crdt root schema update-infos v]}]
   (reduce
    (fn [acc {:keys [norm-path op]}]
-     (let [{:keys [value]} (common/get-value-info {:crdt crdt
-                                                   :path norm-path
-                                                   :schema schema})]
+     (let [{:keys [value]} (common/get-value-info
+                            {:crdt crdt
+                             :path (u/chop-root norm-path root)
+                             :schema schema})]
        (assoc-in acc norm-path value)))
    v
    update-infos))
 
+(defn throw-not-initialized! [{:keys [root]}]
+  (throw (ex-info (str "State provider for root `" root
+                       "` is not initialized.")
+                  (u/sym-map root))))
+
+(defn <wait-for-init [{:keys [*storage]}]
+  (au/go
+    (loop []
+      (if @*storage
+        true
+        (do
+          (ca/<! (ca/timeout 50))
+          (recur))))))
+
 (defn make-<update-state!
-  [{:keys [*actor-id *crdt-state *storage *v
-           authorizer client-id new-tx-ch schema]}]
+  [{:keys [*actor-id *crdt-state *env-name *storage *v
+           authorizer client-id root schema signal-producer-sync!]
+    :as arg}]
   (fn [{:zeno/keys [cmds] :keys [root]}]
     (au/go
+      (au/<? (<wait-for-init arg))
       (let [actor-id @*actor-id
+            env-name @*env-name
             unauth-cmds (get-unauthorized-commands
                          (u/sym-map actor-id authorizer cmds))]
         (if (seq unauth-cmds)
@@ -63,7 +88,7 @@
                 _ (reset! *crdt-state crdt)
                 _ (swap! *v (fn [v]
                               (update-v
-                               (u/sym-map crdt schema update-infos v))))
+                               (u/sym-map crdt root schema update-infos v))))
                 tx-id (u/compact-random-uuid)
                 k (common/tx-id->tx-info-k tx-id)
                 storage @*storage
@@ -77,63 +102,104 @@
                          :crdt-ops ser-ops
                          :sys-time-ms (u/current-time-ms)
                          :tx-id tx-id
-                         :update-infos ser-update-infos}]
+                         :update-infos ser-update-infos}
+                unsynced-log-k (->unsynced-log-k (u/sym-map env-name))]
             (au/<? (storage/<swap! storage k shared/serializable-tx-info-schema
                                    (constantly tx-info)))
-            (au/<? (storage/<swap! storage
-                                   (actor-id->unsynced-log-k actor-id)
+
+            (au/<? (storage/<swap! storage unsynced-log-k
                                    shared/unsynced-log-schema
-                                   (fn [old-log]
-                                     (conj old-log tx-id))))
-            (ca/>! new-tx-ch true)
+                                   (fn [aid->tx-ids]
+                                     (let [aid (get-actor-id-str actor-id)]
+                                       (update aid->tx-ids aid
+                                               conj tx-id)))))
+            (signal-producer-sync!)
             update-infos))))))
 
-(defn <sync-unsynced-log!
-  [{:keys [*client-running? *sync-session-fencing-token
-           <send-msg actor-id storage]}]
-  (ca/go
-    (try
-      (loop [fencing-token @*sync-session-fencing-token]
-        (let [unsynced-log-k (actor-id->unsynced-log-k actor-id)
-              tx-ids (au/<? (storage/<get storage
-                                          unsynced-log-k
-                                          shared/unsynced-log-schema))
+(defn <sync-producer-txs-for-actor-id!
+  [{:keys [*client-running? *connected? *host-fns
+           actor-id storage sync-whole-log? unsynced-log-k]}]
+  (let [{:keys [<send-msg]} @*host-fns
+        actor-id-str (get-actor-id-str actor-id)]
+    (au/go
+      (loop []
+        (let [aid->tx-ids (au/<? (storage/<get storage
+                                               unsynced-log-k
+                                               shared/unsynced-log-schema))
+              tx-ids (get aid->tx-ids actor-id-str)
               batch (set (take 10 tx-ids))
               tx-infos (when tx-ids
-                         (->> {:storage storage :tx-ids batch}
-                              (common/<get-serializable-tx-infos)
-                              (au/<?)
-                              (filter #(= actor-id (:actor-id %)))))]
+                         (au/<? (common/<get-serializable-tx-infos
+                                 {:storage storage
+                                  :tx-ids batch})))]
           (when (seq tx-infos)
             (au/<? (<send-msg {:msg-type :log-txs
                                :arg tx-infos}))
             (au/<? (storage/<swap! storage
                                    unsynced-log-k
                                    shared/unsynced-log-schema
-                                   (fn [old-log]
-                                     (reduce (fn [acc tx-id]
-                                               (if (batch tx-id)
-                                                 acc
-                                                 (conj acc tx-id)))
-                                             []
-                                             old-log)))))
+                                   (fn [aid->tx-ids]
+                                     (update aid->tx-ids actor-id-str
+                                             #(reduce (fn [acc tx-id]
+                                                        (if (batch tx-id)
+                                                          acc
+                                                          (conj acc tx-id)))
+                                                      []
+                                                      %))))))
           (when (and @*client-running?
-                     (= fencing-token @*sync-session-fencing-token)
-                     (< (count batch) (count tx-ids)))
-            (recur @*sync-session-fencing-token))))
-      (catch #?(:clj Exception :cljs js/Error) e
-        (log/error (str "Error in <sync-unsynced-log!:\n"
-                        (u/ex-msg-and-stacktrace e)))))))
+                     @*connected?
+                     sync-whole-log?
+                     (> (count tx-ids) (count batch)))
+            (recur)))))))
 
-(defn <consume-txs!
-  [{:keys [*crdt-state *last-tx-id <request-schema <send-msg schema storage
-           update-subscriptions!]}]
-  ;; TODO: Implement batching
-  (ca/go
-    (try
-     (let [msg-arg  {:msg-type :get-consumer-txs
-                     :arg {:last-tx-id @*last-tx-id}}
-           serializable-tx-infos (au/<? (<send-msg msg-arg))]
+(defn <sync-producer-txs!*
+  [{:keys [*actor-id *connected? *env-name *storage] :as arg}]
+  (au/go
+    (au/<? (<wait-for-init arg))
+    (when @*connected?
+      (let [actor-id @*actor-id
+            actor-id-str (get-actor-id-str actor-id)
+            storage @*storage
+            unsynced-log-k (->unsynced-log-k {:env-name @*env-name})
+            aid->tx-ids (au/<? (storage/<get storage
+                                             unsynced-log-k
+                                             shared/unsynced-log-schema))
+            aids (reduce-kv (fn [acc aid tx-ids]
+                              (cond
+                                (empty? tx-ids)
+                                acc
+
+                                ;; Put current actor-id at the front
+                                (= actor-id-str aid)
+                                (vec (cons actor-id acc))
+
+                                :else
+                                (conj acc aid)))
+                            []
+                            aid->tx-ids)]
+        ;; Sync the whole log for the current actor-id, then sync
+        ;; batches any other logs
+        (doseq [aid aids]
+          (au/<? (<sync-producer-txs-for-actor-id!
+                  (assoc arg
+                         :actor-id aid
+                         :storage storage
+                         :sync-whole-log? (= actor-id aid)
+                         :unsynced-log-k unsynced-log-k))))))))
+
+(defn <sync-consumer-txs!*
+  [{:keys [*actor-id *client-running? *connected? *crdt-state *host-fns
+           *last-tx-id *storage *v root schema]
+    :as arg}]
+  (au/go
+    (au/<? (<wait-for-init arg))
+    (when @*connected?
+      (let [actor-id @*actor-id
+            storage @*storage
+            {:keys [<request-schema <send-msg update-subscriptions!]} @*host-fns
+            msg-arg  {:msg-type :get-consumer-txs
+                      :arg {:last-tx-id @*last-tx-id}}
+            serializable-tx-infos (au/<? (<send-msg msg-arg))]
         (when (seq serializable-tx-infos)
           (let [tx-infos (au/<? (common/<serializable-tx-infos->tx-infos
                                  (u/sym-map <request-schema schema
@@ -151,53 +217,26 @@
                                  (apply-ops/apply-ops {:crdt old-crdt
                                                        :ops (:ops info)
                                                        :schema schema})))
+            (swap! *v (fn [v]
+                        (update-v {:crdt @*crdt-state
+                                   :root root
+                                   :schema schema
+                                   :update-infos (:update-infos info)
+                                   :v v})))
             (reset! *last-tx-id (:last-tx-id info))
-            (update-subscriptions! (:update-infos info)))))
+            (update-subscriptions! (:update-infos info))))))))
+
+(defn load-local-data! [{:keys [*host-fns signal-consumer-sync!]}]
+  (ca/go
+    (try
+      (let [{:keys [update-subscriptions!]} @*host-fns
+            update-infos []]
+        ;; TODO: Implement
+        (update-subscriptions! update-infos)
+        (signal-consumer-sync!))
       (catch #?(:clj Exception :cljs js/Error) e
-        (log/error (str "Error in <consume-txs!:\n"
+        (log/error (str "Error in load-local-data!:\n"
                         (u/ex-msg-and-stacktrace e)))))))
-
-(defn sync-producer-txs!
-  [{:keys [*client-running? *sync-session-fencing-token new-tx-ch] :as fn-arg}]
-  (ca/go
-    (try
-      (loop [fencing-token @*sync-session-fencing-token]
-        (au/<? (<sync-unsynced-log! fn-arg))
-        (au/alts? [new-tx-ch (ca/timeout 2000)])
-        (when (and @*client-running?
-                   (= fencing-token @*sync-session-fencing-token))
-          (recur @*sync-session-fencing-token)))
-      (catch #?(:clj Exception :cljs js/Error) e
-        (log/error "Error in sync-producer-txs!:\n"
-                   (u/ex-msg-and-stacktrace e))))))
-
-(defn sync-consumer-txs!
-  [{:keys [*client-running? *sync-session-fencing-token server-tx-ch]
-    :as fn-arg}]
-  (ca/go
-    (try
-      (loop [fencing-token @*sync-session-fencing-token]
-        (au/<? (<consume-txs! fn-arg))
-        (au/alts? [server-tx-ch (ca/timeout 100)])
-        (when (and @*client-running?
-                   (= fencing-token @*sync-session-fencing-token))
-          (recur @*sync-session-fencing-token)))
-      (catch #?(:clj Exception :cljs js/Error) e
-        (log/error "Error in sync-consumer-txs!:\n"
-                   (u/ex-msg-and-stacktrace e))))))
-
-(defn start-sync-session!
-  [{:keys [*client-running? *sync-session-fencing-token new-tx-ch] :as fn-arg}]
-  (let [[running? _n] @*sync-session-fencing-token]
-    (when-not running?
-      (swap! *sync-session-fencing-token (fn [[_running? n]]
-                                           [true (inc n)]))
-      (sync-producer-txs! fn-arg)
-      (sync-consumer-txs! fn-arg))))
-
-(defn end-sync-session! [{:keys [*sync-session-fencing-token]}]
-  (swap! *sync-session-fencing-token (fn [[_running? n]]
-                                       [false n])))
 
 (defn throw-bad-path-key [path k]
   (let [disp-k (or k "nil")]
@@ -245,78 +284,82 @@
     (throw (ex-info (str "No schema was specified in the state provider "
                          "configuration.")
                     config)))
-  (let [*crdt-state (atom nil)
-        *actor-id (atom :unauthenticated)
-        *v (atom nil)
-        *host-fns (atom {})
+  (let [*actor-id (atom :unauthenticated)
         *client-running? (atom true)
-        *storage (atom nil)
-        *sync-session-fencing-token (atom [false 0])
+        *connected? (atom false)
+        *crdt-state (atom nil)
+        *env-name (atom nil)
+        *host-fns (atom {})
         *last-tx-id (atom nil)
+        *storage (atom nil)
+        *v (atom nil)
         client-id (u/compact-random-uuid)
         init! (fn [{:keys [<request-schema <send-msg
-                           connected? storage update-subscriptions!]}]
+                           connected? env-name storage update-subscriptions!]}]
+                (reset! *env-name env-name)
                 (reset! *host-fns (u/sym-map <request-schema
                                              <send-msg
                                              connected?
                                              update-subscriptions!))
                 (reset! *storage storage))
-        new-tx-ch (ca/chan (ca/dropping-buffer 1))
-        ;; TODO: Connect this to the server
-        server-tx-ch (ca/chan (ca/dropping-buffer 1))
-        mus-arg (u/sym-map *actor-id *crdt-state *host-fns *storage *v
-                           authorizer client-id new-tx-ch schema)
-        ->sync-arg #(let [actor-id @*actor-id
-                          storage @*storage
-                          {:keys [<request-schema
-                                  <send-msg
-                                  connected?
-                                  update-subscriptions!]} @*host-fns]
-                      (u/sym-map actor-id
-                                 *client-running?
-                                 *crdt-state
-                                 *last-tx-id
-                                 *sync-session-fencing-token
-                                 <request-schema
-                                 <send-msg
-                                 connected?
-                                 new-tx-ch
-                                 schema
-                                 server-tx-ch
-                                 storage
-                                 update-subscriptions!))
-        <wait-for-sync (fn []
-                         (au/go
-                           (loop []
-                             (let [k (actor-id->unsynced-log-k @*actor-id)
-                                   tx-ids (au/<? (storage/<get
-                                                  @*storage k
-                                                  shared/unsynced-log-schema))]
-                               (when (and (seq tx-ids)
-                                          (first @*sync-session-fencing-token))
-                                 (ca/<! (ca/timeout 10))
-                                 (recur))))))
+        sync-arg (u/sym-map *actor-id *client-running? *connected? *crdt-state
+                            *host-fns *env-name *last-tx-id *storage *v
+                            root schema)
+        psync-ret (u/start-task-loop!
+                   {:loop-delay-ms 1000
+                    :loop-name "<sync-producer-txs!"
+                    :task-fn #(<sync-producer-txs!* sync-arg)})
+        csync-ret (u/start-task-loop!
+                   {:loop-delay-ms 1000
+                    :loop-name "<sync-consumer-txs!"
+                    :task-fn #(<sync-consumer-txs!* sync-arg)})
+        {stop-producer-sync! :stop!
+         signal-producer-sync! :now!} psync-ret
+        {stop-consumer-sync! :stop!
+         signal-consumer-sync! :now!} csync-ret
+        mus-arg (u/sym-map *actor-id *crdt-state *env-name *host-fns *storage *v
+                           authorizer client-id root schema
+                           signal-producer-sync!)
+        <wait-for-sync (fn [& args]
+                         (let [actor-id (or (some-> args first :actor-id)
+                                            @*actor-id)]
+                           (au/go
+                             (loop []
+                               (let [aid->tx-ids (au/<? (<get-unsynced-log
+                                                         sync-arg))
+                                     actor-id-str (get-actor-id-str actor-id)
+                                     tx-ids (get aid->tx-ids actor-id-str)]
+                                 (if (empty? tx-ids)
+                                   true
+                                   (do
+                                     (ca/<! (ca/timeout 50))
+                                     (recur))))))))
         <on-actor-id-change (fn [actor-id]
                               (au/go
-                                (end-sync-session! (->sync-arg))
-                                (au/<? (<wait-for-sync))
                                 (reset! *actor-id actor-id)
                                 (reset! *crdt-state nil)
+                                (reset! *v nil)
                                 (reset! *last-tx-id nil)
-                                (start-sync-session! (->sync-arg))))
+                                (load-local-data!
+                                 (assoc sync-arg
+                                        :signal-consumer-sync!
+                                        signal-consumer-sync!))))
         stop! (fn []
                 (reset! *client-running? false)
-                (end-sync-session! (->sync-arg)))]
+                (stop-producer-sync!)
+                (stop-consumer-sync!))]
     #::sp-impl{:<update-state! (make-<update-state! mus-arg)
                :<wait-for-sync <wait-for-sync
                :get-in-state (make-get-in-state (u/sym-map *v))
                :init! init!
-               :msg-handlers {}
+               :msg-handlers {:notify-consumer-log-sync
+                              (fn [arg]
+                                (signal-consumer-sync!))}
                :msg-protocol shared/msg-protocol
                :<on-actor-id-change <on-actor-id-change
                :on-connect (fn [url]
-                             (start-sync-session! (->sync-arg)))
+                             (reset! *connected? true))
                :on-disconnect (fn [code]
-                                (end-sync-session! (->sync-arg)))
+                                (reset! *connected? false))
                :state-provider-name shared/state-provider-name
                :stop! stop!}))

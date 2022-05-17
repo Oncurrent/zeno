@@ -49,7 +49,9 @@
   [:tx-id tx-id-schema]
   [:update-infos (l/array-schema serializable-update-info-schema)])
 
-(def unsynced-log-schema (l/array-schema tx-id-schema))
+(def unsynced-log-schema
+  (l/map-schema ;; keys are actor-ids
+   (l/array-schema tx-id-schema)))
 
 (l/def-record-schema segmented-log-schema
   [:parent-log-k l/string-schema]

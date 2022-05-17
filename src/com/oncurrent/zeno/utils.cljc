@@ -440,6 +440,46 @@
     path
     (recur (rest path) root)))
 
+(defn start-task-loop!
+  "Runs a task function periodically in a loop.
+   Takes a map with these keys:
+     - `:loop-delay-ms` - Optional - Number of ms to wait between
+                          task fn invocations. Defaults to 1000 ms.
+     - `:loop-name` - Optional - A string name for this loop; used
+                      in error logging.
+     - `:task-fn` - Required - The fn to be called in each loop iteration.
+    Returns a map with these keys:
+     - `:now!` - A zero-arg fn that can be called to cut short the loop
+                 delay and call the task-fn immediately.
+     - `:stop!` - A zero-arg fn that can be called to stop the loop."
+  [{:keys [loop-delay-ms loop-name task-fn] :as arg}]
+  (when-not (ifn? task-fn)
+    (throw (ex-info (str "`:task-fn` must be a function. Got `"
+                         (or task-fn "nil") "`.")
+                    arg)))
+  (let [stop-ch (ca/promise-chan)
+        now-ch (ca/chan (ca/dropping-buffer 1))
+        stop! #(ca/put! stop-ch true)
+        now! #(ca/put! now-ch true)
+        delay-ms (or loop-delay-ms 1000)]
+    (ca/go
+      (loop []
+        (try
+          (let [ret (task-fn)]
+            (when (au/channel? ret)
+              (au/<? ret)))
+          (catch #?(:clj Exception :cljs js/Error) e
+            (log/error (str "Error in task loop"
+                            (if loop-name
+                              (str " `" loop-name "`:")
+                              ":")
+                            (ex-msg-and-stacktrace e)))))
+        (let [timeout-ch (ca/timeout delay-ms)
+              [_ ch] (au/alts? [now-ch stop-ch timeout-ch])]
+          (when (not= stop-ch ch)
+            (recur)))))
+    (sym-map now! stop!)))
+
 ;;;;;;;;;;;;;;;;;;;; Platform detection ;;;;;;;;;;;;;;;;;;;;
 
 (defn jvm? []

@@ -106,9 +106,10 @@
           new-out)))))
 
 (defn make-<get-consumer-txs-handler [{:keys [*storage root]}]
-  (fn [{:keys [arg env-info]}]
+  (fn [{:keys [arg conn-id env-info]}]
     ;; TODO: Implement authorization
-    (let [branch (-> env-info :env-sp-root->info root :state-provider-branch)]
+    (let [branch (-> env-info :env-sp-root->info root :state-provider-branch)
+          root-keys (-> env-info :env-sp-root->info root keys)]
       (<get-serializable-txs-since {:branch branch
                                     :last-tx-id (:last-tx-id arg)
                                     :storage @*storage}))))

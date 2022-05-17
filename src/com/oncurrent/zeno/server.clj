@@ -341,7 +341,9 @@
               (assoc fn-arg :env-info (get @*env-name->info env-name)))))
     true))
 
-(defn <handle-delete-env [{:keys [*env-name->info server storage] :as arg}]
+(defn <handle-delete-env
+  [{:keys [*conn-id->env-name *env-name->info server storage talk2-server]
+    :as arg}]
   (au/go
     (let [env-name (:arg arg)]
       (au/<? (storage/<swap! storage
@@ -350,6 +352,10 @@
                              (fn [env-name->info]
                                (dissoc env-name->info env-name))))
       (swap! *env-name->info dissoc env-name)
+      (doseq [[conn-id env-name*] @*conn-id->env-name]
+        (when (= env-name env-name*)
+          (t2s/close-connection! {:conn-id conn-id
+                                  :server talk2-server})))
       true)))
 
 (defn <handle-get-env-names [{:keys [server storage] :as arg}]
@@ -602,7 +608,10 @@
             env-info (-> (get @*env-name->info env-name)
                          (assoc :env-name env-name))
             state-fns (make-state-fns env-info)]
-        (<handle-rpc! (merge base-info state-fns handler-arg))))))
+        (<handle-rpc! (merge base-info
+                             state-fns
+                             handler-arg
+                             {:env-info env-info}))))))
 
 (defn make-<sp-rpc-handler
   [{:keys [*conn-id->env-name *env-name->info name->state-provider storage]
@@ -626,6 +635,8 @@
                 env-name (get @*conn-id->env-name conn-id)
                 env-info (-> (get @*env-name->info env-name)
                              (assoc :env-name env-name))
+
+                eni-keys (keys @*env-name->info)
                 {:keys [arg-schema ret-schema]} (get msg-protocol rpc-name-kw)
                 deser-arg (au/<? (common/<serialized-value->value
                                   {:<request-schema <request-schema
@@ -750,30 +761,29 @@
         (let [uri-map (uri/uri path)
               env-params (-> uri-map :query query-string->env-params)
               {:keys [env-lifetime-mins env-name]} env-params
-              temp? (boolean env-lifetime-mins)]
-          (swap! *env-name->info
-                 (fn [env-name->info]
-                   (let [exists? (contains? env-name->info env-name)]
-                     (cond
-                       exists?
-                       (do
-                        env-name->info) ; no change needed
+              temp? (boolean env-lifetime-mins)
+              exists? (contains? @*env-name->info env-name)]
+          (cond
+            exists?
+            nil
 
-                       temp? ; Create the temp env
+            (not temp?)
+            (throw (ex-info
+                    (str "The env `" env-name "` does not "
+                         "exist. It must be created via the admin "
+                         "interface or made into a temporary env "
+                         "by specifying `env-lifetime-mins`.")
+                    (u/sym-map env-name)))
+
+            :else
+            (do ;; Create the temp env
+              (swap! *env-name->info
+                     (fn [env-name->info]
                        (let [env-info (->temp-env-info (u/sym-map env-name->info
                                                                   env-params))]
-
-                         (<copy-from-branch-sources!
-                          (assoc fn-arg :env-info env-info))
-                         (assoc env-name->info (:env-name env-params) env-info))
-
-                       :else
-                       (throw (ex-info
-                               (str "The env `" env-name "` does not "
-                                    "exist. It must be created via the admin "
-                                    "interface or made into a temporary env "
-                                    "by specifying `env-lifetime-mins`.")
-                               (u/sym-map env-name)))))))
+                         (assoc env-name->info env-name env-info))))
+              (au/<? (<copy-from-branch-sources!
+                      (assoc fn-arg :env-info (@*env-name->info env-name))))))
           (swap! *conn-id->auth-info assoc conn-id {})
           (swap! *conn-id->env-name assoc conn-id env-name)
           (log/info
@@ -865,7 +875,8 @@
 
 (defn make-talk2-server [{:keys [port] :as arg}]
   (let [server (t2s/server (assoc arg :port port))
-        admin-client-ep-info (make-admin-client-ep-info arg)
+        admin-client-ep-info (make-admin-client-ep-info
+                              (assoc arg :talk2-server server))
         client-ep-info (make-client-ep-info arg)]
     (t2s/add-endpoint! (assoc admin-client-ep-info :server server))
     (t2s/add-endpoint! (assoc client-ep-info :server server))

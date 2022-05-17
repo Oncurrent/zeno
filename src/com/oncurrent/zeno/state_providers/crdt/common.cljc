@@ -36,7 +36,7 @@
                            (or key "nil") "`.")
                       (u/sym-map add-id key op-type path))))
     (when-not (int? key)
-      (throw (ex-info (str "Array index must be an integr. Got: `"
+      (throw (ex-info (str "Array index must be an integer. Got: `"
                            (or key "nil") "`.")
                       (u/sym-map add-id key op-type path))))))
 
