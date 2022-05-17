@@ -304,27 +304,6 @@
            :crdt (apply-ops/apply-ops (assoc arg :ops ops))
            :ops (set/union (:ops arg) ops))))
 
-
-; (comment
-
-;  (def e #{{:head-node-id "NodeA", :tail-node-id "NodeX", :add-id "a9"} {:head-node-id "NodeC", :tail-node-id "-END-", :add-id "a7"} {:head-node-id "NodeY", :tail-node-id "NodeC", :add-id "a13"} {:head-node-id "-START-", :tail-node-id "NodeA", :add-id "a4"} {:head-node-id "NodeA", :tail-node-id "NodeY", :add-id "a12"}})
-;  (filter (fn [x] (= array-start-node-id (:head-node-id x))) e)
-;  (reduce (fn [acc {:keys [head-node-id tail-node-id]}]
-;            (cond
-;             (= array-start-node-id head-node-id)
-;             (update acc :connected-to-start conj tail-node-id)
-
-;             (= array-end-node-id tail-node-id)
-;             (update acc :connected-to-end conj head-node-id)
-
-;             :else acc))
-;          {:connected-to-start #{}
-;           :connected-to-end #{}}
-;          e)
-
-;  (conj)
-;  )
-
 (defn get-nodes-connected-to-terminals [edges]
   (reduce (fn [acc {:keys [head-node-id tail-node-id]}]
             (cond

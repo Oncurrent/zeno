@@ -9,5 +9,5 @@
                              :http-root "resources/public/js/test"}}
   :node-test {:target :node-test
               :output-to "out/node-tests.js"
-              :ns-regexp "^unit.crdt-test$"
+              :ns-regexp "-test$"
               :autorun   true}}}

@@ -250,8 +250,7 @@
         (is (= expected-v v))
         (is (= "there" nested-v))))))
 
-(comment (kaocha.repl/run #'test-thingy {:capture-output? false}))
-(deftest test-thingy
+(deftest test-ordering-that-failed-in-cljs
   (let [schema (l/array-schema l/string-schema)
         sys-time-ms (u/str->long "1640205282858")
         *next-id-num (atom 0)
