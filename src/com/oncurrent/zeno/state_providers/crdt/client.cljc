@@ -247,29 +247,30 @@
 
 (defn make-get-in-state [{:keys [*v]}]
   (fn get-in-state [{:keys [path root] :as gis-arg}]
-    (reduce (fn [{:keys [value] :as acc} k]
-              (let [[k* value*] (cond
-                                  (or (keyword? k) (nat-int? k) (string? k))
-                                  [k (when value
-                                       (get value k))]
+    (let [path (u/chop-root path root)]
+      (reduce (fn [{:keys [value] :as acc} k]
+                (let [[k* value*] (cond
+                                   (or (keyword? k) (nat-int? k) (string? k))
+                                   [k (when value
+                                        (get value k))]
 
-                                  (and (int? k) (neg? k))
-                                  (let [arg {:array-len (count value)
-                                             :i k}
-                                        i (u/get-normalized-array-index arg)]
-                                    [i (nth value i)])
+                                   (and (int? k) (neg? k))
+                                   (let [arg {:array-len (count value)
+                                              :i k}
+                                         i (u/get-normalized-array-index arg)]
+                                     [i (nth value i)])
 
-                                  (nil? k)
-                                  [nil nil]
+                                   (nil? k)
+                                   [nil nil]
 
-                                  :else
-                                  (throw-bad-path-key path k))]
-                (-> acc
-                    (update :norm-path conj k*)
-                    (assoc :value value*))))
-            {:norm-path []
-             :value @*v}
-            path)))
+                                   :else
+                                   (throw-bad-path-key path k))]
+                  (-> acc
+                      (update :norm-path conj k*)
+                      (assoc :value value*))))
+              {:norm-path []
+               :value @*v}
+              path))))
 
 (defn ->state-provider
   [{::crdt/keys [authorizer schema root] :as config}]
