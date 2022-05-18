@@ -251,6 +251,7 @@
              update branch
              (fn [old-info]
                (let [pc-arg {:cmds cmds
+                             :root root
                              :crdt (:crdt old-info)
                              :schema schema}
                      {:keys [crdt update-infos]} (commands/process-cmds pc-arg)
@@ -272,7 +273,7 @@
             (u/sym-map k path)))))
 
 (defn make-<get-state [{:keys [*branch->crdt-info root schema]}]
-  (fn [{:keys [branch path] :as gis-arg}]
+  (fn [{:zeno/keys [branch path] :as gis-arg}]
     (au/go
       (let [{:keys [v]} (@*branch->crdt-info branch)]
         (reduce (fn [{:keys [value] :as acc} k]
