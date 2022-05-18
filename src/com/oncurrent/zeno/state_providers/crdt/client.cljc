@@ -198,31 +198,37 @@
         (when (and last-snapshot-info @*connected?)
           (au/<? (<load-snapshot!
                   (assoc arg :snapshot-info last-snapshot-info))))
-        #_(when (and (seq tx-infos-since-snapshot) @*connected?)
-            (let [tx-infos (au/<? (common/<serializable-tx-infos->tx-infos
-                                   (u/sym-map <request-schema schema
-                                              tx-infos-since-snapshot storage)))
-                  info (reduce (fn [acc {:keys [crdt-ops tx-id update-infos]}]
-                                 (-> acc
-                                     (assoc :last-tx-id tx-id)
-                                     (update :ops concat crdt-ops)
-                                     (update :update-infos concat update-infos)))
-                               {:last-tx-id nil
-                                :ops []
-                                :update-infos []}
-                               tx-infos)]
-              (swap! *crdt-state (fn [old-crdt]
-                                   (apply-ops/apply-ops {:crdt old-crdt
-                                                         :ops (:ops info)
-                                                         :schema schema})))
-              (swap! *v (fn [v]
-                          (update-v {:crdt @*crdt-state
-                                     :root root
-                                     :schema schema
-                                     :update-infos (:update-infos info)
-                                     :v v})))
-              (reset! *last-tx-i xxx)
-              (update-subscriptions! (:update-infos info))))))))
+        ;; TODO: Finish this part about getting and applying tx-infos
+        #_(when (and (seq tx-ids-since-snapshot) @*connected?)
+          (let [tx-infos (-> tx-ids-since-snapshot
+                             (filter :already-have)
+                             (<send-msg :tx-ids->tx-infos)
+                             (au/<?)
+                             (common/<serializable-tx-infos->tx-infos))
+                ; tx-infos (au/<? (common/<serializable-tx-infos->tx-infos
+                ;                  (u/sym-map <request-schema schema
+                ;                             tx-infos-since-snapshot storage)))
+                info (reduce (fn [acc {:keys [crdt-ops tx-id update-infos]}]
+                               (-> acc
+                                   (assoc :last-tx-id tx-id)
+                                   (update :ops concat crdt-ops)
+                                   (update :update-infos concat update-infos)))
+                             {:last-tx-id nil
+                              :ops []
+                              :update-infos []}
+                             tx-infos)]
+            (swap! *crdt-state (fn [old-crdt]
+                                 (apply-ops/apply-ops {:crdt old-crdt
+                                                       :ops (:ops info)
+                                                       :schema schema})))
+            (swap! *v (fn [v]
+                        (update-v {:crdt @*crdt-state
+                                   :root root
+                                   :schema schema
+                                   :update-infos (:update-infos info)
+                                   :v v})))
+            (reset! *last-tx-i xxx)
+            (update-subscriptions! (:update-infos info))))))))
 
 (defn load-local-data! [{:keys [*host-fns signal-consumer-sync!] :as arg}]
   (ca/go
