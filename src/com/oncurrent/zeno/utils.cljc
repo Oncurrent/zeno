@@ -475,7 +475,7 @@
                               ":")
                             (ex-msg-and-stacktrace e)))))
         (let [timeout-ch (ca/timeout delay-ms)
-              [_ ch] (au/alts? [now-ch stop-ch timeout-ch])]
+              [_ ch] (au/alts? [stop-ch now-ch timeout-ch] :priority true)]
           (when (not= stop-ch ch)
             (recur)))))
     (sym-map now! stop!)))

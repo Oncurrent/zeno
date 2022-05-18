@@ -418,9 +418,6 @@
            {:keys [value]} (get-value-info {:crdt crdt
                                             :path path
                                             :schema schema})]
-       (log/info (str "####:\n"
-                      (u/pprint-str
-                       (u/sym-map v norm-path value))))
        (assoc-in acc path value)))
    v
    update-infos))

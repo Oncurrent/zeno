@@ -186,16 +186,17 @@
             storage @*storage
             log (au/<? (storage/<get storage log-k shared/segmented-log-schema))
             log-length (count log)]
-        (when (> log-length consumer-log-length)
+        (if-not (> log-length consumer-log-length)
+          {}
           (let [snap-info-k (->branch-snapshot-info-k (u/sym-map branch))
                 last-snapshot-info (au/<? (storage/<get
                                            storage snap-info-k
                                            shared/snapshot-info-schema))
                 {:keys [last-tx-i]} last-snapshot-info
-                tx-infos-since-snapshot (nthrest log (if last-tx-i
-                                                       (inc last-tx-i)
-                                                       0))]
-            (u/sym-map last-snapshot-info tx-infos-since-snapshot)))))))
+                {tx-ids-since-snapshot :tx-ids} (nthrest log (if last-tx-i
+                                                               (inc last-tx-i)
+                                                               0))]
+            (u/sym-map last-snapshot-info tx-ids-since-snapshot)))))))
 
 (defn make-<copy-branch! [{:keys [*branch->crdt-info *storage]}]
   (fn [{old-branch :state-provider-branch-source

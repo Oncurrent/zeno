@@ -74,7 +74,7 @@
 
 (l/def-record-schema get-consumer-sync-info-ret-schema
   [:last-snapshot-info snapshot-info-schema]
-  [:tx-infos-since-snapshot (l/array-schema serializable-tx-info-schema)])
+  [:tx-ids-since-snapshot (l/array-schema tx-id-schema)])
 
 (def msg-protocol
   {:get-consumer-sync-info {:arg-schema get-consumer-sync-info-arg-schema

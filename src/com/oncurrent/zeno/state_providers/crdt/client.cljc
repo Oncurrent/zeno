@@ -95,7 +95,6 @@
                 unsynced-log-k (->unsynced-log-k (u/sym-map env-name))]
             (au/<? (storage/<swap! storage k shared/serializable-tx-info-schema
                                    (constantly tx-info)))
-
             (au/<? (storage/<swap! storage unsynced-log-k
                                    shared/unsynced-log-schema
                                    (fn [aid->tx-ids]
@@ -194,12 +193,12 @@
             {:keys [<request-schema <send-msg update-subscriptions!]} @*host-fns
             msg-arg  {:msg-type :get-consumer-sync-info
                       :arg {:last-tx-i @*last-tx-i}}
-            sync-info (au/<? (<send-msg msg-arg))
-            {:keys [last-snapshot-info tx-infos-since-snapshot]} sync-info]
-        (when last-snapshot-info
+            sync-info (when @*connected? (au/<? (<send-msg msg-arg)))
+            {:keys [last-snapshot-info tx-ids-since-snapshot]} sync-info]
+        (when (and last-snapshot-info @*connected?)
           (au/<? (<load-snapshot!
                   (assoc arg :snapshot-info last-snapshot-info))))
-        #_(when (seq tx-infos-since-snapshot)
+        #_(when (and (seq tx-infos-since-snapshot) @*connected?)
             (let [tx-infos (au/<? (common/<serializable-tx-infos->tx-infos
                                    (u/sym-map <request-schema schema
                                               tx-infos-since-snapshot storage)))

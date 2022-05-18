@@ -24,16 +24,13 @@
 (comment (kaocha.repl/run *ns*))
 
 (comment
-  (kaocha.repl/run #'test-envs {:color? false}))
+  (kaocha.repl/run #'test-envs {:color? false :capture-output? false}))
 (deftest test-envs
   (au/test-async
-   5000
+   10000
    (au/go
      (au/<? (c/<clear-envs!))
-     (let [admin (admin/->admin-client
-                  #:zeno{:admin-password c/admin-password
-                         :get-server-base-url
-                         (constantly "ws://localhost:8080/admin")})
+     (let [admin (c/->admin)
            ;; Create a permanent env to use as a base
            perm-env-name (u/compact-random-uuid)
            auth-infos [#:zeno{:authenticator-name
