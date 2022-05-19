@@ -101,24 +101,20 @@
  (kaocha.repl/run #'test-fill-env-defaults {:color? false}))
 (deftest test-fill-env-defaults
   (let [f u/fill-env-defaults]
-    (is (= {:env-name u/default-env-name
-            :source-env-name u/default-env-name
-            :env-lifetime-mins u/default-env-lifetime-mins}
-           (f {})))
     (is (= #:zeno{:env-name u/default-env-name
                   :source-env-name u/default-env-name
                   :env-lifetime-mins u/default-env-lifetime-mins}
-           (f {} "zeno")))
-    (is (= {:env-name "nacho"
-            :source-env-name u/default-env-name
-            :env-lifetime-mins 1}
-           (f {:env-name "nacho"
-               :env-lifetime-mins 1})))
-    (let [ret (f {:source-env-name "nacho"})]
-      (is (= "nacho" (:source-env-name ret)))
-      (is (= u/default-env-lifetime-mins (:env-lifetime-mins ret)))
-      (is (= 26 (count (:env-name ret)))))
-    (let [ret (f {:env-lifetime-mins 1})]
-      (is (= u/default-env-name (:source-env-name ret)))
-      (is (= 1 (:env-lifetime-mins ret)))
-      (is (= 26 (count (:env-name ret)))))))
+           (f {})))
+    (is (= #:zeno{:env-name "nacho"
+                  :source-env-name u/default-env-name
+                  :env-lifetime-mins 1}
+           (f #:zeno{:env-name "nacho"
+                     :env-lifetime-mins 1})))
+    (let [ret (f #:zeno{:source-env-name "nacho"})]
+      (is (= "nacho" (:zeno/source-env-name ret)))
+      (is (= u/default-env-lifetime-mins (:zeno/env-lifetime-mins ret)))
+      (is (= 26 (count (:zeno/env-name ret)))))
+    (let [ret (f #:zeno{:env-lifetime-mins 1})]
+      (is (= u/default-env-name (:zeno/source-env-name ret)))
+      (is (= 1 (:zeno/env-lifetime-mins ret)))
+      (is (= 26 (count (:zeno/env-name ret)))))))

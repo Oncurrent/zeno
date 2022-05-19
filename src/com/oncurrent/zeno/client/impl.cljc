@@ -275,7 +275,7 @@
 
 (defn zeno-client [config]
   (let [config* (-> (merge default-config config)
-                    (u/fill-env-defaults "zeno"))
+                    (u/fill-env-defaults))
         _ (u/check-config {:config config*
                            :config-type :client
                            :config-rules client-config-rules})

@@ -480,29 +480,24 @@
             (recur)))))
     (sym-map now! stop!)))
 
-(defn fill-env-defaults
-  ([m]
-   (fill-env-defaults m nil))
-  ([m ns*]
-   (letfn [(kw [s] (keyword ns* s))]
-     (-> m
-         (update (kw "env-name") #(cond
-                                   (not-empty %) %
-                                   (or (not-empty ((kw "source-env-name") m))
-                                       ((kw "env-lifetime-mins") m))
-                                   (compact-random-uuid)
-                                   :else default-env-name))
-         (update (kw "source-env-name") #(if (not-empty %) % default-env-name))
-         (update (kw "env-lifetime-mins") #(or % default-env-lifetime-mins))))))
+(defn fill-env-defaults [m]
+  (-> m
+      (update :zeno/env-name #(cond
+                               (not-empty %) %
+                               (or (not-empty (:zeno/source-env-name m))
+                                   (:zeno/env-lifetime-mins m))
+                               (compact-random-uuid)
+                               :else default-env-name))
+      (update :zeno/source-env-name #(if (not-empty %) % default-env-name))
+      (update :zeno/env-lifetime-mins #(or % default-env-lifetime-mins))))
 
 (defn env-params->query-string [m]
   (map->query-string {:ks [:env-name :source-env-name :env-lifetime-mins]
-                      :m (fill-env-defaults m)}))
+                      :m m}))
 
 (defn query-string->env-params [s]
   (-> (query-string->map s)
-      (update :env-lifetime-mins str->int)
-      (fill-env-defaults)))
+      (update :env-lifetime-mins str->int)))
 
 ;;;;;;;;;;;;;;;;;;;; Platform detection ;;;;;;;;;;;;;;;;;;;;
 
