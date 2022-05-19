@@ -705,22 +705,6 @@
                               "`. msg-type: `" msg-type "`.\n\n"
                               (u/ex-msg-and-stacktrace e))))))))))
 
-(defn query-string->env-params [s]
-  (let [m (u/query-string->map s)
-        temp? (or (not-empty (:source-env-name m))
-                  (not-empty (:env-lifetime-mins m)))
-        env-name (or (:env-name m)
-                     (if temp?
-                       (u/compact-random-uuid)
-                       u/default-env-name))
-        source-env-name (or (:source-env-name m)
-                            u/default-env-name)
-        env-lifetime-mins (when temp?
-                            (if (not-empty (:env-lifetime-mins m))
-                              (u/str->int (:env-lifetime-mins m))
-                              u/default-env-lifetime-mins))]
-    (u/sym-map env-name source-env-name env-lifetime-mins)))
-
 (defn xf-ean->info [new-branch env-auth-name->info]
   (reduce-kv (fn [acc auth-name auth-info]
                (assoc acc auth-name
@@ -762,31 +746,15 @@
     (ca/go
       (try
         (let [uri-map (uri/uri path)
-              env-params (-> uri-map :query query-string->env-params)
-              {:keys [env-lifetime-mins env-name]} env-params
-              temp? (boolean env-lifetime-mins)
-              exists? (contains? @*env-name->info env-name)]
-          (cond
-            exists?
-            nil
-
-            (not temp?)
-            (throw (ex-info
-                    (str "The env `" env-name "` does not "
-                         "exist. It must be created via the admin "
-                         "interface or made into a temporary env "
-                         "by specifying `env-lifetime-mins`.")
-                    (u/sym-map env-name)))
-
-            :else
-            (do ;; Create the temp env
-              (swap! *env-name->info
-                     (fn [env-name->info]
-                       (let [env-info (->temp-env-info (u/sym-map env-name->info
-                                                                  env-params))]
-                         (assoc env-name->info env-name env-info))))
-              (au/<? (<copy-from-branch-sources!
-                      (assoc fn-arg :env-info (@*env-name->info env-name))))))
+              env-params (-> uri-map :query u/query-string->env-params)
+              {:keys [env-name]} env-params]
+          (when-not (contains? @*env-name->info env-name)
+            ;; Create a temp env
+            (swap! *env-name->info
+                   (fn [env-name->info]
+                     (let [env-info (->temp-env-info (u/sym-map env-name->info
+                                                                env-params))]
+                       (assoc env-name->info env-name env-info)))))
           (swap! *conn-id->auth-info assoc conn-id {})
           (swap! *conn-id->env-name assoc conn-id env-name)
           (log/info
