@@ -42,17 +42,17 @@
    edges))
 
 (defn connected-to-terminal?
-  [{:keys [*nodes-connected-to-start
-           *nodes-connected-to-end
+  [{:keys [nodes-connected-to-start
+           nodes-connected-to-end
            node
            node->edge-info
            path
            terminal]
     :as arg}]
-  (let [[*nodes-connected link-key] (if (= :start terminal)
-                                      [*nodes-connected-to-start :parents]
-                                      [*nodes-connected-to-end :children])]
-    (if (@*nodes-connected node)
+  (let [[nodes-connected link-key] (if (= :start terminal)
+                                     [nodes-connected-to-start :parents]
+                                     [nodes-connected-to-end :children])]
+    (if (nodes-connected node)
       true
       (let [path* (conj path node)
             links (get-in node->edge-info [node link-key])]
@@ -60,29 +60,27 @@
                   (if-not (connected-to-terminal?
                            (assoc arg :node link :path path*))
                     acc
-                    (do
-                      (swap! *nodes-connected #(apply conj % path*))
-                      (reduced true))))
+                    (reduced true)))
                 false
                 links)))))
 
 (defn get-connected-node
-  [{:keys [*nodes-connected-to-start
-           *nodes-connected-to-end
+  [{:keys [nodes-connected-to-start
+           nodes-connected-to-end
            deleted-edges
            node
            terminal] :as arg}]
   (let [node->deleted-edge-info (make-node->edge-info deleted-edges)
-        [*nodes-connected
+        [nodes-connected
          links-k] (if (= :start terminal)
-                    [*nodes-connected-to-start
+                    [nodes-connected-to-start
                      :parents]
-                    [*nodes-connected-to-end
+                    [nodes-connected-to-end
                      :children])
         linked-nodes (-> (get-in node->deleted-edge-info [node links-k])
                          (sort))
         conn-node (reduce (fn [acc linked-node]
-                            (when (@*nodes-connected linked-node)
+                            (when (nodes-connected linked-node)
                               (reduced linked-node)))
                           nil
                           linked-nodes)]
@@ -115,8 +113,6 @@
                       edge {:add-id (make-id)
                             self-add-id node
                             opp-add-id conn-node}
-
-
                       new-edges (:new-edges acc)]
                   (-> acc
                       (update :edges conj edge)
@@ -306,18 +302,32 @@
            :crdt (apply-ops/apply-ops (assoc arg :ops ops))
            :ops (set/union (:ops arg) ops))))
 
+(defn get-nodes-connected-to-terminals [edges]
+  (reduce (fn [acc {:keys [head-node-id tail-node-id]}]
+            (cond
+              (= array-start-node-id head-node-id)
+              (update acc :nodes-connected-to-start conj tail-node-id)
+
+              (= array-end-node-id tail-node-id)
+              (update acc :nodes-connected-to-end conj head-node-id)
+
+              :else acc))
+          {:nodes-connected-to-start #{array-start-node-id}
+           :nodes-connected-to-end #{array-end-node-id}}
+          edges))
+
 (defn connect-nodes-to-terminals
   [{:keys [live-nodes make-id sys-time-ms] :as arg}]
-  (let [*nodes-connected-to-start (atom #{array-start-node-id})
-        *nodes-connected-to-end (atom #{array-end-node-id})
+  (let [edges (get-edges (assoc arg :edge-type :current))
         deleted-edges (get-edges (assoc arg :edge-type :deleted))
-        edges (get-edges (assoc arg :edge-type :current))
+        {:keys [nodes-connected-to-start
+                nodes-connected-to-end]} (get-nodes-connected-to-terminals edges)
         new-edges (make-connecting-edges (u/sym-map deleted-edges
                                                     edges
                                                     live-nodes
                                                     make-id
-                                                    *nodes-connected-to-start
-                                                    *nodes-connected-to-end))
+                                                    nodes-connected-to-start
+                                                    nodes-connected-to-end))
         ops (map (fn [edge]
                    {:add-id (:add-id edge)
                     :op-type :add-array-edge
