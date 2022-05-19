@@ -748,6 +748,11 @@
         (let [uri-map (uri/uri path)
               env-params (-> uri-map :query u/query-string->env-params)
               {:keys [env-name]} env-params]
+          (when-not env-name
+            (throw (ex-info
+                    (str "Must provide an :env-name in order to connect. "
+                         "Got `" (or env-name "nil") "`.")
+                    env-params)))
           (when-not (contains? @*env-name->info env-name)
             ;; Create a temp env
             (swap! *env-name->info
