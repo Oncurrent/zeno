@@ -146,9 +146,7 @@
 (defn make-get-url [{:keys [get-server-base-url] :as arg}]
   (fn []
     (let [base-url (get-server-base-url)
-          ks [:env-name :source-env-name :env-lifetime-mins]
-          query-str (u/map->query-string {:ks ks
-                                          :m arg})]
+          query-str (u/env-params->query-string arg)]
       (str base-url
            (when-not (str/ends-with? base-url "/")
              "/")
@@ -276,7 +274,8 @@
   (ca/put! (:update-state-ch zc) (u/sym-map cmds cb)))
 
 (defn zeno-client [config]
-  (let [config* (merge default-config config)
+  (let [config* (-> (merge default-config config)
+                    (u/fill-env-defaults))
         _ (u/check-config {:config config*
                            :config-type :client
                            :config-rules client-config-rules})
