@@ -994,7 +994,7 @@
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
-(deftest ^:this test-crdt-array-ops
+(deftest test-crdt-array-ops
   (au/test-async
    3000
    (ca/go
