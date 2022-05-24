@@ -34,6 +34,9 @@
 
 (defn <get-schema-from-peer [{:keys [<request-schema fp storage]}]
   (au/go
+    (when-not <request-schema
+      (throw (ex-info (str "Can't request schema for `" fp `
+                           "because no `:<request-schema` fn was provided."))))
     (let [json (au/<? (<request-schema fp))
           schema (l/json->schema json)
           ;; Call <schema->fp to store the schema in storage

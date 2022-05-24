@@ -34,6 +34,7 @@
 ;;;;;;;;;;;;;;;; Transaction & Log Schemas ;;;;;;;;;;;;;;;;;
 
 (def client-id-schema l/string-schema)
+(def tx-index-schema l/int-schema)
 (def tx-id-schema l/string-schema)
 
 (l/def-record-schema serializable-update-info-schema
@@ -53,32 +54,37 @@
   (l/map-schema ;; keys are actor-ids
    (l/array-schema tx-id-schema)))
 
-(l/def-record-schema segmented-log-schema
-  [:parent-log-k l/string-schema]
-  [:tx-ids (l/array-schema tx-id-schema)])
+(l/def-record-schema serializable-snapshot-schema
+  [:edn-crdt l/string-schema]
+  [:serialized-value schemas/serialized-value-schema])
+
+(l/def-record-schema actor-log-info-schema
+  [:branch-log-tx-indices-since-snapshot (l/array-schema tx-index-schema)]
+  [:snapshot-tx-index tx-index-schema]
+  [:snapshot-txs-hash l/long-schema])
+
+(l/def-record-schema branch-log-info-schema
+  [:actor-id-to-log-info (l/map-schema actor-log-info-schema)]
+  [:branch-tx-ids (l/array-schema tx-id-schema)])
 
 ;;;;;;;;;;;;;;;; Msg Protocol ;;;;;;;;;;;;;;;;;;;;;
 
-(l/def-record-schema snapshot-schema
-  [:serialized-crdt l/string-schema]
-  [:serialized-value schemas/serialized-value-schema])
-
-(l/def-record-schema snapshot-info-schema
-  [:fp schemas/fingerprint-schema]
-  [:last-tx-i l/int-schema]
-  [:s3-key l/string-schema]
-  [:url l/string-schema])
-
 (l/def-record-schema get-consumer-sync-info-arg-schema
-  [:last-tx-i l/int-schema])
+  [:last-tx-index tx-index-schema])
 
 (l/def-record-schema get-consumer-sync-info-ret-schema
-  [:last-snapshot-info snapshot-info-schema]
+  [:snapshot serializable-snapshot-schema]
+  [:snapshot-tx-index tx-index-schema]
   [:tx-ids-since-snapshot (l/array-schema tx-id-schema)])
+
+(l/def-record-schema get-tx-infos-arg-schema
+  [:tx-ids (l/array-schema tx-id-schema)])
 
 (def msg-protocol
   {:get-consumer-sync-info {:arg-schema get-consumer-sync-info-arg-schema
                             :ret-schema get-consumer-sync-info-ret-schema}
-   :log-txs {:arg-schema (l/array-schema serializable-tx-info-schema)
-             :ret-schema l/boolean-schema}
+   :get-tx-infos {:arg-schema get-tx-infos-arg-schema
+                  :ret-schema (l/array-schema serializable-tx-info-schema)}
+   :log-tx-batch {:arg-schema (l/array-schema serializable-tx-info-schema)
+                  :ret-schema l/boolean-schema}
    :notify-consumer-log-sync {:arg-schema l/null-schema}})

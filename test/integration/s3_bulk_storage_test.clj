@@ -20,7 +20,7 @@
      (let [bucket-name (u/compact-random-uuid)
            _ (is (= true (au/<? (bs/<create-s3-bucket!
                                  (u/sym-map bucket-name)))))
-           bulk-storage (bs/make-s3-bulk-storage (u/sym-map bucket-name))
+           bulk-storage (bs/->s3-bulk-storage (u/sym-map bucket-name))
            k "test-k"
            ba (ba/byte-array [1 2 3 42])
            _ (is (= nil (au/<? (bs/<get bulk-storage k))))

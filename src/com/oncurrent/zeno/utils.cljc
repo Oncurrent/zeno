@@ -449,8 +449,9 @@
                       in error logging.
      - `:task-fn` - Required - The fn to be called in each loop iteration.
     Returns a map with these keys:
-     - `:now!` - A zero-arg fn that can be called to cut short the loop
-                 delay and call the task-fn immediately.
+     - `:now!` - A fn that can be called to cut short the loop
+                 delay and call the task-fn immediately. Any args passed
+                 into the `:now!` fn will be passed to the `:task-fn`.
      - `:stop!` - A zero-arg fn that can be called to stop the loop."
   [{:keys [loop-delay-ms loop-name task-fn] :as arg}]
   (when-not (ifn? task-fn)
@@ -460,12 +461,13 @@
   (let [stop-ch (ca/promise-chan)
         now-ch (ca/chan (ca/dropping-buffer 1))
         stop! #(ca/put! stop-ch true)
-        now! #(ca/put! now-ch true)
+        now! (fn [& args]
+               #(ca/put! now-ch args))
         delay-ms (or loop-delay-ms 1000)]
     (ca/go
-      (loop []
+      (loop [args []]
         (try
-          (let [ret (task-fn)]
+          (let [ret (apply task-fn args)]
             (when (au/channel? ret)
               (au/<? ret)))
           (catch #?(:clj Exception :cljs js/Error) e
@@ -475,9 +477,11 @@
                               ":")
                             (ex-msg-and-stacktrace e)))))
         (let [timeout-ch (ca/timeout delay-ms)
-              [_ ch] (au/alts? [stop-ch now-ch timeout-ch] :priority true)]
-          (when (not= stop-ch ch)
-            (recur)))))
+              [v ch] (au/alts? [stop-ch now-ch timeout-ch] :priority true)]
+          (condp = ch
+            stop-ch nil
+            timeout-ch (recur [])
+            now-ch (recur v)))))
     (sym-map now! stop!)))
 
 (defn fill-env-defaults [m]

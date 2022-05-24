@@ -19,7 +19,7 @@
      (au/test-async
       1000
       (au/go
-        (let [bulk-storage (bs/make-mem-bulk-storage)
+        (let [bulk-storage (bs/->mem-bulk-storage)
               k "test-k"
               ba (ba/byte-array [1 2 3 42])
               _ (is (= nil (au/<? (bs/<get bulk-storage k))))

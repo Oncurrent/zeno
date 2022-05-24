@@ -153,20 +153,14 @@
                                              unsynced-log-k
                                              shared/unsynced-log-schema))
             aids (reduce-kv (fn [acc aid tx-ids]
-                              (cond
-                                (empty? tx-ids)
+                              (if (or (empty? tx-ids)
+                                      (= actor-id-str aid))
                                 acc
-
-                                ;; Put current actor-id at the front
-                                (= actor-id-str aid)
-                                (vec (cons actor-id acc))
-
-                                :else
                                 (conj acc aid)))
-                            []
+                            [actor-id]
                             aid->tx-ids)]
         ;; Sync the whole log for the current actor-id, then sync
-        ;; batches any other logs
+        ;; batches for any other actor-ids
         (doseq [aid aids]
           (au/<? (<sync-producer-txs-for-actor-id!
                   (assoc arg

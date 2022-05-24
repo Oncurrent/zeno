@@ -6,6 +6,7 @@
    [clojure.string :as str]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
+   [com.oncurrent.zeno.bulk-storage :as bulk-storage]
    [com.oncurrent.zeno.common :as common]
    [com.oncurrent.zeno.distributed-mutex :as dm]
    [com.oncurrent.zeno.schemas :as schemas]
@@ -28,6 +29,11 @@
          {:required? true
           :checks [{:pred sequential?
                     :msg "must be a sequence of authenticators"}]}
+
+         :bulk-storage
+         {:required? true
+          :checks [{:pred #(satisfies? bulk-storage/IBulkStorage %)
+                    :msg "must satisfy the IBulkStorage protocol"}]}
 
          :certificate-str
          {:required? false
@@ -991,7 +997,8 @@
              @*env-name->info))
 
 (defn initialize-state-providers!
-  [{:keys [*env-name->info root->state-provider storage talk2-server]}]
+  [{:keys [*env-name->info bulk-storage root->state-provider
+           storage talk2-server]}]
   (doseq [[root sp] root->state-provider]
     (let [{::sp-impl/keys [init! msg-protocol state-provider-name]} sp]
       (when init!
@@ -1010,6 +1017,8 @@
               branches (get-sp-branches (u/sym-map *env-name->info root))]
           (init! {:<send-msg <send-msg
                   :branches branches
+                  :bulk-storage (bulk-storage/->prefixed-bulk-storage
+                                 (u/sym-map bulk-storage prefix))
                   :storage (storage/make-prefixed-storage prefix storage)}))))))
 
 (defn make-name->state-provider [root->state-provider]
@@ -1027,6 +1036,7 @@
                      <publish-member-urls
                      admin-password
                      authenticators
+                     bulk-storage
                      certificate-str
                      port
                      private-key-str
@@ -1056,6 +1066,7 @@
                        *rpc-name-kw->handler
                        admin-password
                        authenticator-name->info
+                       bulk-storage
                        certificate-str
                        name->state-provider
                        port
@@ -1074,6 +1085,7 @@
                                             <get-published-member-urls
                                             <publish-member-urls))]
     (u/sym-map *rpc-name-kw->handler
+               bulk-storage
                member-id
                mutex-clients
                root->state-provider

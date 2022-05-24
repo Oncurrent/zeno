@@ -65,6 +65,7 @@
         root->sp {:zeno/crdt crdt-sp}
         config #:zeno{:admin-password c/admin-password
                       :authenticators [(password/->authenticator)]
+                      :bulk-storage (bs/->mem-bulk-storage)
                       :port port
                       :root->state-provider root->sp
                       :rpcs c/rpcs

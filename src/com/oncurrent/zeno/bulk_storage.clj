@@ -22,7 +22,7 @@
   (<get [this k])
   (<put! [this k ba] [this k ba opts]))
 
-(defn <create-s3-bucket! [{:keys [bucket-name]}]
+(defn <create-s3-bucket! [{:keys [bucket-name location-constraint]}]
   (au/go
     (when (str/blank? bucket-name)
       (throw (ex-info (str "`bucket-name` argument must be a non-empty string. "
@@ -33,7 +33,8 @@
           s3-arg {:op :CreateBucket
                   :request {:Bucket bucket-name
                             :CreateBucketConfiguration {:LocationConstraint
-                                                        "us-west-2"}}}
+                                                        (or location-constraint
+                                                            "us-west-2")}}}
           ret (au/<? (aws-async/invoke s3-client s3-arg))]
       (if (:cognitect.anomalies/category ret)
         (throw (ex-info (str ret)
@@ -62,7 +63,7 @@
       (throw (ex-info (str "`k` argument to `<get` must be a string. Got `"
                            k "`")
                       (u/sym-map k))))
-    (or (sr/get cache k)
+    (or (sr/get cache [bucket-name k])
         (let [s3-arg {:op :GetObject
                       :request {:Bucket bucket-name
                                 :Key k}}
@@ -106,6 +107,7 @@
           s3-arg {:op :PutObject
                   :request req}
           ret (au/<? (aws-async/invoke s3-client s3-arg))]
+      (sr/put! cache [bucket-name k] ba)
       (if (:cognitect.anomalies/category ret)
         (throw (ex-info (str ret)
                         (u/sym-map s3-arg bucket-name k ret)))
@@ -153,14 +155,28 @@
       (swap! *store assoc k ba)
       true)))
 
-(defn make-mem-bulk-storage []
+(defrecord PrefixedBulkStorage [bulk-storage prefix]
+  IBulkStorage
+  (<delete! [this k]
+    (<delete! bulk-storage (str prefix "-" k)))
+  (<get [this k]
+    (<get bulk-storage (str prefix "-" k)))
+  (<put! [this k ba]
+    (<put! bulk-storage (str prefix "-" k) ba))
+  (<put! [this k ba opts]
+    (<put! bulk-storage (str prefix "-" k) ba opts)))
+
+(defn ->mem-bulk-storage []
   (let [*store (atom {})]
     (->MemBulkStorage *store)))
 
-(defn make-s3-bulk-storage [{:keys [bucket-name num-cache-slots] :as arg}]
+(defn ->s3-bulk-storage [{:keys [bucket-name num-cache-slots] :as arg}]
   (when (str/blank? bucket-name)
     (throw (ex-info "You must specify a `:bucket-name`." arg)))
   (let [s3-client (aws/client {:api :s3})
         cache (sr/stockroom (or num-cache-slots 10))]
     (aws/validate-requests s3-client true)
     (->S3BulkStorage bucket-name cache s3-client)))
+
+(defn ->prefixed-bulk-storage [{:keys [bulk-storage prefix]}]
+  (->PrefixedBulkStorage bulk-storage prefix))
