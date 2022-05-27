@@ -1,5 +1,6 @@
 (ns com.oncurrent.zeno.utils
   (:require
+   #?(:cljs [applied-science.js-interop :as j])
    [clojure.core.async :as ca]
    #?(:cljs [clojure.pprint :as pprint])
    [clojure.string :as str]
@@ -15,7 +16,16 @@
       [com.oncurrent.zeno.utils :refer [sym-map go-log go-log-helper*]]))
   #?(:clj
      (:import
-      (java.util UUID))
+      (java.net URI)
+      (java.net.http HttpClient
+                     HttpRequest
+                     HttpRequest$Builder
+                     HttpResponse
+                     HttpResponse$BodyHandler
+                     HttpResponse$BodyHandlers)
+      (java.util UUID)
+      (java.util.concurrent CompletableFuture)
+      (java.util.function BiFunction))
 
      :cljs
      (:import
@@ -502,6 +512,52 @@
 (defn query-string->env-params [s]
   (-> (query-string->map s)
       (update :env-lifetime-mins str->int)))
+
+(defn <http-get [{:keys [url]}]
+  #?(:clj
+     (let [rsp-ch (ca/chan)
+           client ^HttpClient (HttpClient/newHttpClient)
+           req (.build ^HttpRequest$Builder (HttpRequest/newBuilder (URI. url)))
+           body-handler (HttpResponse$BodyHandlers/ofByteArray)
+           fut ^CompletableFuture (.sendAsync
+                                   client
+                                   req
+                                   ^HttpResponse$BodyHandler body-handler)
+           f ^BiFunction (reify BiFunction
+                           (apply [this rsp e]
+                             (let [status-code (.statusCode ^HttpResponse rsp)
+                                   ret (cond
+                                         e
+                                         e
+
+                                         (= 200 status-code)
+                                         (.body ^HttpResponse rsp)
+
+                                         :else
+                                         (ex-info
+                                          (str "Request failed. Status code: "
+                                               status-code)
+                                          (sym-map status-code url)))]
+                               (ca/put! rsp-ch ret))))]
+       (.handle fut f)
+       rsp-ch)
+
+     :cljs
+     (let [ret-ch (ca/chan)]
+       (-> (js/fetch url)
+           (.then (fn [rsp]
+                    (let [status-code (j/get rsp :status)]
+                      (if-not (= 200 status-code)
+                        (ca/put! ret-ch (ex-info
+                                         (str "Request failed. Status code: "
+                                              status-code)
+                                         (sym-map status-code url)))
+                        (-> (j/call rsp :arrayBuffer)
+                            (.then (fn [ab]
+                                     (ca/put! ret-ch (js/Int8Array. ab)))))))))
+           (.catch (fn [e]
+                     (ca/put! ret-ch e))))
+       ret-ch)))
 
 ;;;;;;;;;;;;;;;;;;;; Platform detection ;;;;;;;;;;;;;;;;;;;;
 

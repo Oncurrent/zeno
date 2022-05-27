@@ -1100,6 +1100,7 @@
       (dm/stop! mutex-client)))
   (when talk2-server
     (t2s/stop! talk2-server))
+  (au/<?? (bulk-storage/<stop-server! bulk-storage))
   (doseq [[root {::sp-impl/keys [stop!]}] root->state-provider]
     (when stop!
       (stop!))))
