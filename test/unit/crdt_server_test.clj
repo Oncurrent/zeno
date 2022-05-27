@@ -36,6 +36,15 @@
        :tx-id tx-id
        :update-infos ser-update-infos})))
 
+(defn <log-tx!
+  [{:keys [actor-id client-id cmds make-tx-id root schema]
+    :as arg}]
+  (au/go
+    (let [tx-id (make-tx-id)
+          ser-tx-info (au/<? (<make-ser-tx-info (assoc arg :tx-id tx-id)))]
+      (au/<? (server/<log-producer-tx-batch!
+              (assoc arg :serializable-tx-infos [ser-tx-info]))))))
+
 (deftest ^:this test-sync
   (au/test-async
    3000
@@ -48,40 +57,47 @@
                schema tc/crdt-schema
                storage (storage/make-storage)
                authorizer (auth/->authorizer)
+               root :my-root
                actor-id "actor-1"
                client-id "client-1"
-               tx-id "abx7m2pxfphen96wybd71j1n2m"
-               root :my-root
+               snapshot-interval 2
+               *tx-id (atom 0)
+               make-tx-id #(str "tx-" (swap! *tx-id inc))
+               arg (u/sym-map *branch->crdt-info actor-id authorizer branch
+                              bulk-storage client-id make-tx-id root schema
+                              snapshot-interval storage)
                book  {:title "Tall Tales"
                       :nums [3 6 9]}
                book-id "book-id"
-               cmds [{:zeno/arg book
-                      :zeno/op :zeno/set
-                      :zeno/path [root :books book-id]}]
-               ser-tx-info (au/<? (<make-ser-tx-info
-                                   (u/sym-map actor-id client-id cmds root
-                                              schema storage tx-id)))
-               serializable-tx-infos [ser-tx-info]
-               snapshot-interval 1
-               arg (u/sym-map *branch->crdt-info actor-id authorizer branch
-                              bulk-storage root schema serializable-tx-infos
-                              snapshot-interval storage)
-               lp-ret (au/<? (server/<log-producer-tx-batch! arg))
-               _ (is (= true lp-ret))
+               cmds-1 [{:zeno/arg book
+                        :zeno/op :zeno/set
+                        :zeno/path [root :books book-id]}]
+               _ (is (= true (au/<? (<log-tx! (assoc arg :cmds cmds-1)))))
                _ (is (= book (-> (@*branch->crdt-info branch)
                                  (:v)
                                  (:books)
                                  (get book-id))))
                _ (is (= {:actor-id-to-log-info {}
-                         :branch-tx-ids [tx-id]}
+                         :branch-tx-ids ["tx-1"]}
                         (au/<? (storage/<get storage branch-log-k
                                              shared/branch-log-info-schema))))
-               gcsi-ret (au/<? (server/<get-consumer-sync-info arg))
-               {:keys [snapshot-url]} gcsi-ret
+               gcsi-ret-1 (au/<? (server/<get-consumer-sync-info arg))
+               _ (is (= {:snapshot-tx-index -1
+                         :snapshot-url nil
+                         :tx-ids-since-snapshot ["tx-1"]} gcsi-ret-1))
+               the-id "xyz-123"
+               cmds-2 [{:zeno/arg the-id
+                        :zeno/op :zeno/set
+                        :zeno/path [root :the-id]}]
+               _ (is (= true (au/<? (<log-tx! (assoc arg :cmds cmds-2)))))
+               gcsi-ret-2 (au/<? (server/<get-consumer-sync-info arg))
+               _ (is (= 1 (:snapshot-tx-index gcsi-ret-2)))
+               _ (is (= [] (:tx-ids-since-snapshot gcsi-ret-2)))
                snapshot (au/<? (common/<get-snapshot-from-url
-                                (assoc arg :url snapshot-url)))
+                                (assoc arg :url (:snapshot-url gcsi-ret-2))))
                _ (is (= book (-> snapshot :v :books (get book-id))))
                _ (is (= [book-id] (-> snapshot :crdt :children :books
-                                      :children keys)))])
+                                      :children keys)))
+               _ (is (= the-id (-> snapshot :v :the-id)))])
          (finally
            (bulk-storage/<stop-server! bulk-storage)))))))

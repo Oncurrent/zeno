@@ -426,19 +426,21 @@
 
 (defn <ba->snapshot [{:keys [ba schema storage] :as arg}]
   (au/go
-    (let [serialized-value (l/deserialize-same schemas/serialized-value-schema
-                                               ba)
-          sv->v-arg (assoc arg
-                           :reader-schema shared/serializable-snapshot-schema
-                           :serialized-value serialized-value)
-          ser-snap (au/<? (common/<serialized-value->value sv->v-arg))
-          crdt (edn/read-string (:edn-crdt ser-snap))
-          {:keys [bytes fp]} (:serialized-value ser-snap)
-          writer-schema (au/<? (storage/<fp->schema storage fp))
-          v (l/deserialize schema writer-schema bytes)]
-      (u/sym-map crdt v))))
+    (when ba
+      (let [serialized-value (l/deserialize-same schemas/serialized-value-schema
+                                                 ba)
+            sv->v-arg (assoc arg
+                             :reader-schema shared/serializable-snapshot-schema
+                             :serialized-value serialized-value)
+            ser-snap (au/<? (common/<serialized-value->value sv->v-arg))
+            crdt (edn/read-string (:edn-crdt ser-snap))
+            {:keys [bytes fp]} (:serialized-value ser-snap)
+            writer-schema (au/<? (storage/<fp->schema storage fp))
+            v (l/deserialize schema writer-schema bytes)]
+        (u/sym-map crdt v)))))
 
 (defn <get-snapshot-from-url [{:keys [url] :as arg}]
   (au/go
-    (let [ba (au/<? (u/<http-get {:url url}))]
-      (au/<? (<ba->snapshot (assoc arg :ba ba))))))
+    (when url
+      (let [ba (au/<? (u/<http-get {:url url}))]
+        (au/<? (<ba->snapshot (assoc arg :ba ba)))))))

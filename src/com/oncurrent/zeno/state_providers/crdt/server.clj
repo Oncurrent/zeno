@@ -19,6 +19,7 @@
    [taoensso.timbre :as log])
   (:import
    (clojure.lang ExceptionInfo)
+   (java.nio ByteBuffer)
    (java.util UUID)))
 
 (set! *warn-on-reflection* true)
@@ -57,15 +58,28 @@
                          (unchecked-multiply old-hash hash-multiplier)
                          0)))
 
+(defn pad-ba-8
+  "Pads the end of the given byte array so the length is a multiple of 8"
+  [ba]
+  (let [bytes-to-add (- 8 (rem (count ba) 8))]
+    (ba/concat-byte-arrays [ba (ba/byte-array bytes-to-add)])))
+
+(defn add-tx-id-to-hash [{:keys [old-hash tx-id]}]
+  ;; TODO: Use shift and mask instead of ByteBuffer
+  (let [ba (-> (ba/utf8->byte-array tx-id)
+               (pad-ba-8))
+        num-longs (/ (count ba) 8)
+        bb ^ByteBuffer (ByteBuffer/wrap ba)]
+    (reduce (fn [acc i]
+              (additive-hash {:new-v (.getLong bb)
+                              :old-hash acc}))
+            old-hash
+            (range num-longs))))
+
 (defn add-tx-ids-to-hash [{:keys [old-hash tx-ids]}]
   (reduce (fn [acc tx-id]
-            (let [^UUID uuid (compact-uuid/read tx-id)
-                  tx-id-high (.getMostSignificantBits uuid)
-                  tx-id-low (.getLeastSignificantBits uuid)
-                  h1 (additive-hash {:new-v tx-id-high
-                                     :old-hash old-hash})]
-              (additive-hash {:new-v tx-id-low
-                              :old-hash h1})))
+            (add-tx-id-to-hash {:old-hash acc
+                                :tx-id tx-id}))
           old-hash
           tx-ids))
 
@@ -282,12 +296,15 @@
 (defn <log-info->sync-info
   [{:keys [branch-tx-ids bulk-storage last-tx-index log-info] :as arg}]
   (au/go
-    (let [{:keys [branch-log-tx-indices-since-snapshot]} log-info
+    (let [{:keys [snapshot-txs-hash
+                  branch-log-tx-indices-since-snapshot]} log-info
           snapshot-tx-index (or (:snapshot-tx-index log-info) -1)
-          snapshot-k (->snapshot-k log-info)
+          snapshot-k (when snapshot-txs-hash
+                       (->snapshot-k log-info))
           seconds-valid (* 60 30)
-          snapshot-url (au/<? (bulk-storage/<get-time-limited-url
-                               bulk-storage snapshot-k seconds-valid))
+          snapshot-url (when snapshot-txs-hash
+                         (au/<? (bulk-storage/<get-time-limited-url
+                                 bulk-storage snapshot-k seconds-valid)))
           log-tx-index (+ snapshot-tx-index
                           (count branch-log-tx-indices-since-snapshot))
           tx-ids-since-snapshot (mapv #(nth branch-tx-ids %)
