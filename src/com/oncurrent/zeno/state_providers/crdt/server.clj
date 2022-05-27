@@ -1,7 +1,6 @@
 (ns com.oncurrent.zeno.state-providers.crdt.server
   (:require
    [clojure.core.async :as ca]
-   [clojure.edn :as edn]
    [compact-uuids.core :as compact-uuid]
    [com.oncurrent.zeno.bulk-storage :as bulk-storage]
    [com.oncurrent.zeno.schemas :as schemas]
@@ -20,7 +19,6 @@
    [taoensso.timbre :as log])
   (:import
    (clojure.lang ExceptionInfo)
-   (java.security MessageDigest)
    (java.util UUID)))
 
 (set! *warn-on-reflection* true)
@@ -71,22 +69,13 @@
           old-hash
           tx-ids))
 
-(defn get-snapshot [{:keys [bulk-storage log-info schema storage] :as arg}]
-  (let [snap-k (when (:snapshot-txs-hash log-info)
-                 (->snapshot-k log-info))
-        ba (au/<?? (bulk-storage/<get bulk-storage snap-k))]
-    (when ba
-      (let [ser-snap (l/deserialize-same schemas/serialized-value-schema ba)
-            snap-writer-schema (au/<?? (storage/<fp->schema storage
-                                                            (:fp ser-snap)))
-            snap (l/deserialize shared/serializable-snapshot-schema
-                                snap-writer-schema
-                                (:bytes ser-snap))
-            crdt (edn/read-string (:edn-crdt snap))
-            ser-v (:serialized-value snap)
-            v-writer-schema (au/<?? (storage/<fp->schema storage (:fp ser-v)))
-            v (l/deserialize schema v-writer-schema (:bytes ser-v))]
-        (u/sym-map crdt v)))))
+(defn <get-snapshot [{:keys [bulk-storage log-info] :as arg}]
+  (au/go
+    (let [snap-k (when (:snapshot-txs-hash log-info)
+                   (->snapshot-k log-info))
+          ba (au/<? (bulk-storage/<get bulk-storage snap-k))]
+      (when ba
+        (au/<? (common/<ba->snapshot (assoc arg :ba ba)))))))
 
 (defn <get-serializable-tx-info [{:keys [schema storage tx-id]}]
   (let [k (common/tx-id->tx-info-k tx-id)]
@@ -118,33 +107,34 @@
                :update-infos []}
               tx-infos))))
 
-(defn add-to-snapshot!
+(defn <add-to-snapshot!
   [{:keys [bulk-storage log-info root schema storage tx-ids] :as arg}]
-  (if (empty? tx-ids)
-    (:snapshot-txs-hash log-info)
-    (let [old-hash (:snapshot-txs-hash log-info)
-          snapshot-txs-hash (add-tx-ids-to-hash (u/sym-map old-hash tx-ids))
-          old-snapshot (get-snapshot arg)
-          info (au/<?? (<get-ops-and-update-infos-for-tx-ids arg))
-          crdt (apply-ops/apply-ops {:crdt (:crdt old-snapshot)
-                                     :ops (:ops info)
-                                     :schema schema})
-          v (common/update-v (assoc (u/sym-map crdt root schema)
-                                    :update-infos (:update-infos info)
-                                    :v (:v old-snapshot)))
-          edn-crdt (pr-str crdt)
-          serialized-value {:bytes (l/serialize schema v)
-                            :fp (au/<?? (storage/<schema->fp storage schema))}
-          ser-snap (u/sym-map edn-crdt serialized-value)
-          sv {:bytes (l/serialize shared/serializable-snapshot-schema ser-snap)
-              :fp (au/<?? (storage/<schema->fp
-                           storage shared/serializable-snapshot-schema))}
-          ba (l/serialize schemas/serialized-value-schema sv)
-          snap-k (->snapshot-k (u/sym-map snapshot-txs-hash))]
-      ;; TODO: Use S3 HeadObject instead of GetObject for this existence check
-      (when-not (au/<?? (bulk-storage/<get bulk-storage snap-k))
-        (au/<?? (bulk-storage/<put! bulk-storage snap-k ba)))
-      snapshot-txs-hash)))
+  (au/go
+    (if (empty? tx-ids)
+      (:snapshot-txs-hash log-info)
+      (let [old-hash (:snapshot-txs-hash log-info)
+            snapshot-txs-hash (add-tx-ids-to-hash (u/sym-map old-hash tx-ids))
+            old-snapshot (au/<? (<get-snapshot arg))
+            info (au/<? (<get-ops-and-update-infos-for-tx-ids arg))
+            crdt (apply-ops/apply-ops {:crdt (:crdt old-snapshot)
+                                       :ops (:ops info)
+                                       :schema schema})
+            v (common/update-v (assoc (u/sym-map crdt root schema)
+                                      :update-infos (:update-infos info)
+                                      :v (:v old-snapshot)))
+            edn-crdt (pr-str crdt)
+            serialized-value {:bytes (l/serialize schema v)
+                              :fp (au/<? (storage/<schema->fp storage schema))}
+            ser-snap (u/sym-map edn-crdt serialized-value)
+            sv {:bytes (l/serialize shared/serializable-snapshot-schema ser-snap)
+                :fp (au/<? (storage/<schema->fp
+                            storage shared/serializable-snapshot-schema))}
+            ba (l/serialize schemas/serialized-value-schema sv)
+            snap-k (->snapshot-k (u/sym-map snapshot-txs-hash))]
+        ;; TODO: Use S3 HeadObject instead of GetObject for this existence check
+        (when-not (au/<? (bulk-storage/<get bulk-storage snap-k))
+          (au/<? (bulk-storage/<put! bulk-storage snap-k ba)))
+        snapshot-txs-hash))))
 
 (defn make-new-snapshot!
   [{:keys [branch-tx-ids log-info tx-info] :as arg}]
@@ -154,7 +144,8 @@
         tx-ids (-> (mapv #(nth branch-tx-ids %)
                          branch-log-tx-indices-since-snapshot)
                    (conj tx-id))
-        snapshot-txs-hash (add-to-snapshot! (assoc arg :tx-ids tx-ids))
+        snapshot-txs-hash (au/<?? (<add-to-snapshot!
+                                   (assoc arg :tx-ids tx-ids)))
         new-index (+ (or snapshot-tx-index -1)
                      (count tx-ids))]
     {:branch-log-tx-indices-since-snapshot []
@@ -269,7 +260,7 @@
                                       :tx-infos tx-infos))))
       true)))
 
-(defn make-<log-producer-tx-batch-handler
+(defn make-log-producer-tx-batch-handler
   [{:keys [*bulk-storage *storage root] :as fn-arg}]
   (fn [{:keys [<request-schema env-info] :as h-arg}]
     (let [branch (-> env-info :env-sp-root->info root :state-provider-branch)]
@@ -280,30 +271,43 @@
               :serializable-tx-infos (vec (:arg h-arg))
               :storage @*storage)))))
 
-(defn log-info->sync-info
-  [{:keys [branch-tx-ids last-tx-index log-info] :as arg}]
-  (let [{:keys [branch-log-tx-indices-since-snapshot]} log-info
-        snapshot-tx-index (or (:snapshot-tx-index log-info) -1)
-        log-tx-index (+ snapshot-tx-index
-                        (count branch-log-tx-indices-since-snapshot))
-        tx-ids-since-snapshot (mapv #(nth branch-tx-ids %)
-                                    branch-log-tx-indices-since-snapshot)
-        full-info (fn []
-                    {:snapshot (get-snapshot arg)
-                     :snapshot-tx-index snapshot-tx-index
-                     :tx-ids-since-snapshot tx-ids-since-snapshot})]
-    (cond
-      (nil? last-tx-index)
-      (full-info)
+(defn make-get-tx-infos-handler
+  ;; TODO: Consider security implications. Can anyone get any tx-info?
+  [{:keys [*storage] :as fn-arg}]
+  (fn [{:keys [arg] :as h-arg}]
+    (<get-tx-infos-for-tx-ids (assoc fn-arg
+                                     :storage @*storage
+                                     :tx-ids (:tx-ids arg)))))
 
-      (= last-tx-index log-tx-index)
-      {}
+(defn <log-info->sync-info
+  [{:keys [branch-tx-ids bulk-storage last-tx-index log-info] :as arg}]
+  (au/go
+    (let [{:keys [branch-log-tx-indices-since-snapshot]} log-info
+          snapshot-tx-index (or (:snapshot-tx-index log-info) -1)
+          snapshot-k (->snapshot-k log-info)
+          seconds-valid (* 60 30)
+          snapshot-url (au/<? (bulk-storage/<get-time-limited-url
+                               bulk-storage snapshot-k seconds-valid))
+          log-tx-index (+ snapshot-tx-index
+                          (count branch-log-tx-indices-since-snapshot))
+          tx-ids-since-snapshot (mapv #(nth branch-tx-ids %)
+                                      branch-log-tx-indices-since-snapshot)]
+      (cond
+        (nil? last-tx-index)
+        (u/sym-map snapshot-url
+                   snapshot-tx-index
+                   tx-ids-since-snapshot)
 
-      (> last-tx-index snapshot-tx-index)
-      (u/sym-map tx-ids-since-snapshot)
+        (= last-tx-index log-tx-index)
+        {}
 
-      :else
-      (full-info))))
+        (> last-tx-index snapshot-tx-index)
+        (u/sym-map tx-ids-since-snapshot)
+
+        :else
+        (u/sym-map snapshot-url
+                   snapshot-tx-index
+                   tx-ids-since-snapshot)))))
 
 (defn make-log-info-for-actor-id!
   [{:keys [authorizer branch-tx-ids snapshot-interval]
@@ -327,8 +331,8 @@
                             (dec split-i))
         branch-log-tx-indices-since-snapshot (drop split-i tx-indices)
         snapshot-tx-ids (take split-i tx-ids)
-        snapshot-txs-hash (add-to-snapshot!
-                           (assoc arg :tx-ids snapshot-tx-ids))]
+        snapshot-txs-hash (au/<?? (<add-to-snapshot!
+                                   (assoc arg :tx-ids snapshot-tx-ids)))]
     (u/sym-map branch-log-tx-indices-since-snapshot
                snapshot-tx-index
                snapshot-txs-hash)))
@@ -342,20 +346,20 @@
           {:keys [actor-id-to-log-info branch-tx-ids]} bli
           ba-log-info (get actor-id-to-log-info actor-id)]
       (if ba-log-info
-        (log-info->sync-info (assoc arg
-                                    :branch-tx-ids branch-tx-ids
-                                    :last-tx-index last-tx-index
-                                    :log-info ba-log-info))
+        (au/<? (<log-info->sync-info (assoc arg
+                                            :branch-tx-ids branch-tx-ids
+                                            :last-tx-index last-tx-index
+                                            :log-info ba-log-info)))
         (let [ba-log-info (make-log-info-for-actor-id!
                            (assoc arg
                                   :actor-id actor-id
                                   :branch-tx-ids branch-tx-ids))]
-          (log-info->sync-info (assoc arg
-                                      :branch-tx-ids branch-tx-ids
-                                      :last-tx-index last-tx-index
-                                      :log-info ba-log-info)))))))
+          (au/<? (<log-info->sync-info (assoc arg
+                                              :branch-tx-ids branch-tx-ids
+                                              :last-tx-index last-tx-index
+                                              :log-info ba-log-info))))))))
 
-(defn make-<get-consumer-sync-info-handler
+(defn make-get-consumer-sync-info-handler
   [{:keys [*bulk-storage *storage root] :as fn-arg}]
   (fn [{:keys [actor-id arg env-info] :as h-arg}]
     (let [branch (-> env-info :env-sp-root->info root :state-provider-branch)]
@@ -478,10 +482,13 @@
                        authorizer root schema snapshot-interval)
         <copy-branch! (make-<copy-branch! arg)
         msg-handlers {:get-consumer-sync-info
-                      (make-<get-consumer-sync-info-handler arg)
+                      (make-get-consumer-sync-info-handler arg)
+
+                      :get-tx-infos
+                      (make-get-tx-infos-handler arg)
 
                       :log-producer-tx-batch
-                      (make-<log-producer-tx-batch-handler arg)}
+                      (make-log-producer-tx-batch-handler arg)}
         init! (fn [{:keys [<send-msg branches bulk-storage storage]}]
                 (reset! *storage storage)
                 (reset! *bulk-storage bulk-storage)

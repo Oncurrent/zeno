@@ -73,7 +73,7 @@
   [:last-tx-index tx-index-schema])
 
 (l/def-record-schema get-consumer-sync-info-ret-schema
-  [:snapshot serializable-snapshot-schema]
+  [:snapshot-url l/string-schema]
   [:snapshot-tx-index tx-index-schema]
   [:tx-ids-since-snapshot (l/array-schema tx-id-schema)])
 
@@ -85,6 +85,7 @@
                             :ret-schema get-consumer-sync-info-ret-schema}
    :get-tx-infos {:arg-schema get-tx-infos-arg-schema
                   :ret-schema (l/array-schema serializable-tx-info-schema)}
-   :log-tx-batch {:arg-schema (l/array-schema serializable-tx-info-schema)
-                  :ret-schema l/boolean-schema}
+   :log-producer-tx-batch {:arg-schema (l/array-schema
+                                        serializable-tx-info-schema)
+                           :ret-schema l/boolean-schema}
    :notify-consumer-log-sync {:arg-schema l/null-schema}})

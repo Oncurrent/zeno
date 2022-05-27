@@ -1,10 +1,12 @@
 (ns com.oncurrent.zeno.state-providers.crdt.common
   (:require
    [clojure.core.async :as ca]
+   [clojure.edn :as edn]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
    [deercreeklabs.lancaster.utils :as lu]
    [com.oncurrent.zeno.common :as common]
+   [com.oncurrent.zeno.schemas :as schemas]
    [com.oncurrent.zeno.state-providers.crdt.shared :as shared]
    [com.oncurrent.zeno.storage :as storage]
    [com.oncurrent.zeno.utils :as u]
@@ -421,3 +423,22 @@
        (assoc-in acc path value)))
    v
    update-infos))
+
+(defn <ba->snapshot [{:keys [ba schema storage] :as arg}]
+  (au/go
+    (let [serialized-value (l/deserialize-same schemas/serialized-value-schema
+                                               ba)
+          sv->v-arg (assoc arg
+                           :reader-schema shared/serializable-snapshot-schema
+                           :serialized-value serialized-value)
+          ser-snap (au/<? (common/<serialized-value->value sv->v-arg))
+          crdt (edn/read-string (:edn-crdt ser-snap))
+          {:keys [bytes fp]} (:serialized-value ser-snap)
+          writer-schema (au/<? (storage/<fp->schema storage fp))
+          v (l/deserialize schema writer-schema bytes)]
+      (u/sym-map crdt v))))
+
+(defn <get-snapshot-from-url [{:keys [url] :as arg}]
+  (au/go
+    (let [ba (au/<? (u/<http-get {:url url}))]
+      (au/<? (<ba->snapshot (assoc arg :ba ba))))))

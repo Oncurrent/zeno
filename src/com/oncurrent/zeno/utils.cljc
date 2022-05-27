@@ -514,10 +514,15 @@
       (update :env-lifetime-mins str->int)))
 
 (defn <http-get [{:keys [url]}]
+  (when-not (string? url)
+    (throw (ex-info (str "The value of the `:url` key must be a string. Got `"
+                         (or url "nil") "`.")
+                    (sym-map url))))
   #?(:clj
      (let [rsp-ch (ca/chan)
            client ^HttpClient (HttpClient/newHttpClient)
-           req (.build ^HttpRequest$Builder (HttpRequest/newBuilder (URI. url)))
+           req (.build ^HttpRequest$Builder (HttpRequest/newBuilder
+                                             (URI. url)))
            body-handler (HttpResponse$BodyHandlers/ofByteArray)
            fut ^CompletableFuture (.sendAsync
                                    client

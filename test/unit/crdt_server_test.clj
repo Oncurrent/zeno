@@ -40,40 +40,48 @@
   (au/test-async
    3000
    (au/go
-     (let [*branch->crdt-info (atom {})
-           branch "test-branch"
-           branch-log-k (server/->branch-log-k (u/sym-map branch))
-           bulk-storage (bulk-storage/->mem-bulk-storage)
-           schema tc/crdt-schema
-           storage (storage/make-storage)
-           authorizer (auth/->authorizer)
-           actor-id "actor-1"
-           client-id "client-1"
-           tx-id "abx7m2pxfphen96wybd71j1n2m"
-           root :my-root
-           book  {:title "Tall Tales"
-                  :nums [3 6 9]}
-           book-id "book-id"
-           cmds [{:zeno/arg book
-                  :zeno/op :zeno/set
-                  :zeno/path [root :books book-id]}]
-           ser-tx-info (au/<? (<make-ser-tx-info
-                               (u/sym-map actor-id client-id cmds root
-                                          schema storage tx-id)))
-           serializable-tx-infos [ser-tx-info]
-           snapshot-interval 1
-           arg (u/sym-map *branch->crdt-info actor-id authorizer branch
-                          bulk-storage root schema serializable-tx-infos
-                          snapshot-interval storage)
-           lp-ret (au/<? (server/<log-producer-tx-batch! arg))
-           _ (is (= true lp-ret))
-           _ (is (= book (-> (@*branch->crdt-info branch)
-                             (:v)
-                             (:books)
-                             (get book-id))))
-           _ (is (= {:actor-id-to-log-info {}
-                     :branch-tx-ids [tx-id]}
-                    (au/<? (storage/<get storage branch-log-k
-                                         shared/branch-log-info-schema))))
-           gcsi-ret (au/<? (server/<get-consumer-sync-info arg))
-           _ (is (= book (-> gcsi-ret :snapshot :v :books (get book-id))))]))))
+     (let [bulk-storage (bulk-storage/->mem-bulk-storage {:server-port 9997})]
+       (try
+         (let [*branch->crdt-info (atom {})
+               branch "test-branch"
+               branch-log-k (server/->branch-log-k (u/sym-map branch))
+               schema tc/crdt-schema
+               storage (storage/make-storage)
+               authorizer (auth/->authorizer)
+               actor-id "actor-1"
+               client-id "client-1"
+               tx-id "abx7m2pxfphen96wybd71j1n2m"
+               root :my-root
+               book  {:title "Tall Tales"
+                      :nums [3 6 9]}
+               book-id "book-id"
+               cmds [{:zeno/arg book
+                      :zeno/op :zeno/set
+                      :zeno/path [root :books book-id]}]
+               ser-tx-info (au/<? (<make-ser-tx-info
+                                   (u/sym-map actor-id client-id cmds root
+                                              schema storage tx-id)))
+               serializable-tx-infos [ser-tx-info]
+               snapshot-interval 1
+               arg (u/sym-map *branch->crdt-info actor-id authorizer branch
+                              bulk-storage root schema serializable-tx-infos
+                              snapshot-interval storage)
+               lp-ret (au/<? (server/<log-producer-tx-batch! arg))
+               _ (is (= true lp-ret))
+               _ (is (= book (-> (@*branch->crdt-info branch)
+                                 (:v)
+                                 (:books)
+                                 (get book-id))))
+               _ (is (= {:actor-id-to-log-info {}
+                         :branch-tx-ids [tx-id]}
+                        (au/<? (storage/<get storage branch-log-k
+                                             shared/branch-log-info-schema))))
+               gcsi-ret (au/<? (server/<get-consumer-sync-info arg))
+               {:keys [snapshot-url]} gcsi-ret
+               snapshot (au/<? (common/<get-snapshot-from-url
+                                (assoc arg :url snapshot-url)))
+               _ (is (= book (-> snapshot :v :books (get book-id))))
+               _ (is (= [book-id] (-> snapshot :crdt :children :books
+                                      :children keys)))])
+         (finally
+           (bulk-storage/<stop-server! bulk-storage)))))))

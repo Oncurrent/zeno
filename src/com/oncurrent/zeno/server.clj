@@ -1094,7 +1094,8 @@
                talk2-server
                ws-url)))
 
-(defn stop! [{:keys [mutex-clients root->state-provider talk2-server]}]
+(defn stop!
+  [{:keys [bulk-storage mutex-clients root->state-provider talk2-server]}]
   (when mutex-clients
     (doseq [mutex-client mutex-clients]
       (dm/stop! mutex-client)))
