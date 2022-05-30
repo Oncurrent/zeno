@@ -31,22 +31,9 @@
 (defmulti get-add-ops (fn [{:keys [schema]}]
                              (c/schema->dispatch-type schema)))
 
-(defn xf-op-paths [{:keys [prefix i ops union? array?]}]
-  (reduce (fn [acc {:keys [norm-path] :as op}]
-            (conj acc
-                  (cond-> op
-                    true
-                    (update :path #(cons prefix %))
-
-                    (and norm-path
-                         (not array?)
-                         (not union?))
-                    (update :norm-path #(cons prefix %))
-
-                    (and norm-path
-                         array?
-                         (not union?))
-                    (update :norm-path #(cons i %)))))
+(defn xf-op-paths [{:keys [prefix ops]}]
+  (reduce (fn [acc op]
+            (conj acc (update op :op-path #(cons prefix %))))
           #{}
           ops))
 
@@ -55,9 +42,8 @@
   (let [{:keys [current-add-id-to-value-info]} crdt]
     (reduce-kv (fn [acc add-id value-info]
                  (conj acc {:add-id add-id
-                            :op-type :delete-value
-                            :path '()
-                            :norm-path '()}))
+                            :op-path '()
+                            :op-type :delete-value}))
                #{}
                current-add-id-to-value-info)))
 
@@ -98,7 +84,7 @@
             :get-child-schema (constantly values-schema)))))
 
 (defmethod get-delete-ops :record
-  [{:keys [path schema] :as arg}]
+  [{:keys [cmd path schema] :as arg}]
   (associative-get-delete-ops
    (assoc arg
           :get-child-path-info (fn [[k & sub-path]]
@@ -108,7 +94,7 @@
                                   (throw (ex-info (str "Bad record key `" k
                                                        "` in path `"
                                                        path "`.")
-                                                  (u/sym-map path k))))))))
+                                                  (u/sym-map path k cmd))))))))
 
 (defn get-ops-del-single-node
   [{:keys [crdt make-id node-id sys-time-ms]}]
@@ -133,14 +119,14 @@
               current-edge-add-ids)
         {:keys [in-add-id out-add-id]} info]
     #{{:add-id in-add-id
-       :op-type :delete-array-edge
-       :path '()}
+       :op-path '()
+       :op-type :delete-array-edge}
       {:add-id out-add-id
-       :op-type :delete-array-edge
-       :path '()}
+       :op-path '()
+       :op-type :delete-array-edge}
       {:add-id (make-id)
+       :op-path '()
        :op-type :add-array-edge
-       :path '()
        :sys-time-ms (or sys-time-ms (u/current-time-ms))
        :value {:head-node-id (:head-node-id (add-id-to-edge in-add-id))
                :tail-node-id (:tail-node-id (add-id-to-edge out-add-id))}}}))
@@ -179,8 +165,8 @@
                    (empty? path)
                    (reduce (fn [acc eaid]
                              (conj acc {:add-id eaid
-                                        :op-type :delete-array-edge
-                                        :path '()}))
+                                        :op-path '()
+                                        :op-type :delete-array-edge}))
                            #{}
                            current-edge-add-ids)
 
@@ -220,14 +206,13 @@
 (defmethod get-add-ops :single-value
   [{:keys [cmd-arg make-id sys-time-ms]}]
   #{{:add-id (make-id)
-     :norm-path '()
+     :op-path '()
      :op-type :add-value
-     :path '()
      :sys-time-ms (or sys-time-ms (u/current-time-ms))
      :value cmd-arg}})
 
 (defmethod get-add-ops :map
-  [{:keys [cmd-arg cmd-path cmd-type crdt path schema] :as arg}]
+  [{:keys [cmd cmd-arg cmd-path cmd-type crdt path schema] :as arg}]
   (let [values-schema (l/child-schema schema)]
     (if (seq path)
       (let [[k & ks] path]
@@ -244,8 +229,7 @@
                 (throw (ex-info
                         (str ":arg (`" (or cmd-arg "nil") "`) is not the "
                              "correct type for this command.")
-                        {:arg cmd-arg
-                         :path cmd-path})))]
+                        (u/sym-map cmd path))))]
         (reduce-kv (fn [acc k v]
                      (let [add-ops (get-add-ops
                                     (assoc arg
@@ -260,7 +244,7 @@
                    cmd-arg)))))
 
 (defmethod get-add-ops :record
-  [{:keys [cmd-arg cmd-path cmd-type crdt path schema] :as arg}]
+  [{:keys [cmd cmd-arg cmd-path cmd-type crdt path schema] :as arg}]
   (if (seq path)
     (let [[k & ks] path]
       (-> (get-add-ops (assoc arg
@@ -275,8 +259,7 @@
         (throw (ex-info
                 (str "Command path indicates a record, but `:arg` is "
                      "not associative. Got `" (or cmd-arg "nil") "`.")
-                {:arg cmd-arg
-                 :path cmd-path})))
+                (u/sym-map cmd path))))
       (reduce (fn [acc k]
                 (let [v (get cmd-arg k)
                       child-schema (l/child-schema schema k)
@@ -311,8 +294,7 @@
                          :union? true}))))))
 
 (defmethod get-add-ops :array
-  [{:keys [cmd-arg cmd-path cmd-type crdt make-id norm-path path
-           schema sys-time-ms]
+  [{:keys [cmd cmd-arg cmd-path cmd-type crdt make-id path schema sys-time-ms]
     :as arg}]
   (let [items-schema (l/child-schema schema)
         ordered-node-ids (array/get-ordered-node-ids arg)]
@@ -325,7 +307,7 @@
                 (throw (ex-info
                         (str "Index `" ni "` into array `" ordered-node-ids
                              "` is out of bounds.")
-                        (u/sym-map cmd-arg cmd-path norm-path path
+                        (u/sym-map cmd-arg cmd-path path
                                    ordered-node-ids i sub-path))))
             k (nth ordered-node-ids ni)
             add-ops (get-add-ops (assoc arg
@@ -340,8 +322,7 @@
                 (throw (ex-info
                         (str "Command path indicates an array, but arg is "
                              "not sequential. Got `" (or cmd-arg "nil") "`.")
-                        {:arg cmd-arg
-                         :path cmd-path})))
+                        (u/sym-map cmd path))))
             info (reduce
                   (fn [acc v]
                     (let [node-id (make-id)
@@ -368,28 +349,28 @@
             {:keys [node-ids node-ops]} info
             initial-eops (if (empty? node-ids)
                            #{{:add-id (make-id)
+                              :op-path '()
                               :op-type :add-array-edge
-                              :path '()
                               :sys-time-ms (or sys-time-ms (u/current-time-ms))
                               :value {:head-node-id array/array-start-node-id
                                       :tail-node-id array/array-end-node-id}}}
                            #{{:add-id (make-id)
+                              :op-path '()
                               :op-type :add-array-edge
-                              :path '()
                               :sys-time-ms (or sys-time-ms (u/current-time-ms))
                               :value {:head-node-id array/array-start-node-id
                                       :tail-node-id (first node-ids)}}
                              {:add-id (make-id)
+                              :op-path '()
                               :op-type :add-array-edge
-                              :path '()
                               :sys-time-ms (or sys-time-ms (u/current-time-ms))
                               :value {:head-node-id (last node-ids)
                                       :tail-node-id array/array-end-node-id}}})
             edge-ops (reduce (fn [acc [head-node-id tail-node-id]]
                                (conj acc
                                      {:add-id (make-id)
+                                      :op-path '()
                                       :op-type :add-array-edge
-                                      :path '()
                                       :sys-time-ms (or sys-time-ms
                                                        (u/current-time-ms))
                                       :value (u/sym-map head-node-id
@@ -419,7 +400,7 @@
               (u/sym-map path i cmd-type cmd-arg cmd-path))))))
 
 (defn do-single-insert
-  [{:keys [cmd-arg cmd-type make-id norm-path path schema]
+  [{:keys [cmd-arg cmd-type make-id path schema]
     :as arg}]
   (check-insert-arg arg)
   (let [{repair-ops :ops
@@ -452,14 +433,10 @@
                            :schema schema
                            :ops ops))]
     {:crdt final-crdt
-     :ops (set/union repair-ops ops)
-     :update-info {:norm-path norm-path
-                   :op cmd-type
-                   :value cmd-arg}}))
+     :ops (set/union repair-ops ops)}))
 
 (defn do-range-insert
-  [{:keys [cmd cmd-arg cmd-type crdt make-id norm-path path
-           schema]
+  [{:keys [cmd cmd-arg cmd-type crdt make-id path schema]
     :as arg}]
   (check-insert-arg arg)
   (when-not (sequential? cmd-arg)
@@ -509,10 +486,7 @@
                            :schema schema
                            :ops (set/union node-ops edge-ops)))]
     {:crdt final-crdt
-     :ops (set/union repair-ops node-ops edge-ops)
-     :update-info {:norm-path norm-path
-                   :op cmd-type
-                   :value cmd-arg}}))
+     :ops (set/union repair-ops node-ops edge-ops)}))
 
 (defmethod do-insert :array
   [{:keys [cmd-type] :as arg}]
@@ -523,14 +497,14 @@
     :zeno/insert-range-before (do-range-insert arg)))
 
 (defn associative-do-insert
-  [{:keys [get-child-schema cmd-type cmd-arg crdt norm-path path schema]
+  [{:keys [cmd cmd-arg cmd-type path crdt schema]
     :as arg}]
   (when (empty? path)
     (let [schema-type (l/schema-type schema)]
       (throw (ex-info (str "Can only process `" cmd-type "` cmd on "
                            "an array. Path points to schema type `"
                            schema-type "`.")
-                      (u/sym-map schema-type cmd-type cmd-arg path)))))
+                      (u/sym-map cmd path)))))
   (let [[k & ks] path
         _ (c/check-key (assoc arg :key k))
         child-schema (l/schema-at-path schema [k])
@@ -542,10 +516,7 @@
         new-crdt (assoc-in crdt [:children k] (:crdt ret))]
     {:crdt new-crdt
      :ops (xf-op-paths {:prefix k
-                        :ops (:ops ret)})
-     :update-info {:norm-path norm-path
-                   :op cmd-type
-                   :value cmd-arg}}))
+                        :ops (:ops ret)})}))
 
 (defmethod do-insert :map
   [{:keys [schema] :as arg}]
@@ -569,12 +540,12 @@
         (assoc-in [:crdt :union-branch] union-branch))))
 
 (defmethod do-insert :single-value
-  [{:keys [cmd-arg cmd-type schema path] :as arg}]
+  [{:keys [cmd cmd-type schema] :as arg}]
   (let [schema-type (l/schema-type schema)]
     (throw (ex-info (str "Can only process `" cmd-type "` cmd on "
                          "an array. Path points to schema type `"
                          schema-type "`.")
-                    (u/sym-map schema-type cmd-type cmd-arg path)))))
+                    cmd))))
 
 (defmethod do-repair :array
   [arg]
@@ -588,7 +559,7 @@
   (assoc arg :ops #{}))
 
 (defmethod process-cmd* :zeno/set
-  [{:keys [cmd-arg cmd-type norm-path path] :as arg}]
+  [{:keys [cmd-arg cmd-type] :as arg}]
   (let [{repair-ops :ops
          repaired-crdt :crdt} (do-repair arg)
         arg0 (assoc arg :crdt repaired-crdt)
@@ -601,35 +572,28 @@
      :ops (set/union (:ops arg)
                      repair-ops
                      del-ops
-                     add-ops)
-     :update-info {:norm-path norm-path
-                   :op cmd-type
-                   :value cmd-arg}}))
+                     add-ops)}))
 
 (defmethod process-cmd* :zeno/remove
-  [{:keys [cmd-type norm-path] :as arg}]
+  [{:keys [cmd-type] :as arg}]
   (let [{repair-ops :ops
          repaired-crdt :crdt} (do-repair arg)
         arg0 (assoc arg :crdt repaired-crdt)
         del-ops (get-delete-ops arg0)]
     {:crdt (apply-ops/apply-ops (assoc arg0 :ops del-ops))
-     :ops (set/union (:ops arg) repair-ops del-ops)
-     :update-info {:norm-path norm-path
-                   :op cmd-type
-                   :value nil}}))
+     :ops (set/union (:ops arg) repair-ops del-ops)}))
 
 (defmethod process-cmd* :zeno/insert*
   [arg]
   (do-insert arg))
 
 (defn process-cmd [{:keys [cmd root] :as arg}]
-  (let [path (-> cmd :zeno/path (u/chop-root root))]
+  (let [cmd-path (:zeno/path cmd)]
     (process-cmd* (-> arg
                       (assoc :cmd-arg (:zeno/arg cmd))
-                      (assoc :cmd-path path)
+                      (assoc :cmd-path cmd-path)
                       (assoc :cmd-type (:zeno/op cmd))
-                      (assoc :norm-path (vec (cons root path)))
-                      (assoc :path path)))))
+                      (assoc :path (u/chop-root cmd-path root))))))
 
 (defn process-cmds [{:keys [cmds make-id root]
                      :or {make-id u/compact-random-uuid}
@@ -640,7 +604,7 @@
                                           :make-id make-id))]
               (-> acc
                   (assoc :crdt (:crdt ret))
-                  (update :ops set/union (:ops ret))
-                  (update :update-infos conj (:update-info ret)))))
+                  (update :crdt-ops set/union (:ops ret))
+                  (update :updated-paths conj (:zeno/path cmd)))))
           arg
           cmds))

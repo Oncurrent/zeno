@@ -27,44 +27,42 @@
 (defn get-non-numeric-part [path]
   (take-while #(not (number? %)) path))
 
-(defn update-numeric? [updated-path sub-path op]
-  ;; TODO: Improve this using op / normalized paths
+(defn update-numeric? [updated-path sub-path]
   (let [u-front (get-non-numeric-part updated-path)
         s-front (get-non-numeric-part sub-path)]
-    (if (or (not (seq u-front))
-            (not (seq s-front)))
-      true
-      (let [[relationship _] (u/relationship-info u-front s-front)]
-        (not= :sibling relationship)))))
+    (or (empty? u-front)
+        (empty? s-front)
+        (let [[relationship _] (u/relationship-info u-front s-front)]
+          (not= :sibling relationship)))))
 
-(defn update-sub?* [update-infos sub-path]
-  (reduce (fn [acc {:keys [norm-path op]}]
+(defn update-sub?* [updated-paths sub-path]
+  (reduce (fn [acc updated-path]
             (cond
               (= [:zeno/actor-id] sub-path)
-              (if (= [:zeno/actor-id] norm-path)
+              (if (= [:zeno/actor-id] updated-path)
                 (reduced true)
                 false)
 
-              (= [:zeno/actor-id] norm-path)
+              (= [:zeno/actor-id] updated-path)
               (if (= [:zeno/actor-id] sub-path)
                 (reduced true)
                 false)
 
-              (or (some number? norm-path)
+              (or (some number? updated--path)
                   (some number? sub-path))
-              (if (update-numeric? norm-path sub-path op)
+              (if (update-numeric? updated-path sub-path)
                 (reduced true)
                 false)
 
               :else
               (let [[relationship _] (u/relationship-info
-                                      (or norm-path [])
+                                      (or updated-path [])
                                       (or sub-path []))]
                 (if (= :sibling relationship)
                   false
-                  ;; TODO: Compare values here if :parent
                   (reduced true)))))
-          false update-infos))
+          false
+          updated-paths))
 
 (defn transform-operators-in-sub-path [sub-path]
   (reduce (fn [acc k]
@@ -73,23 +71,26 @@
               (conj acc k)))
           [] sub-path))
 
-(defn update-sub? [update-infos sub-paths]
+(defn update-sub? [updated-paths sub-paths]
   (reduce
    (fn [acc sub-path]
      (when-not (sequential? sub-path)
        (throw (ex-info (str "`sub-path` must be seqential. Got: `"
                             (or sub-path "nil") "`.")
                        (u/sym-map sub-path))))
-     (if (update-sub?* update-infos (transform-operators-in-sub-path sub-path))
+     (if (update-sub?* updated-paths (transform-operators-in-sub-path sub-path))
        (reduced true)
        false))
    false
    sub-paths))
 
-(defn get-state-sub-names-to-update [update-infos *state-sub-name->info]
+(defn get-state-sub-names-to-update [updated-paths *state-sub-name->info]
+  (log/info (str "GGGG:\n"
+                 (u/pprint-str
+                  (u/sym-map *state-sub-name->info updated-paths))))
   (reduce-kv (fn [acc state-sub-name info]
                (let [{:keys [expanded-paths]} info]
-                 (if (update-sub? update-infos expanded-paths)
+                 (if (update-sub? updated-paths expanded-paths)
                    (conj acc state-sub-name)
                    acc)))
              #{}
@@ -178,6 +179,10 @@
                                   :path %
                                   :root root
                                   :zc zc})]
+
+    (log/info (str "GVXP:\n"
+                   (u/pprint-str
+                    (u/sym-map path root))))
     (cond
       (u/empty-sequence-in-path? path)
       [nil [path]]
@@ -305,6 +310,7 @@
                                  (assoc :expanded-paths expanded-paths))]
             (swap! (:*state-sub-name->info zc)
                    assoc state-sub-name new-sub-info)
+
             (update-fn state)))))))
 
 (defn get-update-fn-info [zc state-sub-names]
@@ -334,9 +340,9 @@
      #(doseq [rf react-update-fns]
         (rf)))))
 
-(defn do-subscription-updates! [zc update-infos]
+(defn do-subscription-updates! [{:keys [zc udated-paths]}]
   (let [{:keys [*state-sub-name->info]} zc]
-    (-> (get-state-sub-names-to-update update-infos *state-sub-name->info)
+    (-> (get-state-sub-names-to-update updated-paths *state-sub-name->info)
         (order-by-lineage *state-sub-name->info)
         (update-subs! zc))))
 

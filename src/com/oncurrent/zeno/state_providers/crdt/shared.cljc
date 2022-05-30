@@ -25,9 +25,8 @@
 (l/def-record-schema serializable-crdt-op-schema
   "Depending on the op-type, different fields will be used."
   [:add-id add-id-schema]
-  [:norm-path schemas/path-schema]
   [:op-type crdt-op-type-schema]
-  [:path schemas/path-schema]
+  [:op-path schemas/path-schema]
   [:serialized-value schemas/serialized-value-schema]
   [:sys-time-ms schemas/timestamp-ms-schema])
 
@@ -37,18 +36,13 @@
 (def tx-index-schema l/int-schema)
 (def tx-id-schema l/string-schema)
 
-(l/def-record-schema serializable-update-info-schema
-  [:norm-path schemas/path-schema]
-  [:op schemas/command-op-schema]
-  [:serialized-value schemas/serialized-value-schema])
-
 (l/def-record-schema serializable-tx-info-schema
   [:actor-id schemas/actor-id-schema]
   [:client-id client-id-schema]
   [:crdt-ops (l/array-schema serializable-crdt-op-schema)]
   [:sys-time-ms schemas/timestamp-ms-schema]
   [:tx-id tx-id-schema]
-  [:update-infos (l/array-schema serializable-update-info-schema)])
+  [:updated-paths (l/array-schema schemas/path-schema)])
 
 (def unsynced-log-schema
   (l/map-schema ;; keys are actor-ids

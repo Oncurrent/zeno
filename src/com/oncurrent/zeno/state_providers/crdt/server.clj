@@ -110,15 +110,15 @@
         (au/<? (common/<serializable-tx-infos->tx-infos
                 (assoc arg :serializable-tx-infos stis)))))))
 
-(defn <get-ops-and-update-infos-for-tx-ids [arg]
+(defn <get-ops-and-updated-paths-for-tx-ids [arg]
   (au/go
     (let [tx-infos (au/<? (<get-tx-infos-for-tx-ids arg))]
-      (reduce (fn [acc {:keys [crdt-ops update-infos]}]
+      (reduce (fn [acc {:keys [crdt-ops updated-paths]}]
                 (-> acc
                     (update :ops concat crdt-ops)
-                    (update :update-infos concat update-infos)))
+                    (update :updated-paths concat updated-paths)))
               {:ops []
-               :update-infos []}
+               :updated-paths []}
               tx-infos))))
 
 (defn <add-to-snapshot!
@@ -129,18 +129,19 @@
       (let [old-hash (:snapshot-txs-hash log-info)
             snapshot-txs-hash (add-tx-ids-to-hash (u/sym-map old-hash tx-ids))
             old-snapshot (au/<? (<get-snapshot arg))
-            info (au/<? (<get-ops-and-update-infos-for-tx-ids arg))
+            info (au/<? (<get-ops-and-updated-paths-for-tx-ids arg))
             crdt (apply-ops/apply-ops {:crdt (:crdt old-snapshot)
                                        :ops (:ops info)
                                        :schema schema})
             v (common/update-v (assoc (u/sym-map crdt root schema)
-                                      :update-infos (:update-infos info)
+                                      :updated-paths (:updated-paths info)
                                       :v (:v old-snapshot)))
             edn-crdt (pr-str crdt)
             serialized-value {:bytes (l/serialize schema v)
                               :fp (au/<? (storage/<schema->fp storage schema))}
             ser-snap (u/sym-map edn-crdt serialized-value)
-            sv {:bytes (l/serialize shared/serializable-snapshot-schema ser-snap)
+            sv {:bytes (l/serialize shared/serializable-snapshot-schema
+                                    ser-snap)
                 :fp (au/<? (storage/<schema->fp
                             storage shared/serializable-snapshot-schema))}
             ba (l/serialize schemas/serialized-value-schema sv)
@@ -176,21 +177,22 @@
       (make-new-snapshot! arg)
       (update log-info :branch-log-tx-indices-since-snapshot conj tx-index))))
 
-(defn authorized? [{:keys [actor-id authorizer update-infos]}]
-  (reduce (fn [acc {:keys [norm-path op]}]
-            (if (server-authz/allowed? authorizer actor-id norm-path nil op)
+(defn authorized? [{:keys [actor-id authorizer updated-paths]}]
+  (reduce (fn [acc path]
+            (if (server-authz/allowed? authorizer actor-id path nil
+                                       ::server-authz/write)
               acc
               (reduced false)))
           true
-          update-infos))
+          updated-paths))
 
 (defn update-actor-id-to-log-info!
   [{:keys [actor-id-to-log-info tx-infos] :as arg}]
   (reduce
-   (fn [acc {:keys [update-infos] :as tx-info}]
+   (fn [acc {:keys [updated-paths] :as tx-info}]
      (reduce-kv
       (fn [acc* actor-id log-info]
-        (if-not (authorized? (assoc arg :update-infos update-infos))
+        (if-not (authorized? (assoc arg :updated-paths updated-paths))
           acc*
           (assoc acc* actor-id (update-actor-log-info!
                                 (assoc arg
@@ -230,14 +232,14 @@
 
 (defn update-branch->crdt-info!
   [{:keys [*branch->crdt-info branch root schema tx-infos]}]
-  (let [batch-info (reduce (fn [acc {:keys [crdt-ops tx-id update-infos]}]
+  (let [batch-info (reduce (fn [acc {:keys [crdt-ops tx-id updated-path]}]
                              (-> acc
                                  (update :ops concat crdt-ops)
                                  (update :tx-ids conj tx-id)
-                                 (update :update-infos concat update-infos)))
+                                 (update :updated-paths concat updated-paths)))
                            {:ops []
                             :tx-ids []
-                            :update-infos []}
+                            :updated-paths []}
                            tx-infos)]
     (swap! *branch->crdt-info update branch
            (fn [old-info]
@@ -246,7 +248,7 @@
                                               :schema schema})
                    v (common/update-v
                       (assoc (u/sym-map crdt root schema)
-                             :update-infos (:update-infos batch-info)
+                             :updated-pathd (:updated-paths batch-info)
                              :v (:v old-info)))]
                (u/sym-map crdt v))))))
 
@@ -334,8 +336,9 @@
         tx-indices (reduce
                     (fn [acc tx-index]
                       (let [tx-info (nth tx-infos tx-index)
-                            {:keys [update-infos]} tx-info]
-                        (if (authorized? (assoc arg :update-infos update-infos))
+                            {:keys [updated-paths]} tx-info]
+                        (if (authorized? (assoc arg
+                                                :updated-paths updated-paths))
                           (conj acc tx-index)
                           acc)))
                     []
@@ -432,11 +435,10 @@
                              :root root
                              :crdt (:crdt old-info)
                              :schema schema}
-                     {:keys [crdt update-infos]} (commands/process-cmds pc-arg)
-                     v (common/update-v
-                        (assoc (u/sym-map crdt root schema
-                                          update-infos)
-                               :v (:v old-info)))]
+                     {:keys [crdt updated-paths]} (commands/process-cmds pc-arg)
+                     v (common/update-v (assoc (u/sym-map crdt root schema
+                                                          updated-paths)
+                                               :v (:v old-info)))]
                  (u/sym-map crdt v))))
       (let [info (@*branch->crdt-info branch)]
         ;; TODO: Write to log and snapshot

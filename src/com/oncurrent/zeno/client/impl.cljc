@@ -68,16 +68,15 @@
                 state-provider (root->state-provider root)
                 _ (when-not state-provider
                     (throw
-                     (ex-info (str "No state provider found "
-                                   "for root `" (or root "nil")
-                                   "`.")
+                     (ex-info (str "No state provider found for root `"
+                                   (or root "nil") "`.")
                               {:root root
                                :known-roots (keys root->state-provider)})))
                 {::sp-impl/keys [<update-state!]} state-provider
                 cmds (root->cmds root)
-                update-infos (au/<? (<update-state! {:zeno/cmds cmds
-                                                     :root root}))
-                new-out (concat out update-infos)]
+                {:keys [updated-paths]} (au/<? (<update-state! {:zeno/cmds cmds
+                                                                :root root}))
+                new-out (concat out updated-paths)]
             (if (= last-i i)
               new-out
               (recur (inc i)
@@ -91,9 +90,9 @@
   ;; updates.
   (au/go
     (let [{:keys [talk2-client]} zc
-          update-infos (au/<? (<do-state-updates!*
-                               (assoc zc :root->cmds (split-cmds cmds))))]
-      (state-subscriptions/do-subscription-updates! zc update-infos)
+          updated-paths (au/<? (<do-state-updates!*
+                                (assoc zc :root->cmds (split-cmds cmds))))]
+      (state-subscriptions/do-subscription-updates! (u/sym-map zc update-paths))
       true)))
 
 (defn start-update-state-loop! [zc]
@@ -101,9 +100,8 @@
     (let [{:keys [*stop? update-state-ch]} zc]
       (loop []
         (try
-          (let [[update-info ch] (ca/alts! [update-state-ch
-                                            (ca/timeout 1000)])
-                {:keys [cmds cb]} update-info]
+          (let [[{:keys [cmds cb]} ch] (ca/alts! [update-state-ch
+                                                  (ca/timeout 1000)])]
             (try
               (when (= update-state-ch ch)
                 (-> (<do-update-state! zc cmds)
@@ -238,9 +236,10 @@
                        :state-provider-name state-provider-name}]
           (au/<? (t2c/<send-msg! talk2-client :state-provider-msg msg-arg)))))))
 
-(defn make-update-subscriptions! [fn-arg]
-  (fn [update-infos]
-    (state-subscriptions/do-subscription-updates! fn-arg update-infos)))
+(defn make-update-subscriptions! [zc]
+  (fn [{:keys [updated-paths]}]
+    (state-subscriptions/do-subscription-updates!
+     (u/sym-map updated-paths zc))))
 
 (defn initialize-state-providers!
   [{:keys [*connected? env-name root->state-provider storage talk2-client]
@@ -298,7 +297,7 @@
         *actor-id (atom nil)
         *talk2-client (atom nil)
         *connected? (atom false)
-        ;; TODO: Is there a case where this would drop data
+        ;; TODO: Is there a case where this would drop data?
         update-state-ch (ca/chan (ca/sliding-buffer 1000))
         arg (u/sym-map *actor-id
                        *connected?

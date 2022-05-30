@@ -55,16 +55,18 @@
 
 (defn update-state-info!
   [{:keys [*state-info crdt last-tx-index root schema snapshot tx-infos]}]
-  (let [info (reduce (fn [acc {:keys [crdt-ops update-infos]}]
+  (let [info (reduce (fn [acc {:keys [crdt-ops updated-paths]}]
                        (-> acc
-                           (update :ops concat crdt-ops)
-                           (update :update-infos concat update-infos)))
-                     {:ops []
-                      :update-infos []}
+                           (update :crdt-ops concat crdt-ops)
+                           (update :updated-paths concat updated-paths)))
+                     {:crdt-ops []
+                      :updated-paths []}
                      tx-infos)
-        {:keys [ops update-infos]} info
+        {:keys [crdt-ops updated-paths]} info
         apply-ops (fn [crdt ops]
-                    (apply-ops/apply-ops (u/sym-map crdt ops schema)))]
+                    (apply-ops/apply-ops {:crdt crdt
+                                          :ops crdt-ops
+                                          :schema schema}))]
     (swap! *state-info
            (fn [state-info]
              (let [crdt* (or crdt
@@ -72,16 +74,18 @@
                                (seq tx-infos) (apply-ops ops)))]
                {:crdt crdt*
                 :last-tx-index (or last-tx-index (:last-tx-index state-info))
-                :v (common/update-v (assoc (u/sym-map root schema update-infos)
+                :v (common/update-v (assoc (u/sym-map root schema updated-paths)
                                            :crdt crdt*
                                            :v (:v state-info)))})))
-    update-infos))
+    (u/sym-map updated-paths)))
 
 (defn make-<update-state!
   [{:keys [*actor-id *env-name *state-info *storage
-           authorizer client-id root schema signal-producer-sync!]
+           authorizer client-id schema signal-producer-sync!]
     :as arg}]
-  (fn [{:zeno/keys [cmds] :keys [root]}]
+  (fn [{:zeno/keys [cmds]
+        :keys [root]
+        :as fn-arg}]
     (au/go
       (au/<? (<wait-for-init arg))
       (let [actor-id @*actor-id
@@ -95,24 +99,18 @@
                                             :crdt (:crdt @*state-info)
                                             :schema schema
                                             :root root})
-                {:keys [crdt ops update-infos]} ret
-                tx-infos [ret]
-                _ (update-state-info! (u/sym-map *state-info crdt schema
-                                                 tx-infos))
+                {:keys [crdt crdt-ops updated-paths]} ret
                 tx-id (u/compact-random-uuid)
                 k (common/tx-id->tx-info-k tx-id)
                 storage @*storage
-                ser-ops (au/<? (common/<crdt-ops->serializable-crdt-ops
-                                (u/sym-map ops schema storage)))
-                ser-uis (au/<?
-                         (common/<update-infos->serializable-update-infos
-                          (u/sym-map schema storage update-infos)))
-                tx-info {:actor-id actor-id
-                         :client-id client-id
-                         :crdt-ops ser-ops
-                         :sys-time-ms (u/current-time-ms)
-                         :tx-id tx-id
-                         :update-infos ser-uis}
+                sys-time-ms (u/current-time-ms)
+                tx-info (u/sym-map actor-id client-id crdt-ops sys-time-ms
+                                   tx-id updated-paths)
+                tx-infos [tx-info]
+                ser-tx-info (au/<? (common/<tx-info->serializable-tx-info
+                                    (u/sym-map schema storage tx-info)))
+                _ (update-state-info! (u/sym-map *state-info crdt root schema
+                                                 tx-infos))
                 unsynced-log-k (->unsynced-log-k (u/sym-map env-name))]
             (au/<? (storage/<swap! storage k shared/serializable-tx-info-schema
                                    (constantly tx-info)))
@@ -123,7 +121,7 @@
                                        (update aid->tx-ids aid
                                                conj tx-id)))))
             (signal-producer-sync!)
-            update-infos))))))
+            (u/sym-map updated-paths)))))))
 
 (defn <sync-producer-txs-for-actor-id!
   [{:keys [*client-running? *connected? *host-fns
@@ -194,6 +192,7 @@
   [{:keys [*actor-id *client-running? *connected? *host-fns *state-info
            *storage root schema]
     :as arg}]
+  ;; TODO: Don't re-apply own txns
   (au/go
     (au/<? (<wait-for-init arg))
     (when @*connected?
@@ -212,7 +211,8 @@
                              (assoc arg
                                     :<request-schema <request-schema
                                     :url snapshot-url)))
-            ser-tx-infos (when @*connected?
+            ser-tx-infos (when (and @*connected?
+                                    (seq tx-ids-since-snapshot))
                            (au/<? (<send-msg
                                    {:msg-type :get-tx-infos
                                     :arg {:tx-ids tx-ids-since-snapshot}})))
@@ -220,26 +220,24 @@
                              (assoc arg
                                     :<request-schema <request-schema
                                     :serializable-tx-infos ser-tx-infos)))
-            update-infos (update-state-info!
-                          (u/sym-map *state-info last-tx-index schema
-                                     snapshot tx-infos))]
+            usi-ret (update-state-info! (u/sym-map *state-info last-tx-index
+                                                   schema snapshot tx-infos))]
+
         (cond
           snapshot
-          (update-subscriptions! [{:norm-path []
-                                   :op :zeno/set
-                                   :value (:v @*state-info)}])
+          (update-subscriptions! {:updated-paths [[root]]})
 
-          (seq update-infos)
-          (update-subscriptions! update-infos))))))
+          (seq tx-infos)
+          (update-subscriptions! usi-ret))))))
 
+;; TODO: Flesh this out
 (defn load-local-data! [{:keys [*host-fns signal-consumer-sync!] :as arg}]
   (ca/go
     (au/<? (<wait-for-init arg))
     (try
       (let [{:keys [update-subscriptions!]} @*host-fns
-            update-infos []]
-        ;; TODO: Implement
-        (update-subscriptions! update-infos)
+            updated-paths []]
+        (update-subscriptions! (u/sym-map updated-paths))
         (signal-consumer-sync!))
       (catch #?(:clj Exception :cljs js/Error) e
         (log/error (str "Error in load-local-data!:\n"
@@ -254,30 +252,29 @@
 
 (defn make-get-in-state [{:keys [*state-info]}]
   (fn get-in-state [{:keys [path root] :as gis-arg}]
-    (let [path (u/chop-root path root)]
-      (reduce (fn [{:keys [value] :as acc} k]
-                (let [[k* value*] (cond
-                                    (or (keyword? k) (nat-int? k) (string? k))
-                                    [k (when value
-                                         (get value k))]
+    (reduce (fn [{:keys [value] :as acc} k]
+              (let [[k* value*] (cond
+                                  (or (keyword? k) (nat-int? k) (string? k))
+                                  [k (when value
+                                       (get value k))]
 
-                                    (and (int? k) (neg? k))
-                                    (let [arg {:array-len (count value)
-                                               :i k}
-                                          i (u/get-normalized-array-index arg)]
-                                      [i (nth value i)])
+                                  (and (int? k) (neg? k))
+                                  (let [arg {:array-len (count value)
+                                             :i k}
+                                        i (u/get-normalized-array-index arg)]
+                                    [i (nth value i)])
 
-                                    (nil? k)
-                                    [nil nil]
+                                  (nil? k)
+                                  [nil nil]
 
-                                    :else
-                                    (throw-bad-path-key path k))]
-                  (-> acc
-                      (update :norm-path conj k*)
-                      (assoc :value value*))))
-              {:norm-path []
-               :value (:v @*state-info)}
-              path))))
+                                  :else
+                                  (throw-bad-path-key path k))]
+                (-> acc
+                    (update :norm-path conj k*)
+                    (assoc :value value*))))
+            {:norm-path [root]
+             :value (:v @*state-info)}
+            (u/chop-root path root))))
 
 (defn ->state-provider
   [{::crdt/keys [authorizer schema root] :as config}]
@@ -323,7 +320,7 @@
          signal-producer-sync! :now!} psync-ret
         {stop-consumer-sync! :stop!
          signal-consumer-sync! :now!} csync-ret
-        mus-arg (u/sym-map *actor-id *env-name *host-fns *storage
+        mus-arg (u/sym-map *actor-id *env-name *host-fns *state-info *storage
                            authorizer client-id root schema
                            signal-producer-sync!)
         <wait-for-sync (fn [& args]

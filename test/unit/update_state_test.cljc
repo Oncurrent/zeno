@@ -994,33 +994,39 @@
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
-(deftest test-crdt-array-ops
+(deftest ^:this test-crdt-array-ops
   (au/test-async
    3000
    (ca/go
      (try
-       (let [crdt-schema (l/map-schema (l/array-schema l/int-schema))
+       (let [_ (log/info 1)
+             crdt-schema (l/map-schema (l/array-schema l/int-schema))
              zc (c/->zc-unit (u/sym-map crdt-schema))
              ch (ca/chan 1)
              id-to-fav-nums {"1" [7 8 9]
                              "2" [2 3 4]}
              ret1 (au/<? (zc/<set-state! zc [:zeno/crdt] id-to-fav-nums))
+             _ (log/info 2)
              _ (is (= true ret1))
              resolution-map {'id "2"}
              sub-map '{my-nums [:zeno/crdt id]}
              update-fn #(ca/put! ch %)
              ret2 (zc/subscribe-to-state! zc "test" sub-map update-fn
                                           (u/sym-map resolution-map))
+             _ (log/info 3)
              _ (is (= {'my-nums [2 3 4]} ret2))
              ret3 (au/<? (zc/<update-state!
                           zc [{:zeno/path [:zeno/crdt "2" 1]
                                :zeno/op :zeno/remove}]))
+             _ (log/info 4)
              _ (is (= true ret3))
              _ (is (= {'my-nums [2 4]} (au/<? ch)))
+             _ (log/info 5)
              ret4 (au/<? (zc/<update-state!
                           zc [{:zeno/path [:zeno/crdt "2" -1]
                                :zeno/op :zeno/insert-after
-                               :zeno/arg 5}]))]
+                               :zeno/arg 5}]))
+             _ (log/info 6)]
          (is (= true ret4))
          (is (= {'my-nums [2 4 5]} (au/<? ch)))
          (zc/stop! zc))

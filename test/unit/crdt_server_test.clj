@@ -21,20 +21,17 @@
 (defn <make-ser-tx-info
   [{:keys [actor-id client-id cmds root schema storage tx-id]}]
   (au/go
-    (let [{:keys [ops update-infos]} (commands/process-cmds {:cmds cmds
-                                                             :schema schema
-                                                             :root root})
+    (let [{:keys [ops updated-paths]} (commands/process-cmds {:cmds cmds
+                                                              :schema schema
+                                                              :root root})
           ser-ops (au/<? (common/<crdt-ops->serializable-crdt-ops
-                          (u/sym-map ops schema storage)))
-          ser-update-infos (au/<?
-                            (common/<update-infos->serializable-update-infos
-                             (u/sym-map schema storage update-infos)))]
+                          (u/sym-map ops schema storage)))]
       {:actor-id actor-id
        :client-id client-id
        :crdt-ops ser-ops
        :sys-time-ms 1653368731993
        :tx-id tx-id
-       :update-infos ser-update-infos})))
+       :updated-paths updated-paths})))
 
 (defn <log-tx!
   [{:keys [actor-id client-id cmds make-tx-id root schema]
@@ -45,7 +42,7 @@
       (au/<? (server/<log-producer-tx-batch!
               (assoc arg :serializable-tx-infos [ser-tx-info]))))))
 
-(deftest ^:this test-sync
+(deftest test-sync
   (au/test-async
    3000
    (au/go

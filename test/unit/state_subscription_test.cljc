@@ -132,11 +132,9 @@
     (zc/stop! zc)))
 
 (deftest test-update-sub?-numeric
-  (let [update-infos [{:norm-path [:sys 0]
-                       :op :zeno/insert
-                       :value "hi"}]
+  (let [updated-paths [[:sys 0]]
         sub-paths [[:zeno/client :page]]]
-    (is (= false (state-subscriptions/update-sub? update-infos sub-paths)))))
+    (is (= false (state-subscriptions/update-sub? updated-paths sub-paths)))))
 
 (deftest test-order-by-lineage
   (let [*name->info (atom {"a" {}

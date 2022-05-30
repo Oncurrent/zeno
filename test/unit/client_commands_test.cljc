@@ -22,10 +22,7 @@
                                           :zeno/arg {:name "new"}}
                                    :zeno/client)
         set-expected {:state {:some-stuff [{:name "a"}
-                                           {:name "new"}]},
-                      :update-info {:norm-path [:zeno/client :some-stuff 1]
-                                    :op :zeno/set
-                                    :value {:name "new"}}}]
+                                           {:name "new"}]}}]
     (is (= set-expected set-ret))))
 
 (deftest test-insert-after
@@ -34,10 +31,7 @@
              :zeno/op :zeno/insert-after
              :zeno/path [:zeno/client -1]}
         ret (commands/eval-cmd state cmd :zeno/client)
-        expected {:state [:a :b :new],
-                  :update-info {:norm-path [:zeno/client 2]
-                                :op :zeno/insert-after
-                                :value :new}}]
+        expected {:state [:a :b :new]}]
     (is (= expected ret))))
 
 (deftest test-insert-before
@@ -46,10 +40,7 @@
              :zeno/op :zeno/insert-before
              :zeno/path [:zeno/client -1]}
         ret (commands/eval-cmd state cmd :zeno/client)
-        expected {:state [:a :new :b],
-                  :update-info {:norm-path [:zeno/client 1]
-                                :op :zeno/insert-before
-                                :value :new}}]
+        expected {:state [:a :new :b]}]
     (is (= expected ret))))
 
 (deftest test-simple-remove-root
@@ -57,10 +48,7 @@
         cmd {:zeno/op :zeno/remove
              :zeno/path [:zeno/client -1]}
         ret (commands/eval-cmd state cmd :zeno/client)
-        expected {:state [:a :b],
-                  :update-info {:norm-path [:zeno/client 2]
-                                :op :zeno/remove
-                                :value nil}}]
+        expected {:state [:a :b]}]
     (is (= expected ret))))
 
 (deftest test-simple-remove-no-root
@@ -69,10 +57,7 @@
         ret (commands/eval-cmd state
                                {:zeno/path path :zeno/op :zeno/remove}
                                nil)
-        expected {:state [:a :b],
-                  :update-info {:norm-path [2]
-                                :op :zeno/remove
-                                :value nil}}]
+        expected {:state [:a :b]}]
     (is (= expected ret))))
 
 (deftest test-simple-insert*
