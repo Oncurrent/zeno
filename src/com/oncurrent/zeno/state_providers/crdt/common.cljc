@@ -82,7 +82,7 @@
           (check-key (assoc arg :key k))
           (get-value-info (assoc arg
                                  :crdt (get-in crdt [:children k])
-                                 :norm-path (conj norm-path k)
+                                 :norm-path (conj (or norm-path []) k)
                                  :path (or ks [])
                                  :schema (get-child-schema k))))))))
 
@@ -288,7 +288,7 @@
     (let [crdt-ops (au/<? (<serializable-crdt-ops->crdt-ops
                            (assoc fn-arg
                                   :crdt-ops (:crdt-ops serializable-tx-info))))]
-      (assoc serializable-tx-info:crdt-ops crdt-ops))))
+      (assoc serializable-tx-info :crdt-ops crdt-ops))))
 
 (defn <serializable-tx-infos->tx-infos
   [{:keys [serializable-tx-infos] :as fn-arg}]
@@ -344,16 +344,6 @@
 (defn get-value [{:keys [crdt make-id path norm-path schema] :as arg}]
   (-> (get-value-info (assoc arg :norm-path (or norm-path [])))
       (:value)))
-
-(defn update-v [{:keys [crdt root schema updated-paths v]}]
-  (reduce (fn [acc path*]
-            (let [path (u/chop-root path* root)
-                  {:keys [value]} (get-value-info (u/sym-map crdt path schema))]
-              (if (empty? path)
-                value
-                (assoc-in acc path value))))
-          v
-          updated-paths))
 
 (defn <ba->snapshot [{:keys [ba schema storage] :as arg}]
   (au/go

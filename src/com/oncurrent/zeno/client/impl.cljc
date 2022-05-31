@@ -92,7 +92,8 @@
     (let [{:keys [talk2-client]} zc
           updated-paths (au/<? (<do-state-updates!*
                                 (assoc zc :root->cmds (split-cmds cmds))))]
-      (state-subscriptions/do-subscription-updates! (u/sym-map zc update-paths))
+      (state-subscriptions/do-subscription-updates! (u/sym-map updated-paths
+                                                               zc))
       true)))
 
 (defn start-update-state-loop! [zc]

@@ -48,7 +48,7 @@
                 (reduced true)
                 false)
 
-              (or (some number? updated--path)
+              (or (some number? updated-path)
                   (some number? sub-path))
               (if (update-numeric? updated-path sub-path)
                 (reduced true)
@@ -78,16 +78,14 @@
        (throw (ex-info (str "`sub-path` must be seqential. Got: `"
                             (or sub-path "nil") "`.")
                        (u/sym-map sub-path))))
-     (if (update-sub?* updated-paths (transform-operators-in-sub-path sub-path))
+     (if (update-sub?* updated-paths
+                       (transform-operators-in-sub-path sub-path))
        (reduced true)
        false))
    false
    sub-paths))
 
 (defn get-state-sub-names-to-update [updated-paths *state-sub-name->info]
-  (log/info (str "GGGG:\n"
-                 (u/pprint-str
-                  (u/sym-map *state-sub-name->info updated-paths))))
   (reduce-kv (fn [acc state-sub-name info]
                (let [{:keys [expanded-paths]} info]
                  (if (update-sub? updated-paths expanded-paths)
@@ -179,10 +177,6 @@
                                   :path %
                                   :root root
                                   :zc zc})]
-
-    (log/info (str "GVXP:\n"
-                   (u/pprint-str
-                    (u/sym-map path root))))
     (cond
       (u/empty-sequence-in-path? path)
       [nil [path]]
@@ -295,38 +289,40 @@
     (reduce (partial reducer* true) indep-ret ordered-dependent-pairs)))
 
 (defn make-applied-update-fn [zc state-sub-name]
-  (let [sub-info (@(:*state-sub-name->info zc) state-sub-name)
-        {:keys [independent-pairs ordered-dependent-pairs update-fn]} sub-info
+  (let [{:keys [*state-sub-name->info]} zc
+        sub-info (@*state-sub-name->info state-sub-name)
+        {:keys [independent-pairs ordered-dependent-pairs
+                react? update-fn]} sub-info
         {:keys [state expanded-paths]} (get-state-and-expanded-paths
                                         zc
                                         independent-pairs
                                         ordered-dependent-pairs)]
-    (when-let [old-sub-info (@(:*state-sub-name->info zc) state-sub-name)]
-      (when (not= (:state old-sub-info) state)
-        (fn []
-          (let [{:keys [update-fn]} old-sub-info
-                new-sub-info (-> old-sub-info
-                                 (assoc :state state)
-                                 (assoc :expanded-paths expanded-paths))]
-            (swap! (:*state-sub-name->info zc)
-                   assoc state-sub-name new-sub-info)
-
-            (update-fn state)))))))
+    (when (and sub-info
+               (not= (:state sub-info) state))
+      {:react? react?
+       :update-fn (fn []
+                    (let [{:keys [update-fn]} sub-info
+                          sub-info* (-> sub-info
+                                        (assoc :state state)
+                                        (assoc :expanded-paths expanded-paths))]
+                      (swap! *state-sub-name->info
+                             assoc state-sub-name sub-info*)
+                      (update-fn state)))})))
 
 (defn get-update-fn-info [zc state-sub-names]
   (reduce
    (fn [acc state-sub-name]
-     (let [{:keys [react?]} (@(:*state-sub-name->info zc) state-sub-name)
-           update-fn* (make-applied-update-fn zc state-sub-name)]
+     (let [{:keys [update-fn react?]} (make-applied-update-fn
+                                       zc state-sub-name)]
        (cond
-         (not update-fn*)
+         (not update-fn)
          acc
 
          react?
-         (update acc :react-update-fns conj update-fn*)
+         (update acc :react-update-fns conj update-fn)
 
          :else
-         (update acc :non-react-update-fns conj update-fn*))))
+         (update acc :non-react-update-fns conj update-fn))))
    {:react-update-fns []
     :non-react-update-fns []}
    state-sub-names))
@@ -340,11 +336,12 @@
      #(doseq [rf react-update-fns]
         (rf)))))
 
-(defn do-subscription-updates! [{:keys [zc udated-paths]}]
-  (let [{:keys [*state-sub-name->info]} zc]
-    (-> (get-state-sub-names-to-update updated-paths *state-sub-name->info)
-        (order-by-lineage *state-sub-name->info)
-        (update-subs! zc))))
+(defn do-subscription-updates! [{:keys [zc updated-paths]}]
+  (let [{:keys [*state-sub-name->info]} zc
+        subs-to-update (get-state-sub-names-to-update updated-paths
+                                                      *state-sub-name->info)
+        subs-by-lineage (order-by-lineage subs-to-update *state-sub-name->info)]
+    (update-subs! subs-by-lineage zc)))
 
 (defn subscribe-to-state!
   [zc state-sub-name sub-map update-fn opts]

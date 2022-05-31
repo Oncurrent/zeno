@@ -448,7 +448,7 @@
 (defn chop-root [path root]
   (if (or (empty? path) (not= root (first path)))
     path
-    (recur (rest path) root)))
+    (recur (vec (rest path)) root)))
 
 (defn start-task-loop!
   "Runs a task function periodically in a loop.

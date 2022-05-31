@@ -36,10 +36,10 @@
       (assoc-in crdt [:current-add-id-to-value-info add-id] value-info))))
 
 (defmethod apply-op [:single-value :add-value]
-  [{:keys [add-id crdt path] :as arg}]
-  (if (seq path)
+  [{:keys [add-id crdt op-path] :as arg}]
+  (if (seq op-path)
     (throw (ex-info "Can't index into a single-value CRDT."
-                    (u/sym-map add-id crdt path)))
+                    (u/sym-map add-id crdt op-path)))
     (add-single-value arg)))
 
 (defn del-single-value
@@ -56,43 +56,43 @@
   (del-single-value arg))
 
 (defn associative-apply-op
-  [{:keys [get-child-schema crdt path]
+  [{:keys [get-child-schema crdt op-path]
     :as arg}]
-  (let [[k & ks] path]
+  (let [[k & ks] op-path]
     (c/check-key (assoc arg :key k :string-array-keys? true))
     (update-in crdt [:children k]
                (fn [child-crdt]
                  (apply-op (assoc arg
                                   :crdt child-crdt
-                                  :path ks
+                                  :op-path ks
                                   :schema (get-child-schema k)))))))
 
 (defn check-path-union-branch
-  [{:keys [add-id op-type path schema value] :as arg}]
-  (let [[union-branch & ks] path]
+  [{:keys [add-id op-type op-path schema value] :as arg}]
+  (let [[union-branch & ks] op-path]
     (when-not (int? union-branch)
       (let [union-edn-schema (l/edn schema)]
         (throw (ex-info
-                (str "Operating on a path that includes a union requires an "
-                     "integer union-branch value in the path. Got `"
+                (str "Operating on a op-path that includes a union requires an "
+                     "integer union-branch value in the op-path. Got `"
                      (or union-branch "nil") "`.")
-                (u/sym-map add-id op-type path union-edn-schema value)))))))
+                (u/sym-map add-id op-type op-path union-edn-schema value)))))))
 
 (defmethod apply-op [:union :add-value]
-  [{:keys [crdt path schema] :as arg}]
+  [{:keys [crdt op-path schema] :as arg}]
   (check-path-union-branch arg)
-  (let [[union-branch & ks] path]
+  (let [[union-branch & ks] op-path]
     (apply-op (assoc arg
                      :crdt (assoc crdt :union-branch union-branch)
-                     :path ks
+                     :op-path ks
                      :schema (l/member-schema-at-branch schema union-branch)))))
 
-(defn apply-union-op [{:keys [path schema] :as arg}]
+(defn apply-union-op [{:keys [op-path schema] :as arg}]
   (check-path-union-branch arg)
-  (let [[union-branch & ks] path
+  (let [[union-branch & ks] op-path
         member-schema (l/member-schema-at-branch schema union-branch)]
     (apply-op (assoc arg
-                     :path ks
+                     :op-path ks
                      :schema member-schema))))
 
 (defmethod apply-op [:union :delete-value]
@@ -108,16 +108,16 @@
   (apply-union-op arg))
 
 (defmethod apply-op [:map :add-value]
-  [{:keys [add-id path schema value] :as arg}]
-  (when (empty? path)
+  [{:keys [add-id op-path schema value] :as arg}]
+  (when (empty? op-path)
     (throw (ex-info (str "Path indicates a map, but no map key is given "
-                         "in the path.")
-                    (u/sym-map add-id path value))))
+                         "in the op-path.")
+                    (u/sym-map add-id op-path value))))
   (associative-apply-op (assoc arg :get-child-schema
                                (fn [_] (l/child-schema schema)))))
 
 (defn associative-delete-value
-  [{:keys [add-id get-child-schema crdt path] :as arg}]
+  [{:keys [add-id get-child-schema crdt op-path] :as arg}]
   (associative-apply-op arg))
 
 (defmethod apply-op [:map :delete-value]
@@ -126,21 +126,21 @@
                                    (fn [_] (l/child-schema schema)))))
 
 (defmethod apply-op [:map :add-array-edge]
-  [{:keys [add-id crdt path schema value] :as arg}]
+  [{:keys [add-id crdt op-path schema value] :as arg}]
   (associative-apply-op (assoc arg :get-child-schema
                                (fn [_] (l/child-schema schema)))))
 
 (defmethod apply-op [:map :delete-array-edge]
-  [{:keys [add-id crdt path schema value] :as arg}]
+  [{:keys [add-id crdt op-path schema value] :as arg}]
   (associative-apply-op (assoc arg :get-child-schema
                                (fn [_] (l/child-schema schema)))))
 
 (defmethod apply-op [:record :add-value]
-  [{:keys [add-id path schema value] :as arg}]
-  (when (empty? path)
+  [{:keys [add-id op-path schema value] :as arg}]
+  (when (empty? op-path)
     (throw (ex-info (str "Schema indicates a record, but no record key is "
-                         "given in the path.")
-                    (u/sym-map add-id path value))))
+                         "given in the op-path.")
+                    (u/sym-map add-id op-path value))))
   (associative-apply-op (assoc arg :get-child-schema
                                #(l/child-schema schema %))))
 
@@ -150,21 +150,21 @@
                                    #(l/child-schema schema %))))
 
 (defmethod apply-op [:record :add-array-edge]
-  [{:keys [add-id crdt path schema value] :as arg}]
+  [{:keys [add-id crdt op-path schema value] :as arg}]
   (associative-apply-op (assoc arg :get-child-schema
                                #(l/child-schema schema %))))
 
 (defmethod apply-op [:record :delete-array-edge]
-  [{:keys [add-id crdt path schema value] :as arg}]
+  [{:keys [add-id crdt op-path schema value] :as arg}]
   (associative-apply-op (assoc arg :get-child-schema
                                #(l/child-schema schema %))))
 
 (defmethod apply-op [:array :add-value]
-  [{:keys [add-id path schema value] :as arg}]
-  (when (empty? path)
+  [{:keys [add-id op-path schema value] :as arg}]
+  (when (empty? op-path)
     (throw (ex-info (str "Schema indicates an array, but no array key is given "
-                         "in the path.")
-                    (u/sym-map add-id path value))))
+                         "in the op-path.")
+                    (u/sym-map add-id op-path value))))
   (associative-apply-op (assoc arg :get-child-schema
                                (fn [_] (l/child-schema schema)))))
 
@@ -173,20 +173,20 @@
   (let [get-child-schema (fn [_] (l/child-schema schema))]
     (associative-delete-value (assoc arg :get-child-schema get-child-schema))))
 
-(defn check-edge [{:keys [add-id path] :as arg}]
+(defn check-edge [{:keys [add-id op-path] :as arg}]
   (let [edge (:value arg)]
     (doseq [k [:head-node-id :tail-node-id]]
       (let [v (get edge k)]
         (when (nil? v)
           (throw (ex-info (str "Missing " k " in edge.")
-                          (u/sym-map add-id path edge))))
+                          (u/sym-map add-id op-path edge))))
         (when-not (string? v)
           (throw (ex-info (str k " in edge is not a string. Got `" v "`.")
-                          (u/sym-map add-id path edge))))))))
+                          (u/sym-map add-id op-path edge))))))))
 
 (defmethod apply-op [:array :add-array-edge]
-  [{:keys [add-id crdt path schema value] :as arg}]
-  (if (seq path)
+  [{:keys [add-id crdt op-path schema value] :as arg}]
+  (if (seq op-path)
     (associative-apply-op (assoc arg :get-child-schema
                                  (fn [_] (l/child-schema schema))))
     ;; We use a slightly different CRDT implementation here because we
@@ -211,8 +211,8 @@
                                           #{add-id})))))))
 
 (defmethod apply-op [:array :delete-array-edge]
-  [{:keys [add-id cmd crdt path schema value] :as arg}]
-  (if (seq path)
+  [{:keys [add-id cmd crdt op-path schema value] :as arg}]
+  (if (seq op-path)
     (associative-delete-value (assoc arg :get-child-schema
                                      (fn [_] (l/child-schema schema))))
     ;; We use a slightly different CRDT implementation here because we

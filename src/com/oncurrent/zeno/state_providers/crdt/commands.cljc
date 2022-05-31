@@ -598,13 +598,14 @@
 (defn process-cmds [{:keys [cmds make-id root]
                      :or {make-id u/compact-random-uuid}
                      :as arg}]
-  (reduce (fn [acc cmd]
-            (let [ret (process-cmd (assoc acc
-                                          :cmd cmd
-                                          :make-id make-id))]
-              (-> acc
-                  (assoc :crdt (:crdt ret))
-                  (update :crdt-ops set/union (:ops ret))
-                  (update :updated-paths conj (:zeno/path cmd)))))
-          arg
-          cmds))
+  (let [result (reduce (fn [acc cmd]
+                         (let [ret (process-cmd (assoc acc
+                                                       :cmd cmd
+                                                       :make-id make-id))]
+                           (-> acc
+                               (assoc :crdt (:crdt ret))
+                               (update :crdt-ops set/union (:ops ret))
+                               (update :updated-paths conj (:zeno/path cmd)))))
+                       arg
+                       cmds)]
+    (update result :crdt-ops vec)))

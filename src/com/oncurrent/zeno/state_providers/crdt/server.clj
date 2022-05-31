@@ -133,11 +133,11 @@
             crdt (apply-ops/apply-ops {:crdt (:crdt old-snapshot)
                                        :ops (:ops info)
                                        :schema schema})
-            v (common/update-v (assoc (u/sym-map crdt root schema)
-                                      :updated-paths (:updated-paths info)
-                                      :v (:v old-snapshot)))
+            {:keys [value]} (common/get-value-info {:crdt crdt
+                                                    :path []
+                                                    :schema schema})
             edn-crdt (pr-str crdt)
-            serialized-value {:bytes (l/serialize schema v)
+            serialized-value {:bytes (l/serialize schema value)
                               :fp (au/<? (storage/<schema->fp storage schema))}
             ser-snap (u/sym-map edn-crdt serialized-value)
             sv {:bytes (l/serialize shared/serializable-snapshot-schema
@@ -232,7 +232,7 @@
 
 (defn update-branch->crdt-info!
   [{:keys [*branch->crdt-info branch root schema tx-infos]}]
-  (let [batch-info (reduce (fn [acc {:keys [crdt-ops tx-id updated-path]}]
+  (let [batch-info (reduce (fn [acc {:keys [crdt-ops tx-id updated-paths]}]
                              (-> acc
                                  (update :ops concat crdt-ops)
                                  (update :tx-ids conj tx-id)
@@ -246,11 +246,11 @@
              (let [crdt (apply-ops/apply-ops {:crdt (:crdt old-info)
                                               :ops (:ops batch-info)
                                               :schema schema})
-                   v (common/update-v
-                      (assoc (u/sym-map crdt root schema)
-                             :updated-pathd (:updated-paths batch-info)
-                             :v (:v old-info)))]
-               (u/sym-map crdt v))))))
+                   {:keys [value]} (common/get-value-info {:crdt crdt
+                                                           :path []
+                                                           :schema schema})]
+               {:crdt crdt
+                :v value})))))
 
 (defn <log-producer-tx-batch!
   [{:keys [*branch->crdt-info <request-schema branch bulk-storage
@@ -435,11 +435,12 @@
                              :root root
                              :crdt (:crdt old-info)
                              :schema schema}
-                     {:keys [crdt updated-paths]} (commands/process-cmds pc-arg)
-                     v (common/update-v (assoc (u/sym-map crdt root schema
-                                                          updated-paths)
-                                               :v (:v old-info)))]
-                 (u/sym-map crdt v))))
+                     {:keys [crdt]} (commands/process-cmds pc-arg)
+                     {:keys [value]} (common/get-value-info {:crdt crdt
+                                                             :path []
+                                                             :schema schema})]
+                 {:crdt crdt
+                  :v value})))
       (let [info (@*branch->crdt-info branch)]
         ;; TODO: Write to log and snapshot
         )

@@ -71,12 +71,13 @@
            (fn [state-info]
              (let [crdt* (or crdt
                              (cond-> (:crdt (or snapshot state-info))
-                               (seq tx-infos) (apply-ops ops)))]
+                               (seq tx-infos) (apply-ops crdt-ops)))
+                   {:keys [value]} (common/get-value-info {:crdt crdt*
+                                                           :path []
+                                                           :schema schema})]
                {:crdt crdt*
                 :last-tx-index (or last-tx-index (:last-tx-index state-info))
-                :v (common/update-v (assoc (u/sym-map root schema updated-paths)
-                                           :crdt crdt*
-                                           :v (:v state-info)))})))
+                :v value})))
     (u/sym-map updated-paths)))
 
 (defn make-<update-state!
@@ -230,18 +231,19 @@
           (seq tx-infos)
           (update-subscriptions! usi-ret))))))
 
-;; TODO: Flesh this out
-(defn load-local-data! [{:keys [*host-fns signal-consumer-sync!] :as arg}]
+;; TODO: Flesh this out, make sure it completes before any
+;; other state updates are processed
+(defn load-local-data! [{:keys [*host-fns root signal-consumer-sync!] :as arg}]
   (ca/go
     (au/<? (<wait-for-init arg))
-    (try
-      (let [{:keys [update-subscriptions!]} @*host-fns
-            updated-paths []]
-        (update-subscriptions! (u/sym-map updated-paths))
-        (signal-consumer-sync!))
-      (catch #?(:clj Exception :cljs js/Error) e
-        (log/error (str "Error in load-local-data!:\n"
-                        (u/ex-msg-and-stacktrace e)))))))
+    #_(try
+        (let [{:keys [update-subscriptions!]} @*host-fns
+              updated-paths [[root]]]
+          (update-subscriptions! (u/sym-map updated-paths))
+          (signal-consumer-sync!))
+        (catch #?(:clj Exception :cljs js/Error) e
+          (log/error (str "Error in load-local-data!:\n"
+                          (u/ex-msg-and-stacktrace e)))))))
 
 (defn throw-bad-path-key [path k]
   (let [disp-k (or k "nil")]
