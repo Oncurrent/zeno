@@ -226,11 +226,11 @@
                                           #{add-id}))))))
 
 (defn apply-ops
-  [{:keys [crdt ops schema] :as arg}]
+  [{:keys [crdt crdt-ops schema] :as arg}]
   (reduce (fn [crdt* {:keys [sys-time-ms] :as op}]
             (apply-op (assoc op
                              :crdt crdt*
                              :schema schema
                              :sys-time-ms (or sys-time-ms (:sys-time-ms arg)))))
           crdt
-          ops))
+          crdt-ops))

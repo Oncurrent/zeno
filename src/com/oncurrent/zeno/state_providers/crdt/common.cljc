@@ -206,10 +206,10 @@
         {:norm-path norm-path
          :value nil}))))
 
-(defn get-op-value-schema [{:keys [op-type schema path]}]
+(defn get-op-value-schema [{:keys [op-type schema op-path]}]
   (case op-type
     :add-array-edge shared/crdt-array-edge-schema
-    :add-value (l/schema-at-path schema path {:branches? true})
+    :add-value (l/schema-at-path schema op-path {:branches? true})
     :delete-array-edge nil
     :delete-value nil))
 
@@ -217,9 +217,9 @@
   [{:keys [storage schema crdt-op]}]
   (au/go
     (when crdt-op
-      (let [{:keys [path op-type value]} crdt-op
+      (let [{:keys [op-path op-type value]} crdt-op
             w-schema (get-op-value-schema
-                      (u/sym-map op-type path schema))]
+                      (u/sym-map op-type op-path schema))]
         (cond-> crdt-op
           true (dissoc :value)
           w-schema (assoc :serialized-value
@@ -230,16 +230,17 @@
   [{:keys [storage schema crdt-op] :as arg}]
   (au/go
     (when crdt-op
-      (let [{:keys [path op-type serialized-value]} crdt-op
+      (let [{:keys [op-path op-type serialized-value]} crdt-op
             r-schema (get-op-value-schema
-                      (u/sym-map op-type path schema))]
+                      (u/sym-map op-type op-path schema))]
         (cond-> crdt-op
           true (dissoc :serialized-value)
           r-schema (assoc :value
-                          (au/<? (common/<serialized-value->value
-                                  (assoc arg
-                                         :reader-schema r-schema
-                                         :serialized-value serialized-value)))))))))
+                          (au/<?
+                           (common/<serialized-value->value
+                            (assoc arg
+                                   :reader-schema r-schema
+                                   :serialized-value serialized-value)))))))))
 
 (defn <crdt-ops->serializable-crdt-ops [arg]
   (au/go
@@ -249,9 +250,9 @@
         []
         (loop [i 0
                out []]
-          (let [op (nth crdt-ops i)
+          (let [crdt-op (nth crdt-ops i)
                 s-op (au/<? (<crdt-op->serializable-crdt-op
-                             (assoc arg :op op)))
+                             (assoc arg :crdt-op crdt-op)))
                 new-i (inc i)
                 new-out (conj out s-op)]
             (if (= last-i new-i)
@@ -267,10 +268,10 @@
         (loop [i 0
                out []]
           (let [s-op (nth crdt-ops i)
-                op (au/<? (<serializable-crdt-op->crdt-op
-                           (assoc arg :op s-op)))
+                crdt-op (au/<? (<serializable-crdt-op->crdt-op
+                                (assoc arg :crdt-op s-op)))
                 new-i (inc i)
-                new-out (conj out op)]
+                new-out (conj out crdt-op)]
             (if (= last-i new-i)
               new-out
               (recur new-i new-out))))))))

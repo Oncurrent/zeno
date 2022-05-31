@@ -21,11 +21,10 @@
 (defn <make-ser-tx-info
   [{:keys [actor-id client-id cmds root schema storage tx-id]}]
   (au/go
-    (let [{:keys [ops updated-paths]} (commands/process-cmds {:cmds cmds
-                                                              :schema schema
-                                                              :root root})
+    (let [{:keys [crdt-ops updated-paths]} (commands/process-cmds
+                                            (u/sym-map cmds schema root))
           ser-ops (au/<? (common/<crdt-ops->serializable-crdt-ops
-                          (u/sym-map ops schema storage)))]
+                          (u/sym-map crdt-ops schema storage)))]
       {:actor-id actor-id
        :client-id client-id
        :crdt-ops ser-ops
@@ -95,6 +94,8 @@
                _ (is (= book (-> snapshot :v :books (get book-id))))
                _ (is (= [book-id] (-> snapshot :crdt :children :books
                                       :children keys)))
-               _ (is (= the-id (-> snapshot :v :the-id)))])
+               _ (is (= the-id (-> snapshot :v :the-id)))
+
+               ])
          (finally
            (bulk-storage/<stop-server! bulk-storage)))))))

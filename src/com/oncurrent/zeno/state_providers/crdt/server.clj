@@ -110,14 +110,14 @@
         (au/<? (common/<serializable-tx-infos->tx-infos
                 (assoc arg :serializable-tx-infos stis)))))))
 
-(defn <get-ops-and-updated-paths-for-tx-ids [arg]
+(defn <get-crdt-ops-and-updated-paths-for-tx-ids [arg]
   (au/go
     (let [tx-infos (au/<? (<get-tx-infos-for-tx-ids arg))]
       (reduce (fn [acc {:keys [crdt-ops updated-paths]}]
                 (-> acc
-                    (update :ops concat crdt-ops)
+                    (update :crdt-ops concat crdt-ops)
                     (update :updated-paths concat updated-paths)))
-              {:ops []
+              {:crdt-ops []
                :updated-paths []}
               tx-infos))))
 
@@ -129,9 +129,9 @@
       (let [old-hash (:snapshot-txs-hash log-info)
             snapshot-txs-hash (add-tx-ids-to-hash (u/sym-map old-hash tx-ids))
             old-snapshot (au/<? (<get-snapshot arg))
-            info (au/<? (<get-ops-and-updated-paths-for-tx-ids arg))
+            info (au/<? (<get-crdt-ops-and-updated-paths-for-tx-ids arg))
             crdt (apply-ops/apply-ops {:crdt (:crdt old-snapshot)
-                                       :ops (:ops info)
+                                       :crdt-ops (:crdt-ops info)
                                        :schema schema})
             {:keys [value]} (common/get-value-info {:crdt crdt
                                                     :path []
@@ -234,17 +234,17 @@
   [{:keys [*branch->crdt-info branch root schema tx-infos]}]
   (let [batch-info (reduce (fn [acc {:keys [crdt-ops tx-id updated-paths]}]
                              (-> acc
-                                 (update :ops concat crdt-ops)
+                                 (update :crdt-ops concat crdt-ops)
                                  (update :tx-ids conj tx-id)
                                  (update :updated-paths concat updated-paths)))
-                           {:ops []
+                           {:crdt-ops []
                             :tx-ids []
                             :updated-paths []}
                            tx-infos)]
     (swap! *branch->crdt-info update branch
            (fn [old-info]
              (let [crdt (apply-ops/apply-ops {:crdt (:crdt old-info)
-                                              :ops (:ops batch-info)
+                                              :crdt-ops (:crdt-ops batch-info)
                                               :schema schema})
                    {:keys [value]} (common/get-value-info {:crdt crdt
                                                            :path []

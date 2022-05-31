@@ -63,15 +63,15 @@
                       :updated-paths []}
                      tx-infos)
         {:keys [crdt-ops updated-paths]} info
-        apply-ops (fn [crdt ops]
+        apply-ops (fn [crdt]
                     (apply-ops/apply-ops {:crdt crdt
-                                          :ops crdt-ops
+                                          :crdt-ops crdt-ops
                                           :schema schema}))]
     (swap! *state-info
            (fn [state-info]
              (let [crdt* (or crdt
                              (cond-> (:crdt (or snapshot state-info))
-                               (seq tx-infos) (apply-ops crdt-ops)))
+                               (seq tx-infos) (apply-ops)))
                    {:keys [value]} (common/get-value-info {:crdt crdt*
                                                            :path []
                                                            :schema schema})]
