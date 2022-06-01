@@ -114,11 +114,12 @@
           s3-arg {:op :PutObject
                   :request req}
           ret (au/<? (aws-async/invoke s3-client s3-arg))]
-      (sr/put! cache [bucket-name k] ba)
       (if (:cognitect.anomalies/category ret)
         (throw (ex-info (str ret)
                         (u/sym-map s3-arg bucket-name k ret)))
-        true))))
+        (do
+          (sr/put! cache [bucket-name k] ba)
+          true)))))
 
 (defn <s3-get-time-limited-url
   [{:keys [bucket-name java-client k seconds-valid]}]
@@ -144,7 +145,9 @@
       (if (:cognitect.anomalies/category ret)
         (throw (ex-info (str ret)
                         (u/sym-map s3-arg bucket-name k ret)))
-        true))))
+        (do
+          (sr/evict! cache [bucket-name k])
+          true)))))
 
 (defrecord S3BulkStorage [bucket-name cache java-client s3-client]
   IBulkStorage
