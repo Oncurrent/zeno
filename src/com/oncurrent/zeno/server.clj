@@ -996,30 +996,34 @@
              #{}
              @*env-name->info))
 
-(defn initialize-state-providers!
+(defn <initialize-state-providers!
   [{:keys [*env-name->info bulk-storage root->state-provider
            storage talk2-server]}]
-  (doseq [[root sp] root->state-provider]
-    (let [{::sp-impl/keys [init! msg-protocol state-provider-name]} sp]
-      (when init!
-        (let [<send-msg (fn [{:keys [arg conn-id msg-type timeout-ms]}]
-                          (<sp-send-msg (u/sym-map arg
-                                                   conn-id
-                                                   msg-protocol
-                                                   msg-type
-                                                   state-provider-name
-                                                   storage
-                                                   talk2-server
-                                                   timeout-ms)))
-              prefix (str storage/state-provider-prefix
-                          (namespace state-provider-name) "-"
-                          (name state-provider-name))
-              branches (get-sp-branches (u/sym-map *env-name->info root))]
-          (init! {:<send-msg <send-msg
-                  :branches branches
-                  :bulk-storage (bulk-storage/->prefixed-bulk-storage
-                                 (u/sym-map bulk-storage prefix))
-                  :storage (storage/make-prefixed-storage prefix storage)}))))))
+  (au/go
+    (doseq [[root sp] root->state-provider]
+      (let [{::sp-impl/keys [init! msg-protocol state-provider-name]} sp]
+        (when init!
+          (let [<send-msg (fn [{:keys [arg conn-id msg-type timeout-ms]}]
+                            (<sp-send-msg (u/sym-map arg
+                                                     conn-id
+                                                     msg-protocol
+                                                     msg-type
+                                                     state-provider-name
+                                                     storage
+                                                     talk2-server
+                                                     timeout-ms)))
+                prefix (str storage/state-provider-prefix
+                            (namespace state-provider-name) "-"
+                            (name state-provider-name))
+                branches (get-sp-branches (u/sym-map *env-name->info root))
+                ret (init! {:<send-msg <send-msg
+                            :branches branches
+                            :bulk-storage (bulk-storage/->prefixed-bulk-storage
+                                           (u/sym-map bulk-storage prefix))
+                            :storage (storage/make-prefixed-storage
+                                      prefix storage)})]
+            (when (au/channel? ret)
+              (au/<? ret))))))))
 
 (defn make-name->state-provider [root->state-provider]
   (reduce-kv (fn [acc root state-provider]
@@ -1075,7 +1079,8 @@
                        rpcs
                        storage)
         talk2-server (make-talk2-server arg)
-        _ (initialize-state-providers! (assoc arg :talk2-server talk2-server))
+        _ (au/<?? (<initialize-state-providers!
+                   (assoc arg :talk2-server talk2-server)))
         member-id (u/compact-random-uuid)
         mutex-clients (when (and <get-published-member-urls
                                  <publish-member-urls)

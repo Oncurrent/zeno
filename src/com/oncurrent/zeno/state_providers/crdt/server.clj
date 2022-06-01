@@ -243,19 +243,14 @@
 
 (defn update-branch->crdt-info!
   [{:keys [*branch->crdt-info branch root schema tx-infos]}]
-  (let [batch-info (reduce (fn [acc {:keys [crdt-ops tx-id updated-paths]}]
-                             (-> acc
-                                 (update :crdt-ops concat crdt-ops)
-                                 (update :tx-ids conj tx-id)
-                                 (update :updated-paths concat updated-paths)))
-                           {:crdt-ops []
-                            :tx-ids []
-                            :updated-paths []}
-                           tx-infos)]
+  (let [crdt-ops (reduce (fn [acc tx-info]
+                           (concat acc (:crdt-ops tx-info)))
+                         []
+                         tx-infos)]
     (swap! *branch->crdt-info update branch
            (fn [old-info]
              (let [crdt (apply-ops/apply-ops {:crdt (:crdt old-info)
-                                              :crdt-ops (:crdt-ops batch-info)
+                                              :crdt-ops crdt-ops
                                               :schema schema})
                    {:keys [value]} (common/get-value-info {:crdt crdt
                                                            :path []
@@ -423,14 +418,17 @@
         true))))
 
 (defn <load-branch!
-  [{:keys [*branch->crdt-info branch schema storage] :as arg}]
+  [{:keys [*branch->crdt-info *bulk-storage branch schema storage] :as arg}]
   (au/go
     (let [branch-log-k (->branch-log-k (u/sym-map branch))
           bli (au/<? (storage/<get storage branch-log-k
                                    shared/branch-log-info-schema))
           {:keys [actor-id-to-log-info branch-tx-ids]} bli
           log-info (get actor-id-to-log-info branch-main-log-actor-id)
-          snapshot (au/<? (<get-snapshot (assoc arg :log-info log-info)))
+          snapshot (au/<? (<get-snapshot
+                           (assoc arg
+                                  :bulk-storage @*bulk-storage
+                                  :log-info log-info)))
           tx-ids (map #(nth branch-tx-ids %)
                       (:branch-log-tx-indices-since-snapshot log-info))
           tx-infos (au/<? (<get-tx-infos-for-tx-ids (assoc arg :tx-ids tx-ids)))
@@ -450,20 +448,22 @@
                (assoc m branch crdt-info))))))
 
 (defn <load-state!
-  [{:keys [*branch->crdt-info *storage schema branches]}]
+  [{:keys [*branch->crdt-info *storage schema branches] :as arg}]
   (ca/go
     (try
       (let [storage @*storage]
         (doseq [branch branches]
-          (au/<? (<load-branch!
-                  (u/sym-map *branch->crdt-info branch schema storage)))))
+          (au/<? (<load-branch! (assoc arg
+                                       :branch branch
+                                       :storage storage)))))
       (catch Exception e
         (log/error (str "Exception in <load-state!:\n"
                         (u/ex-msg-and-stacktrace e)))))))
 
-(defn cmds->tx-info [{:keys [actor-id cmds make-tx-id schema storage root]}]
+(defn cmds->tx-info
+  [{:keys [actor-id cmds crdt make-tx-id schema storage root]}]
   (let [{:keys [crdt-ops updated-paths]} (commands/process-cmds
-                                          (u/sym-map cmds schema root))
+                                          (u/sym-map cmds crdt schema root))
         sys-time-ms (u/current-time-ms)
         tx-id (if make-tx-id
                 (make-tx-id)
@@ -471,13 +471,19 @@
     (u/sym-map actor-id crdt-ops sys-time-ms tx-id updated-paths)))
 
 (defn make-<update-state!
-  [{:keys [*branch->crdt-info schema storage] :as mus-arg}]
+  [{:keys [*branch->crdt-info *storage schema] :as mus-arg}]
   (fn [{:zeno/keys [actor-id branch cmds] :as us-arg}]
     (au/go
-      (let [arg (assoc mus-arg
+      (let [storage @*storage
+            crdt (some-> @*branch->crdt-info
+                         (get branch)
+                         (:crdt))
+            arg (assoc mus-arg
                        :actor-id actor-id
                        :branch branch
-                       :cmds cmds)
+                       :cmds cmds
+                       :crdt crdt
+                       :storage storage)
             tx-info (cmds->tx-info arg)
             ser-tx-info (au/<? (common/<tx-info->serializable-tx-info
                                 (assoc arg :tx-info tx-info)))
@@ -541,8 +547,8 @@
         *storage (atom nil)
         *bulk-storage (atom nil)
         snapshot-interval 10
-        arg (u/sym-map *branch->crdt-info *bulk-storage *storage *<send-msg
-                       authorizer root schema snapshot-interval)
+        arg (u/sym-map *branch->crdt-info *bulk-storage *storage
+                       *<send-msg authorizer root schema snapshot-interval)
         <copy-branch! (make-<copy-branch! arg)
         msg-handlers {:get-consumer-sync-info
                       (make-get-consumer-sync-info-handler arg)

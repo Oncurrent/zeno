@@ -41,7 +41,7 @@
       (au/<? (server/<log-producer-tx-batch!
               (assoc arg :serializable-tx-infos [ser-tx-info]))))))
 
-(deftest ^:this test-sync
+(deftest test-sync
   (au/test-async
    3000
    (au/go
