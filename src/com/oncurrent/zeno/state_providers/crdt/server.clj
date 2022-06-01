@@ -24,6 +24,7 @@
 
 (set! *warn-on-reflection* true)
 
+(def branch-main-log-actor-id "__BRANCH_MAIN__")
 (def branch-log-prefix "_BRANCH-LOG-")
 (def snapshot-prefix "SNAPSHOT-")
 
@@ -168,14 +169,15 @@
      :snapshot-tx-index new-index}))
 
 (defn update-actor-log-info!
-  [{:keys [log-info snapshot-interval tx-info] :as arg}]
+  [{:keys [i log-info snapshot-interval tx-info] :as arg}]
   (let [{:keys [tx-index]} tx-info
         {:keys [branch-log-tx-indices-since-snapshot]} log-info
         new-snapshot? (>= (inc (count branch-log-tx-indices-since-snapshot))
                           snapshot-interval)]
     (if new-snapshot?
       (make-new-snapshot! arg)
-      (update log-info :branch-log-tx-indices-since-snapshot conj tx-index))))
+      (update log-info :branch-log-tx-indices-since-snapshot
+              conj (or tx-index i)))))
 
 (defn authorized? [{:keys [actor-id authorizer updated-paths]}]
   (reduce (fn [acc path]
@@ -188,20 +190,28 @@
 
 (defn update-actor-id-to-log-info!
   [{:keys [actor-id-to-log-info tx-infos] :as arg}]
-  (reduce
-   (fn [acc {:keys [updated-paths] :as tx-info}]
-     (reduce-kv
-      (fn [acc* actor-id log-info]
-        (if-not (authorized? (assoc arg :updated-paths updated-paths))
-          acc*
-          (assoc acc* actor-id (update-actor-log-info!
-                                (assoc arg
-                                       :log-info log-info
-                                       :tx-info tx-info)))))
-      {}
-      acc))
-   actor-id-to-log-info
-   tx-infos))
+  (let [aitli (if (get actor-id-to-log-info branch-main-log-actor-id)
+                actor-id-to-log-info
+                (assoc actor-id-to-log-info branch-main-log-actor-id
+                       {:branch-log-tx-indices-since-snapshot []
+                        :snapshot-txs-hash 0
+                        :snapshot-tx-index -1}))]
+    (reduce
+     (fn [acc i]
+       (let [{:keys [updated-paths] :as tx-info} (nth tx-infos i)]
+         (reduce-kv
+          (fn [acc* actor-id log-info]
+            (if-not (authorized? (assoc arg :updated-paths updated-paths))
+              acc*
+              (assoc acc* actor-id (update-actor-log-info!
+                                    (assoc arg
+                                           :i i
+                                           :log-info log-info
+                                           :tx-info tx-info)))))
+          {}
+          acc)))
+     aitli
+     (range (count tx-infos)))))
 
 (defn update-branch-log-info!
   [{:keys [old-branch-log-info tx-infos] :as arg}]
@@ -212,15 +222,16 @@
                                tx-infos)
         tx-ids (map :tx-id tx-infos)]
     (-> old-branch-log-info
-        (update :actor-id-to-log-info #(update-actor-id-to-log-info!
-                                        (assoc arg
-                                               :actor-id-to-log-info %
-                                               :branch-tx-ids branch-tx-ids
-                                               :tx-infos tx-infos*)))
+        (update :actor-id-to-log-info
+                #(update-actor-id-to-log-info!
+                  (assoc arg
+                         :actor-id-to-log-info %
+                         :branch-tx-ids branch-tx-ids
+                         :tx-infos tx-infos*)))
         (update :branch-tx-ids concat tx-ids))))
 
 ;; TODO: Write these in parallel?
-(defn <store-tx-infos [{:keys [serializable-tx-infos storage]}]
+(defn <store-tx-infos! [{:keys [serializable-tx-infos storage]}]
   (au/go
     (doseq [{:keys [tx-id] :as serializable-tx-info} serializable-tx-infos]
       (let [k (common/tx-id->tx-info-k tx-id)]
@@ -252,28 +263,32 @@
                {:crdt crdt
                 :v value})))))
 
-(defn <log-producer-tx-batch!
-  [{:keys [*branch->crdt-info <request-schema branch bulk-storage
-           schema serializable-tx-infos storage]
-    :as arg}]
+(defn <add-to-branch-log! [{:keys [branch storage tx-infos] :as arg}]
   (au/go
-    (let [branch-log-k (->branch-log-k (u/sym-map branch))
-          _ (au/<? (<store-tx-infos (u/sym-map serializable-tx-infos
-                                               storage)))
-          ;; Convert the serializable-tx-infos into regular tx-infos
-          ;; so we can ensure that we have any required schemas
-          ;; (which will be requested from the client).
-          tx-infos (au/<? (common/<serializable-tx-infos->tx-infos
-                           (u/sym-map <request-schema schema
-                                      serializable-tx-infos storage)))]
-      (update-branch->crdt-info! (assoc arg :tx-infos tx-infos))
+    (let [branch-log-k (->branch-log-k (u/sym-map branch))]
       (au/<? (storage/<swap! storage branch-log-k
                              shared/branch-log-info-schema
                              #(update-branch-log-info!
                                (assoc arg
                                       :storage storage
                                       :old-branch-log-info %
-                                      :tx-infos tx-infos))))
+                                      :tx-infos tx-infos)))))))
+
+(defn <log-producer-tx-batch!
+  [{:keys [*branch->crdt-info <request-schema branch bulk-storage
+           schema serializable-tx-infos storage]
+    :as arg}]
+  (au/go
+    (let [_ (au/<? (<store-tx-infos! (u/sym-map serializable-tx-infos storage)))
+          ;; Convert the serializable-tx-infos into regular tx-infos
+          ;; so we can ensure that we have any required schemas
+          ;; (which will be requested from the client).
+          tx-infos (au/<? (common/<serializable-tx-infos->tx-infos
+                           (u/sym-map <request-schema schema
+                                      serializable-tx-infos storage)))
+          arg* (assoc arg :tx-infos tx-infos)]
+      (update-branch->crdt-info! arg*)
+      (au/<? (<add-to-branch-log! arg*))
       true)))
 
 (defn make-log-producer-tx-batch-handler
@@ -283,6 +298,7 @@
       (<log-producer-tx-batch!
        (assoc fn-arg
               :<request-schema <request-schema
+              :branch branch
               :bulk-storage @*bulk-storage
               :serializable-tx-infos (vec (:arg h-arg))
               :storage @*storage)))))
@@ -407,10 +423,31 @@
         true))))
 
 (defn <load-branch!
-  [{:keys [branch storage] :as arg}]
+  [{:keys [*branch->crdt-info branch schema storage] :as arg}]
   (au/go
-    ;; TODO: Implement
-    ))
+    (let [branch-log-k (->branch-log-k (u/sym-map branch))
+          bli (au/<? (storage/<get storage branch-log-k
+                                   shared/branch-log-info-schema))
+          {:keys [actor-id-to-log-info branch-tx-ids]} bli
+          log-info (get actor-id-to-log-info branch-main-log-actor-id)
+          snapshot (au/<? (<get-snapshot (assoc arg :log-info log-info)))
+          tx-ids (map #(nth branch-tx-ids %)
+                      (:branch-log-tx-indices-since-snapshot log-info))
+          tx-infos (au/<? (<get-tx-infos-for-tx-ids (assoc arg :tx-ids tx-ids)))
+          crdt-ops (reduce (fn [acc tx-info]
+                             (concat acc (:crdt-ops tx-info)))
+                           []
+                           tx-infos)
+          crdt (apply-ops/apply-ops (assoc (u/sym-map crdt-ops schema)
+                                           :crdt (:crdt snapshot)))
+          {:keys [value]} (common/get-value-info {:crdt crdt
+                                                  :path []
+                                                  :schema schema})
+          crdt-info {:crdt crdt
+                     :v value}]
+      (swap! *branch->crdt-info
+             (fn [m]
+               (assoc m branch crdt-info))))))
 
 (defn <load-state!
   [{:keys [*branch->crdt-info *storage schema branches]}]
@@ -424,27 +461,33 @@
         (log/error (str "Exception in <load-state!:\n"
                         (u/ex-msg-and-stacktrace e)))))))
 
+(defn cmds->tx-info [{:keys [actor-id cmds make-tx-id schema storage root]}]
+  (let [{:keys [crdt-ops updated-paths]} (commands/process-cmds
+                                          (u/sym-map cmds schema root))
+        sys-time-ms (u/current-time-ms)
+        tx-id (if make-tx-id
+                (make-tx-id)
+                (u/compact-random-uuid))]
+    (u/sym-map actor-id crdt-ops sys-time-ms tx-id updated-paths)))
+
 (defn make-<update-state!
-  [{:keys [*branch->crdt-info root schema]}]
-  (fn [{:zeno/keys [branch cmds] :as us-arg}]
+  [{:keys [*branch->crdt-info schema storage] :as mus-arg}]
+  (fn [{:zeno/keys [actor-id branch cmds] :as us-arg}]
     (au/go
-      (swap! *branch->crdt-info
-             update branch
-             (fn [old-info]
-               (let [pc-arg {:cmds cmds
-                             :root root
-                             :crdt (:crdt old-info)
-                             :schema schema}
-                     {:keys [crdt]} (commands/process-cmds pc-arg)
-                     {:keys [value]} (common/get-value-info {:crdt crdt
-                                                             :path []
-                                                             :schema schema})]
-                 {:crdt crdt
-                  :v value})))
-      (let [info (@*branch->crdt-info branch)]
-        ;; TODO: Write to log and snapshot
-        )
-      true)))
+      (let [arg (assoc mus-arg
+                       :actor-id actor-id
+                       :branch branch
+                       :cmds cmds)
+            tx-info (cmds->tx-info arg)
+            ser-tx-info (au/<? (common/<tx-info->serializable-tx-info
+                                (assoc arg :tx-info tx-info)))
+            tx-infos [tx-info]
+            serializable-tx-infos [ser-tx-info]
+            arg* (assoc arg :tx-infos tx-infos)]
+        (au/<? (<store-tx-infos! (u/sym-map serializable-tx-infos storage)))
+        (update-branch->crdt-info! (assoc arg :tx-infos tx-infos))
+        (au/<? (<add-to-branch-log! arg*))
+        true))))
 
 (defn throw-bad-path-key [path k]
   (let [disp-k (or k "nil")]

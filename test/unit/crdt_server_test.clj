@@ -41,7 +41,7 @@
       (au/<? (server/<log-producer-tx-batch!
               (assoc arg :serializable-tx-infos [ser-tx-info]))))))
 
-(deftest test-sync
+(deftest ^:this test-sync
   (au/test-async
    3000
    (au/go
@@ -73,7 +73,12 @@
                                  (:v)
                                  (:books)
                                  (get book-id))))
-               _ (is (= {:actor-id-to-log-info {}
+               _ (is (= {:actor-id-to-log-info
+                         {"__BRANCH_MAIN__"
+                          {:branch-log-tx-indices-since-snapshot [0],
+                           :snapshot-tx-index -1,
+                           :snapshot-txs-hash 0}}
+
                          :branch-tx-ids ["tx-1"]}
                         (au/<? (storage/<get storage branch-log-k
                                              shared/branch-log-info-schema))))
@@ -94,8 +99,6 @@
                _ (is (= book (-> snapshot :v :books (get book-id))))
                _ (is (= [book-id] (-> snapshot :crdt :children :books
                                       :children keys)))
-               _ (is (= the-id (-> snapshot :v :the-id)))
-
-               ])
+               _ (is (= the-id (-> snapshot :v :the-id)))])
          (finally
            (bulk-storage/<stop-server! bulk-storage)))))))
