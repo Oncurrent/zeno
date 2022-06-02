@@ -217,7 +217,7 @@
   (<get [this k]
     (<get bulk-storage (str prefix "-" k)))
   (<get-time-limited-url [this k seconds-valid]
-    (<get-time-limited-url this (str prefix "-" k) seconds-valid))
+    (<get-time-limited-url bulk-storage (str prefix "-" k) seconds-valid))
   (<put! [this k ba]
     (<put! bulk-storage (str prefix "-" k) ba))
   (<put! [this k ba opts]
