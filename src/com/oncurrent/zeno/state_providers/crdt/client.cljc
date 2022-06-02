@@ -76,7 +76,8 @@
                                                            :path []
                                                            :schema schema})]
                {:crdt crdt*
-                :last-tx-index (or last-tx-index (:last-tx-index state-info))
+                :last-tx-index (or last-tx-index
+                                   (:last-tx-index state-info))
                 :v value})))
     (u/sym-map updated-paths)))
 
@@ -114,7 +115,7 @@
                                                  tx-infos))
                 unsynced-log-k (->unsynced-log-k (u/sym-map env-name))]
             (au/<? (storage/<swap! storage k shared/serializable-tx-info-schema
-                                   (constantly tx-info)))
+                                   (constantly ser-tx-info)))
             (au/<? (storage/<swap! storage unsynced-log-k
                                    shared/unsynced-log-schema
                                    (fn [aid->tx-ids]
@@ -136,13 +137,13 @@
                                                shared/unsynced-log-schema))
               tx-ids (get aid->tx-ids actor-id-str)
               batch (set (take 10 tx-ids))
-              tx-infos (when tx-ids
-                         (au/<? (common/<get-serializable-tx-infos
-                                 {:storage storage
-                                  :tx-ids batch})))]
-          (when (seq tx-infos)
+              ser-tx-infos (when tx-ids
+                             (au/<? (common/<get-serializable-tx-infos
+                                     {:storage storage
+                                      :tx-ids batch})))]
+          (when (seq ser-tx-infos)
             (au/<? (<send-msg {:msg-type :log-producer-tx-batch
-                               :arg tx-infos}))
+                               :arg ser-tx-infos}))
             (au/<? (storage/<swap! storage
                                    unsynced-log-k
                                    shared/unsynced-log-schema
@@ -190,8 +191,8 @@
                          :unsynced-log-k unsynced-log-k))))))))
 
 (defn <sync-consumer-txs!*
-  [{:keys [*actor-id *client-running? *connected? *host-fns *state-info
-           *storage root schema]
+  [{:keys [*actor-id *client-running? *connected? *env-name *host-fns
+           *state-info *storage root schema]
     :as arg}]
   ;; TODO: Don't re-apply own txns
   (au/go
@@ -206,7 +207,7 @@
             {:keys [snapshot-url
                     snapshot-tx-index
                     tx-ids-since-snapshot]} sync-info
-            last-tx-index (+ snapshot-tx-index
+            last-tx-index (+ (or snapshot-tx-index -1)
                              (count tx-ids-since-snapshot))
             snapshot (au/<? (common/<get-snapshot-from-url
                              (assoc arg
@@ -220,10 +221,11 @@
             tx-infos (au/<? (common/<serializable-tx-infos->tx-infos
                              (assoc arg
                                     :<request-schema <request-schema
-                                    :serializable-tx-infos ser-tx-infos)))
+                                    :serializable-tx-infos ser-tx-infos
+                                    :storage storage)))
+
             usi-ret (update-state-info! (u/sym-map *state-info last-tx-index
                                                    schema snapshot tx-infos))]
-
         (cond
           snapshot
           (update-subscriptions! {:updated-paths [[root]]})
@@ -232,7 +234,7 @@
           (update-subscriptions! usi-ret))))))
 
 ;; TODO: Flesh this out, make sure it completes before any
-;; other state updates are processed
+;; other state updates are processed. Wait in the <init! process?
 (defn load-local-data! [{:keys [*host-fns root signal-consumer-sync!] :as arg}]
   (ca/go
     (au/<? (<wait-for-init arg))

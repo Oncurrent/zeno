@@ -92,22 +92,10 @@
       (when ba
         (au/<? (common/<ba->snapshot (assoc arg :ba ba)))))))
 
-(defn <get-serializable-tx-info [{:keys [schema storage tx-id]}]
-  (let [k (common/tx-id->tx-info-k tx-id)]
-    (storage/<get storage k shared/serializable-tx-info-schema)))
-
 (defn <get-tx-infos-for-tx-ids [{:keys [tx-ids] :as arg}]
   (au/go
     (when (seq tx-ids)
-      (let [stis-ch (->> tx-ids
-                         (mapv #(<get-serializable-tx-info
-                                 (assoc arg :tx-id %)))
-                         (ca/merge))
-            stis (loop [out []]
-                   (let [new-out (conj out (au/<? stis-ch))]
-                     (if (= (count new-out) (count tx-ids))
-                       new-out
-                       (recur new-out))))]
+      (let [stis (au/<? (common/<get-serializable-tx-infos arg))]
         (au/<? (common/<serializable-tx-infos->tx-infos
                 (assoc arg :serializable-tx-infos stis)))))))
 
@@ -302,9 +290,9 @@
   ;; TODO: Consider security implications. Can anyone get any tx-info?
   [{:keys [*storage] :as fn-arg}]
   (fn [{:keys [arg] :as h-arg}]
-    (<get-tx-infos-for-tx-ids (assoc fn-arg
-                                     :storage @*storage
-                                     :tx-ids (:tx-ids arg)))))
+    (common/<get-serializable-tx-infos (assoc fn-arg
+                                              :storage @*storage
+                                              :tx-ids (:tx-ids arg)))))
 
 (defn <log-info->sync-info
   [{:keys [branch-tx-ids bulk-storage last-tx-index log-info] :as arg}]
@@ -402,9 +390,12 @@
                                       :storage @*storage)))))
 
 (defn make-<copy-branch! [{:keys [*branch->crdt-info *storage]}]
-  (fn <copy-branch! [{old-branch :state-provider-branch-source
-                      new-branch :state-provider-branch}]
+  (fn <copy-branch! [{new-branch :state-provider-branch
+                      old-branch :source-env-name
+                      :keys [temp?]
+                      :as cb-arg}]
     (au/go
+      ;; TODO: If temp? is true, store in temp-storage rather than storage
       (swap! *branch->crdt-info (fn [m]
                                   (assoc m new-branch (get m old-branch))))
       (let [storage @*storage
@@ -416,6 +407,12 @@
                                shared/branch-log-info-schema
                                (constantly old-bli)))
         true))))
+
+(defn make-<delete-branch! [{:keys [*branch->crdt-info *storage]}]
+  (fn <delete-branch! [{:keys [temp?]}]
+    (au/go
+      ;; TODO: Implement
+      )))
 
 (defn <load-branch!
   [{:keys [*branch->crdt-info *bulk-storage branch schema storage] :as arg}]
@@ -549,7 +546,6 @@
         snapshot-interval 10
         arg (u/sym-map *branch->crdt-info *bulk-storage *storage
                        *<send-msg authorizer root schema snapshot-interval)
-        <copy-branch! (make-<copy-branch! arg)
         msg-handlers {:get-consumer-sync-info
                       (make-get-consumer-sync-info-handler arg)
 
@@ -565,7 +561,8 @@
                 (<load-state! (assoc arg :branches branches)))
         stop! (fn []
                 )]
-    #::sp-impl{:<copy-branch! <copy-branch!
+    #::sp-impl{:<copy-branch! (make-<copy-branch! arg)
+               :<delete-branch! (make-<delete-branch! arg)
                :<get-state (make-<get-state arg)
                :<update-state! (make-<update-state! arg)
                :init! init!

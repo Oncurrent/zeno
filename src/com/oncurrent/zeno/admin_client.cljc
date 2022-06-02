@@ -175,6 +175,7 @@
   [{:zeno/keys [admin-client
                 authenticator-infos
                 env-name
+                source-env-name
                 state-provider-infos]}]
   (au/go
     (check-env-name env-name)
@@ -186,6 +187,7 @@
                              :create-env
                              {:stored-authenticator-infos ais
                               :env-name env-name
+                              :source-env-name source-env-name
                               :stored-state-provider-infos spis})))))
 
 (defn <get-env-names

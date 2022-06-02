@@ -254,10 +254,10 @@
           reader-schema (get-read-state-info-schema authenticator read-type)
           <request-schema (su/make-schema-requester fn-arg)
           read-info (au/<? (common/<serialized-value->value
-                           {:<request-schema <request-schema
-                            :reader-schema reader-schema
-                            :serialized-value serialized-read-info
-                            :storage storage}))
+                            {:<request-schema <request-schema
+                             :reader-schema reader-schema
+                             :serialized-value serialized-read-info
+                             :storage storage}))
           {:keys [actor-id]} (some-> @*conn-id->auth-info
                                      (get conn-id))
           ret (au/<? (<read-authenticator-state
@@ -280,23 +280,30 @@
   [{:keys [authenticator authenticator-storage
            authenticator-branch authenticator-branch-source]}]
   (au/go
-   (when authenticator-branch-source
-     (let [arg (u/sym-map authenticator authenticator-storage)
-           <get* (make-<get-authenticator-state
-                  (assoc arg :authenticator-branch
-                         authenticator-branch-source))
-           <swap!* (make-<swap-authenticator-state!
-                    (assoc arg :authenticator-branch authenticator-branch))
-           src-state (au/<? (<get*))
-           err-str (str "Authenticator branch `" authenticator-branch "` must "
-                        "be empty in order to be populated from the source "
-                        "branch `" authenticator-branch-source"`.")
-           swap-fn (fn [old-state]
-                     (if (empty? old-state)
-                       src-state
-                       (throw
-                        (ex-info err-str
-                                 (u/sym-map authenticator-branch
-                                            authenticator-branch-source)))))]
-       (when src-state
-         (au/<? (<swap!* swap-fn)))))))
+    (when authenticator-branch-source
+      (let [arg (u/sym-map authenticator authenticator-storage)
+            <get* (make-<get-authenticator-state
+                   (assoc arg :authenticator-branch
+                          authenticator-branch-source))
+            <swap!* (make-<swap-authenticator-state!
+                     (assoc arg :authenticator-branch authenticator-branch))
+            src-state (au/<? (<get*))
+            err-str (str "Authenticator branch `" authenticator-branch "` must "
+                         "be empty in order to be populated from the source "
+                         "branch `" authenticator-branch-source"`.")
+            swap-fn (fn [old-state]
+                      (if (empty? old-state)
+                        src-state
+                        (throw
+                         (ex-info err-str
+                                  (u/sym-map authenticator-branch
+                                             authenticator-branch-source)))))]
+        (when src-state
+          (au/<? (<swap!* swap-fn)))))))
+
+(defn <delete-branch!
+  [{:keys [authenticator authenticator-storage
+           authenticator-branch authenticator-branch-source]}]
+  (au/go
+    ;; TODO: Implement
+    ))

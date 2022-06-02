@@ -23,6 +23,7 @@
 
 (comment (kaocha.repl/run *ns*))
 
+;; TODO: Test creating a perm env based on an existing env
 (comment
   (kaocha.repl/run #'test-envs {:color? false :capture-output? false}))
 (deftest test-envs
