@@ -183,23 +183,27 @@
   (au/go
     (let [{:keys [env-authenticator-name->info env-sp-root->info]} env-info]
       (doseq [[auth-name auth-info] env-authenticator-name->info]
-        (when (:authenticator-branch-source auth-info)
-          (au/<? (auth-impl/<copy-branch!
-                  (assoc auth-info
-                         :source-env-name source-env-name
-                         :temp? temp?)))))
+        (let [source (or (:authenticator-branch-source auth-info)
+                         source-env-name)]
+          (when source
+            (au/<? (auth-impl/<copy-branch!
+                    (assoc auth-info
+                           :authenticator-branch-source source
+                           :temp? temp?))))))
       (doseq [[root sp-info] env-sp-root->info]
         (let [{:keys [state-provider]} sp-info
+              source (or (:state-provider-branch-source sp-info)
+                         source-env-name)
               {::sp-impl/keys [<copy-branch!]} state-provider]
-          (when <copy-branch!
+          (when (and <copy-branch! source)
             (au/<? (<copy-branch! (assoc sp-info
-                                         :source-env-name source-env-name
+                                         :state-provider-branch-source source
                                          :temp? temp?)))))))))
 
 (defn <handle-create-env
   [{:keys [*env-name->info arg server storage] :as fn-arg}]
   (au/go
-    (let [{:keys [env-name source-env-name]} arg]
+    (let [{:keys [env-name]} arg]
       (au/<? (storage/<swap! storage
                              storage/env-name-to-info-key
                              schemas/env-name-to-info-schema
@@ -211,11 +215,9 @@
                                (assoc env-name->info env-name arg))))
       (swap! *env-name->info assoc env-name
              (xf-perm-env-info (assoc fn-arg :env-info arg)))
-      (when source-env-name
-        (au/<? (<copy-from-branch-sources!
-                (assoc fn-arg
-                       :env-info (get @*env-name->info env-name)
-                       :source-env-name source-env-name)))))
+      (au/<? (<copy-from-branch-sources!
+              (assoc fn-arg
+                     :env-info (get @*env-name->info env-name)))))
     true))
 
 (defn <handle-delete-env

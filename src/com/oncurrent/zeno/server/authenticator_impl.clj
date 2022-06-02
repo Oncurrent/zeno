@@ -57,6 +57,10 @@
     (let [{:keys [authenticator-name serialized-login-info]} arg
           auth-info (env-authenticator-name->info authenticator-name)
           _ (when-not auth-info
+              (log/info (str "HLI:\n"
+                             (u/pprint-str
+                              (u/sym-map env-authenticator-name->info
+                                         authenticator-name))))
               (throw (ex-info
                       (str "No authenticator with name `" authenticator-name
                            "` was found in this env.")
@@ -144,11 +148,13 @@
           token-k (str storage/login-session-token-to-token-info-key-prefix
                        (:login-session-token auth-info))]
       (au/<? (storage/<delete! storage token-k))
-      (au/<? (<log-out! (:authenticator auth-info)
-                        (u/sym-map <get-authenticator-state
-                                   <get-state
-                                   <set-state!
-                                   <update-state!))))))
+      (if (:authenticator auth-info)
+        (au/<? (<log-out! (:authenticator auth-info)
+                          (u/sym-map <get-authenticator-state
+                                     <get-state
+                                     <set-state!
+                                     <update-state!)))
+        false))))
 
 (defn <handle-resume-login-session
   [{:keys [*conn-id->auth-info *connected-actor-id->conn-ids
@@ -277,8 +283,11 @@
 ;; I should have the authenticator-storage available and the different branches
 ;; are just different keys so copying should be easy.
 (defn <copy-branch!
-  [{:keys [authenticator authenticator-storage
-           authenticator-branch authenticator-branch-source]}]
+  [{:keys [authenticator
+           authenticator-branch
+           authenticator-branch-source
+           authenticator-storage
+           temp?]}]
   (au/go
     (when authenticator-branch-source
       (let [arg (u/sym-map authenticator authenticator-storage)
@@ -292,6 +301,9 @@
                          "be empty in order to be populated from the source "
                          "branch `" authenticator-branch-source"`.")
             swap-fn (fn [old-state]
+                      (log/info (str "<SAS!:\n"
+                                     (u/pprint-str
+                                      (u/sym-map old-state src-state))))
                       (if (empty? old-state)
                         src-state
                         (throw

@@ -391,11 +391,12 @@
 
 (defn make-<copy-branch! [{:keys [*branch->crdt-info *storage]}]
   (fn <copy-branch! [{new-branch :state-provider-branch
-                      old-branch :source-env-name
+                      old-branch :state-provider-branch-source
                       :keys [temp?]
                       :as cb-arg}]
     (au/go
       ;; TODO: If temp? is true, store in temp-storage rather than storage
+
       (swap! *branch->crdt-info (fn [m]
                                   (assoc m new-branch (get m old-branch))))
       (let [storage @*storage
@@ -403,9 +404,10 @@
             old-bli (au/<? (storage/<get storage old-branch-log-k
                                          shared/branch-log-info-schema))
             new-branch-log-k (->branch-log-k {:branch new-branch})]
-        (au/<? (storage/<swap! storage new-branch-log-k
-                               shared/branch-log-info-schema
-                               (constantly old-bli)))
+        (when old-bli
+          (au/<? (storage/<swap! storage new-branch-log-k
+                                 shared/branch-log-info-schema
+                                 (constantly old-bli))))
         true))))
 
 (defn make-<delete-branch! [{:keys [*branch->crdt-info *storage]}]

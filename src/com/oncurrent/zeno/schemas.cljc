@@ -148,16 +148,8 @@
 
 ;;;;;;;;;;;;;;; Talk2 Protocols ;;;;;;;;;;;;;;;;;;;;;
 
-(l/def-record-schema create-env-arg-schema
-  [:env-name env-name-schema]
-  [:source-env-name env-name-schema]
-  [:stored-authenticator-infos (l/array-schema
-                                stored-authenticator-info-schema)]
-  [:stored-state-provider-infos (l/array-schema
-                                 stored-state-provider-info-schema)])
-
 (def admin-client-server-protocol
-  {:create-env {:arg-schema create-env-arg-schema
+  {:create-env {:arg-schema stored-env-info-schema
                 :ret-schema l/boolean-schema}
    :delete-env {:arg-schema env-name-schema
                 :ret-schema l/boolean-schema}

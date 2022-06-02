@@ -155,7 +155,9 @@
            _ (au/<? (<add-actor-password! actor3 password3 zc-temp))]
 
        (au/<? (<test-log-in-out! actor1 password1 zc-base true))
+       ;; This one fails
        (au/<? (<test-log-in-out! actor1 password1 zc-perm true))
+       ;; This one fails
        (au/<? (<test-log-in-out! actor1 password1 zc-temp true))
 
        (au/<? (<test-log-in-out! actor2 password2 zc-base false))
