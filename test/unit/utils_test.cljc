@@ -15,7 +15,9 @@
                   z dynamic-path}
         resolution-map '{x :foo
                          dynamic-path [:zeno/client :dp]}
-        info (u/sub-map->map-info sub-map resolution-map)
+        valid-path-roots #{:zeno/client}
+        info (u/sub-map->map-info (u/sym-map sub-map resolution-map
+                                             valid-path-roots))
         {:keys [independent-pairs ordered-dependent-pairs]} info
         expected-independent-pairs-set (set '[[x [:zeno/client :foo]]
                                               [a [:zeno/client :a]]

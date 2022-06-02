@@ -273,6 +273,8 @@
                     (throw (ex-info (str "`:server-port` must be an integer. "
                                          "Got `" server-port "`.")
                                     config)))
+                  (log/info (str "Starting mem-bulk-storage server on port "
+                                 server-port "."))
                   (jetty/run-jetty server-handler {:host host
                                                    :join? false
                                                    :port server-port}))]

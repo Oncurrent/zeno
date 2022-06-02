@@ -38,14 +38,6 @@
 (def default-rpc-timeout-ms 30000)
 (def terminal-kw-ops #{:zeno/keys :zeno/count :zeno/concat})
 (def kw-ops (conj terminal-kw-ops :zeno/*))
-;; TODO: Make valid-path-roots dynamic according to the client's
-;; root->state-provider configuration. Then remove this variabl altogether and
-;; use the new dynamic thing.
-(def valid-path-roots #{:zeno/actor-id
-                        :zeno/client
-                        :zeno/crdt
-                        :crdt
-                        :local})
 
 (defmacro sym-map
   "Builds a map from symbols.
@@ -289,12 +281,12 @@
     (let [{:keys [template colls]} (parse-path ks-at-path path)]
       (expand-template template colls))))
 
-(defn throw-bad-path-root [path]
+(defn throw-bad-path-root [{:keys [path valid-path-roots]}]
   (let [[head & tail] path
         disp-head (or head "nil")]
     (throw (ex-info (str "Paths must begin with one of " valid-path-roots
                          ". Got: `" disp-head "` in path `" path "`.")
-                    (sym-map path head)))))
+                    (sym-map path head valid-path-roots)))))
 
 (defn throw-bad-path-key [path k]
   (throw (ex-info
@@ -323,7 +315,7 @@
   (check-key-types path)
   (check-terminal-kws path))
 
-(defn sub-map->map-info [sub-map resolution-map]
+(defn sub-map->map-info [{:keys [sub-map resolution-map valid-path-roots]}]
   (check-sub-map sub-map)
   (let [resolve-resolution-map-syms (fn [path]
                                       (reduce
@@ -353,7 +345,7 @@
                                            (dep/depend g sym dep))
                                          init-g deps))]
                   (when-not (valid-path-roots (first path*))
-                    (throw-bad-path-root path))
+                    (throw-bad-path-root (sym-map path valid-path-roots)))
                   (cond-> acc
                     true (update :sym->path assoc sym path*)
                     true (update :g add-deps)

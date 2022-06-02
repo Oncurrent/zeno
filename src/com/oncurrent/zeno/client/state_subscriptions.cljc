@@ -351,8 +351,10 @@
                  " must be a string. Got `" state-sub-name "`.")
             (u/sym-map state-sub-name sub-map opts))))
   (when-not @(:*stop? zc)
-    (let [{:keys [react? resolution-map]} opts
-          map-info (u/sub-map->map-info sub-map resolution-map)
+    (let [{:keys [valid-path-roots]} zc
+          {:keys [react? resolution-map]} opts
+          map-info (u/sub-map->map-info
+                    (u/sym-map sub-map resolution-map valid-path-roots))
           {:keys [independent-pairs ordered-dependent-pairs]} map-info
           parents (set (:parents opts))]
       (let [sxps (get-state-and-expanded-paths

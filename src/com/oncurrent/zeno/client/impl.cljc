@@ -45,12 +45,13 @@
   (fn [fp]
     (t2c/<send-msg! talk2-client :get-schema-pcf-for-fingerprint fp)))
 
-(defn split-cmds [cmds]
+(defn split-cmds [{:keys [cmds zc]}]
   (reduce
    (fn [acc cmd]
-     (common/check-cmd cmd)
      (let [{:zeno/keys [path]} cmd
-           [head & tail] path]
+           [head & tail] path
+           {:keys [valid-path-roots]} zc]
+       (common/check-cmd (u/sym-map cmd valid-path-roots))
        (update acc head #(conj (or % []) cmd))))
    {}
    cmds))
@@ -91,7 +92,8 @@
   (au/go
     (let [{:keys [talk2-client]} zc
           updated-paths (au/<? (<do-state-updates!*
-                                (assoc zc :root->cmds (split-cmds cmds))))]
+                                (assoc zc :root->cmds (split-cmds
+                                                       (u/sym-map cmds zc)))))]
       (state-subscriptions/do-subscription-updates! (u/sym-map updated-paths
                                                                zc))
       true)))
@@ -300,6 +302,9 @@
         *connected? (atom false)
         ;; TODO: Is there a case where this would drop data?
         update-state-ch (ca/chan (ca/sliding-buffer 1000))
+        valid-path-roots (-> (keys root->state-provider)
+                             (set)
+                             (conj :zeno/actor-id))
         arg (u/sym-map *actor-id
                        *connected?
                        *state-sub-name->info
@@ -314,7 +319,8 @@
                        rpcs
                        storage
                        source-env-name
-                       update-state-ch)
+                       update-state-ch
+                       valid-path-roots)
         talk2-client (when (:zeno/get-server-base-url config*)
                        (make-talk2-client arg))
         _ (reset! *talk2-client talk2-client)
