@@ -143,7 +143,8 @@
                                       :tx-ids batch})))]
           (when (seq ser-tx-infos)
             (au/<? (<send-msg {:msg-type :log-producer-tx-batch
-                               :arg ser-tx-infos}))
+                               :arg ser-tx-infos
+                               :timeout-ms (* 1000 1000)}))
             (au/<? (storage/<swap! storage
                                    unsynced-log-k
                                    shared/unsynced-log-schema
