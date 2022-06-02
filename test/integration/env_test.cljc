@@ -23,17 +23,15 @@
 
 (comment (kaocha.repl/run *ns*))
 
+;; TODO: Test creating a perm env based on an existing env
 (comment
-  (kaocha.repl/run #'test-envs {:color? false}))
+  (kaocha.repl/run #'test-envs {:color? false :capture-output? false}))
 (deftest test-envs
   (au/test-async
-   5000
+   10000
    (au/go
      (au/<? (c/<clear-envs!))
-     (let [admin (admin/->admin-client
-                  #:zeno{:admin-password c/admin-password
-                         :get-server-base-url
-                         (constantly "ws://localhost:8080/admin")})
+     (let [admin (c/->admin)
            ;; Create a permanent env to use as a base
            perm-env-name (u/compact-random-uuid)
            auth-infos [#:zeno{:authenticator-name
@@ -157,7 +155,9 @@
            _ (au/<? (<add-actor-password! actor3 password3 zc-temp))]
 
        (au/<? (<test-log-in-out! actor1 password1 zc-base true))
+       ;; This one fails
        (au/<? (<test-log-in-out! actor1 password1 zc-perm true))
+       ;; This one fails
        (au/<? (<test-log-in-out! actor1 password1 zc-temp true))
 
        (au/<? (<test-log-in-out! actor2 password2 zc-base false))

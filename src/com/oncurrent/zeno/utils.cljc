@@ -1,5 +1,6 @@
 (ns com.oncurrent.zeno.utils
   (:require
+   #?(:cljs [applied-science.js-interop :as j])
    [clojure.core.async :as ca]
    #?(:cljs [clojure.pprint :as pprint])
    [clojure.string :as str]
@@ -15,7 +16,16 @@
       [com.oncurrent.zeno.utils :refer [sym-map go-log go-log-helper*]]))
   #?(:clj
      (:import
-      (java.util UUID))
+      (java.net URI)
+      (java.net.http HttpClient
+                     HttpRequest
+                     HttpRequest$Builder
+                     HttpResponse
+                     HttpResponse$BodyHandler
+                     HttpResponse$BodyHandlers)
+      (java.util UUID)
+      (java.util.concurrent CompletableFuture)
+      (java.util.function BiFunction))
 
      :cljs
      (:import
@@ -438,7 +448,121 @@
 (defn chop-root [path root]
   (if (or (empty? path) (not= root (first path)))
     path
-    (recur (rest path) root)))
+    (recur (vec (rest path)) root)))
+
+(defn start-task-loop!
+  "Runs a task function periodically in a loop.
+   Takes a map with these keys:
+     - `:loop-delay-ms` - Optional - Number of ms to wait between
+                          task fn invocations. Defaults to 1000 ms.
+     - `:loop-name` - Optional - A string name for this loop; used
+                      in error logging.
+     - `:task-fn` - Required - The fn to be called in each loop iteration.
+    Returns a map with these keys:
+     - `:now!` - A fn that can be called to cut short the loop
+                 delay and call the task-fn immediately. Any args passed
+                 into the `:now!` fn will be passed to the `:task-fn`.
+     - `:stop!` - A zero-arg fn that can be called to stop the loop."
+  [{:keys [loop-delay-ms loop-name task-fn] :as arg}]
+  (when-not (ifn? task-fn)
+    (throw (ex-info (str "`:task-fn` must be a function. Got `"
+                         (or task-fn "nil") "`.")
+                    arg)))
+  (let [stop-ch (ca/promise-chan)
+        now-ch (ca/chan (ca/dropping-buffer 1))
+        stop! #(ca/put! stop-ch true)
+        now! (fn [& args]
+               #(ca/put! now-ch args))
+        delay-ms (or loop-delay-ms 1000)]
+    (ca/go
+      (loop [args []]
+        (try
+          (let [ret (apply task-fn args)]
+            (when (au/channel? ret)
+              (au/<? ret)))
+          (catch #?(:clj Exception :cljs js/Error) e
+            (log/error (str "Error in task loop"
+                            (if loop-name
+                              (str " `" loop-name "`:")
+                              ":")
+                            (ex-msg-and-stacktrace e)))))
+        (let [timeout-ch (ca/timeout delay-ms)
+              [v ch] (au/alts? [stop-ch now-ch timeout-ch] :priority true)]
+          (condp = ch
+            stop-ch nil
+            timeout-ch (recur [])
+            now-ch (recur v)))))
+    (sym-map now! stop!)))
+
+(defn fill-env-defaults [m]
+  (-> m
+      (update :zeno/env-name #(cond
+                               (not-empty %) %
+                               (or (not-empty (:zeno/source-env-name m))
+                                   (:zeno/env-lifetime-mins m))
+                               (compact-random-uuid)
+                               :else default-env-name))
+      (update :zeno/source-env-name #(if (not-empty %) % default-env-name))
+      (update :zeno/env-lifetime-mins #(or % default-env-lifetime-mins))))
+
+(defn env-params->query-string [m]
+  (map->query-string {:ks [:env-name :source-env-name :env-lifetime-mins]
+                      :m m}))
+
+(defn query-string->env-params [s]
+  (-> (query-string->map s)
+      (update :env-lifetime-mins str->int)))
+
+(defn <http-get [{:keys [url]}]
+  (when-not (string? url)
+    (throw (ex-info (str "The value of the `:url` key must be a string. Got `"
+                         (or url "nil") "`.")
+                    (sym-map url))))
+  #?(:clj
+     (let [rsp-ch (ca/chan)
+           client ^HttpClient (HttpClient/newHttpClient)
+           req (.build ^HttpRequest$Builder (HttpRequest/newBuilder
+                                             (URI. url)))
+           body-handler (HttpResponse$BodyHandlers/ofByteArray)
+           fut ^CompletableFuture (.sendAsync
+                                   client
+                                   req
+                                   ^HttpResponse$BodyHandler body-handler)
+           f ^BiFunction (reify BiFunction
+                           (apply [this rsp e]
+                             (let [status-code (.statusCode ^HttpResponse rsp)
+                                   ret (cond
+                                         e
+                                         e
+
+                                         (= 200 status-code)
+                                         (.body ^HttpResponse rsp)
+
+                                         :else
+                                         (ex-info
+                                          (str "Request failed. Status code: "
+                                               status-code)
+                                          (sym-map status-code url)))]
+                               (ca/put! rsp-ch ret))))]
+       (.handle fut f)
+       rsp-ch)
+
+     :cljs
+     (let [ret-ch (ca/chan)]
+       (-> (js/fetch url)
+           (.then (fn [rsp]
+                    (let [status-code (j/get rsp :status)]
+                      (if-not (= 200 status-code)
+                        (ca/put! ret-ch (ex-info
+                                         (str "Request failed. Status code: "
+                                              status-code)
+                                         (sym-map status-code url)))
+                        (-> (j/call rsp :arrayBuffer)
+                            (.then (fn [ab]
+                                     (ca/put! ret-ch (js/Int8Array. ab)))))))))
+           (.catch (fn [e]
+                     (ca/put! ret-ch e))))
+       ret-ch)))
 
 ;;;;;;;;;;;;;;;;;;;; Platform detection ;;;;;;;;;;;;;;;;;;;;
 

@@ -6,8 +6,8 @@
    [clojure.string :as str]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
+   [com.oncurrent.zeno.bulk-storage :as bulk-storage]
    [com.oncurrent.zeno.common :as common]
-   [com.oncurrent.zeno.distributed-mutex :as dm]
    [com.oncurrent.zeno.schemas :as schemas]
    [com.oncurrent.zeno.server.authenticator-impl :as auth-impl]
    [com.oncurrent.zeno.server.state-provider-impl :as sp-impl]
@@ -28,6 +28,11 @@
          {:required? true
           :checks [{:pred sequential?
                     :msg "must be a sequence of authenticators"}]}
+
+         :bulk-storage
+         {:required? true
+          :checks [{:pred #(satisfies? bulk-storage/IBulkStorage %)
+                    :msg "must satisfy the IBulkStorage protocol"}]}
 
          :certificate-str
          {:required? false
@@ -68,155 +73,6 @@
          {:required? false
           :checks [{:pred fn?
                     :msg "must be a function that returns a channel"}]}})
-
-(defn member-id->member-mutex-name [member-id]
-  (str "role-cluster-member-" member-id))
-
-(defn member-id->member-info-key [member-id]
-  (str storage/member-info-key-prefix member-id))
-
-(defn <store-member-info [storage member-id ws-url]
-  (let [info (u/sym-map ws-url)
-        k (member-id->member-info-key member-id)]
-    (storage/<add! storage k schemas/cluster-member-info-schema info)))
-
-(defn <get-member-info [storage member-id]
-  (let [k (member-id->member-info-key member-id)]
-    (storage/<get storage k schemas/cluster-member-info-schema)))
-
-(defn <add-cluster-member! [storage member-id]
-  (storage/<swap! storage
-                  storage/cluster-membership-list-reference-key
-                  schemas/cluster-membership-list-schema
-                  (fn [old-list]
-                    (-> (set old-list)
-                        (conj member-id)))))
-
-(defn <remove-cluster-member! [storage member-id]
-  (au/<? (storage/<swap! storage
-                         storage/cluster-membership-list-reference-key
-                         schemas/cluster-membership-list-schema
-                         (fn [old-list]
-                           (remove #(= member-id %) old-list)))))
-
-(defn make-member-watch-client [storage member-id]
-  (let [mutex-name (member-id->member-mutex-name member-id)
-        on-stale (fn [mutex-info]
-                   (ca/go
-                     (try
-                       (au/<? (<remove-cluster-member! storage member-id))
-                       (catch Exception e
-                         (log/error (str "Error removing cluster member `"
-                                         member-id "`.\n"
-                                         (u/ex-msg-and-stacktrace e)))))))
-        opts {:on-stale on-stale
-              :watch-only? true}]
-    (dm/make-distributed-mutex-client mutex-name storage opts)))
-
-(defn add-member-clients [member-id->client storage added-member-ids]
-  (reduce (fn [acc member-id]
-            (let [client (make-member-watch-client storage member-id)]
-              (assoc member-id->client member-id client)))
-          member-id->client
-          added-member-ids))
-
-(defn del-member-clients [member-id->client storage stale-member-ids]
-  (reduce (fn [acc member-id]
-            (dm/stop! (member-id->client member-id))
-            (dissoc member-id->client member-id))
-          member-id->client
-          stale-member-ids))
-
-(defn <member-ids->member-urls [storage member-ids]
-  (au/go
-    (let [<get-info #(storage/<get storage % schemas/cluster-member-info-schema)
-          results-ch (->> member-ids
-                          (map member-id->member-info-key)
-                          (map <get-info)
-                          (ca/merge))
-          num-ids (count member-ids)]
-      (loop [urls []]
-        (let [{:keys [ws-url]} (au/<? results-ch)
-              new-urls (conj urls ws-url ws-url)]
-          (if (< (count new-urls) num-ids)
-            (recur new-urls)
-            new-urls))))))
-
-(defn <cluster-membership-manager-role [storage role-info *have-role?]
-  (au/go
-    (let [{:keys [<publish-member-urls <get-published-member-urls]} role-info
-          member-ids (au/<? (storage/<get
-                             storage
-                             storage/cluster-membership-list-reference-key
-                             schemas/cluster-membership-list-schema))
-          clients (map #(make-member-watch-client storage %)
-                       member-ids)]
-      (loop [member-id->client (zipmap member-ids clients)]
-        (let [prior-member-ids (keys member-id->client)
-              cur-member-ids (-> (storage/<get
-                                  storage
-                                  storage/cluster-membership-list-reference-key
-                                  schemas/cluster-membership-list-schema)
-                                 (au/<?)
-                                 (set))
-              added-member-ids (set/difference cur-member-ids prior-member-ids)
-              stale-member-ids (set/difference prior-member-ids cur-member-ids)
-              cur-member-urls (au/<? (<member-ids->member-urls storage
-                                                               cur-member-ids))
-              published-member-urls (-> (<get-published-member-urls)
-                                        (au/<?)
-                                        (set))]
-          (when-not (= cur-member-urls published-member-urls)
-            (au/<? (<publish-member-urls cur-member-urls)))
-          (ca/<! (ca/timeout (* 60 1000)))
-          (when @*have-role?
-            (recur (-> member-id->client
-                       (add-member-clients storage added-member-ids)
-                       (del-member-clients storage stale-member-ids)))))))))
-
-(defn <member-health-role [storage role-info *have-role?]
-  (au/go
-    (let [{:keys [member-id ws-url]} role-info]
-      (au/<? (<store-member-info storage member-id ws-url))
-      (au/<? (<add-cluster-member! storage member-id)))))
-
-(defn make-mutex-clients
-  [storage member-id ws-url <get-published-member-urls <publish-member-urls]
-  (let [roles [;; Role for the member to assert its membership and health
-               {:mutex-name (member-id->member-mutex-name member-id)
-                :lease-length-ms (* 60 1000)
-                :role-fn <member-health-role
-                :role-info (u/sym-map member-id ws-url)}
-
-               {:mutex-name "role-cluster-membership-manager"
-                :lease-length-ms (* 120 1000)
-                :<role-fn <cluster-membership-manager-role
-                :role-info (u/sym-map <get-published-member-urls
-                                      <publish-member-urls)}]]
-    (mapv (fn [role]
-            (let [{:keys [<role-fn role-info mutex-name]} role
-                  *have-role? (atom false)
-                  on-acq (fn [_]
-                           (reset! *have-role? true)
-                           (when <role-fn
-                             (ca/go
-                               (try
-                                 (au/<? (<role-fn storage
-                                                  role-info
-                                                  *have-role?))
-                                 (catch Exception e
-                                   (log/error
-                                    (str "Error in <role-fn for mutex `"
-                                         mutex-name "`:\n"
-                                         (u/ex-msg-and-stacktrace e))))))))
-                  on-rel (fn [_]
-                           (reset! *have-role? false))
-                  opts (-> (select-keys role [:lease-length-ms])
-                           (assoc :client-name ws-url)
-                           (assoc :on-acquire on-acq)
-                           (assoc :on-release on-rel))]
-              (dm/make-distributed-mutex-client mutex-name storage opts)))
-          roles)))
 
 (defn <handle-rpc! [{:keys [*conn-id->auth-info
                             *rpc-name-kw->handler
@@ -309,18 +165,40 @@
     {:env-authenticator-name->info env-auth-name->info
      :env-sp-root->info env-sp-root->info}))
 
-(defn <copy-from-branch-sources!
+(defn <delete-env-branches!
   [{:keys [env-info]}]
   (au/go
     (let [{:keys [env-authenticator-name->info env-sp-root->info]} env-info]
       (doseq [[auth-name auth-info] env-authenticator-name->info]
         (when (:authenticator-branch-source auth-info)
-          (au/<? (auth-impl/<copy-branch! auth-info))))
+          (au/<? (auth-impl/<delete-branch! auth-info))))
       (doseq [[root sp-info] env-sp-root->info]
         (let [{:keys [state-provider]} sp-info
+              {::sp-impl/keys [<delete-branch!]} state-provider]
+          (when <delete-branch!
+            (au/<? (<delete-branch! sp-info))))))))
+
+(defn <copy-from-branch-sources!
+  [{:keys [env-info source-env-name temp?]}]
+  (au/go
+    (let [{:keys [env-authenticator-name->info env-sp-root->info]} env-info]
+      (doseq [[auth-name auth-info] env-authenticator-name->info]
+        (let [source (or (:authenticator-branch-source auth-info)
+                         source-env-name)]
+          (when source
+            (au/<? (auth-impl/<copy-branch!
+                    (assoc auth-info
+                           :authenticator-branch-source source
+                           :temp? temp?))))))
+      (doseq [[root sp-info] env-sp-root->info]
+        (let [{:keys [state-provider]} sp-info
+              source (or (:state-provider-branch-source sp-info)
+                         source-env-name)
               {::sp-impl/keys [<copy-branch!]} state-provider]
-          (when <copy-branch!
-            (<copy-branch! sp-info)))))))
+          (when (and <copy-branch! source)
+            (au/<? (<copy-branch! (assoc sp-info
+                                         :state-provider-branch-source source
+                                         :temp? temp?)))))))))
 
 (defn <handle-create-env
   [{:keys [*env-name->info arg server storage] :as fn-arg}]
@@ -338,10 +216,13 @@
       (swap! *env-name->info assoc env-name
              (xf-perm-env-info (assoc fn-arg :env-info arg)))
       (au/<? (<copy-from-branch-sources!
-              (assoc fn-arg :env-info (get @*env-name->info env-name)))))
+              (assoc fn-arg
+                     :env-info (get @*env-name->info env-name)))))
     true))
 
-(defn <handle-delete-env [{:keys [*env-name->info server storage] :as arg}]
+(defn <handle-delete-env
+  [{:keys [*conn-id->env-name *env-name->info server storage talk2-server]
+    :as arg}]
   (au/go
     (let [env-name (:arg arg)]
       (au/<? (storage/<swap! storage
@@ -350,6 +231,11 @@
                              (fn [env-name->info]
                                (dissoc env-name->info env-name))))
       (swap! *env-name->info dissoc env-name)
+      (doseq [[conn-id env-name*] @*conn-id->env-name]
+        (when (= env-name env-name*)
+          (t2s/close-connection! {:conn-id conn-id
+                                  :server talk2-server})))
+      (au/<? (<delete-env-branches! {:env-info (@*env-name->info env-name)}))
       true)))
 
 (defn <handle-get-env-names [{:keys [server storage] :as arg}]
@@ -602,10 +488,14 @@
             env-info (-> (get @*env-name->info env-name)
                          (assoc :env-name env-name))
             state-fns (make-state-fns env-info)]
-        (<handle-rpc! (merge base-info state-fns handler-arg))))))
+        (<handle-rpc! (merge base-info
+                             state-fns
+                             handler-arg
+                             {:env-info env-info}))))))
 
 (defn make-<sp-rpc-handler
-  [{:keys [*conn-id->env-name *env-name->info name->state-provider storage]
+  [{:keys [*conn-id->auth-info *conn-id->env-name *env-name->info
+           name->state-provider storage]
     :as make-handler-arg}]
   (fn [{:keys [conn-id] :as handler-arg}]
     (au/go
@@ -626,6 +516,9 @@
                 env-name (get @*conn-id->env-name conn-id)
                 env-info (-> (get @*env-name->info env-name)
                              (assoc :env-name env-name))
+                auth-info (some-> @*conn-id->auth-info
+                                  (get conn-id))
+                actor-id (:actor-id auth-info)
                 {:keys [arg-schema ret-schema]} (get msg-protocol rpc-name-kw)
                 deser-arg (au/<? (common/<serialized-value->value
                                   {:<request-schema <request-schema
@@ -633,6 +526,7 @@
                                    :serialized-value arg
                                    :storage storage}))
                 h-arg {:<request-schema <request-schema
+                       :actor-id actor-id
                        :arg deser-arg
                        :conn-id conn-id
                        :env-info env-info}
@@ -691,22 +585,6 @@
                               "`. msg-type: `" msg-type "`.\n\n"
                               (u/ex-msg-and-stacktrace e))))))))))
 
-(defn query-string->env-params [s]
-  (let [m (u/query-string->map s)
-        temp? (or (not-empty (:source-env-name m))
-                  (not-empty (:env-lifetime-mins m)))
-        env-name (or (:env-name m)
-                     (if temp?
-                       (u/compact-random-uuid)
-                       u/default-env-name))
-        source-env-name (or (:source-env-name m)
-                            u/default-env-name)
-        env-lifetime-mins (when temp?
-                            (if (not-empty (:env-lifetime-mins m))
-                              (u/str->int (:env-lifetime-mins m))
-                              u/default-env-lifetime-mins))]
-    (u/sym-map env-name source-env-name env-lifetime-mins)))
-
 (defn xf-ean->info [new-branch env-auth-name->info]
   (reduce-kv (fn [acc auth-name auth-info]
                (assoc acc auth-name
@@ -748,32 +626,24 @@
     (ca/go
       (try
         (let [uri-map (uri/uri path)
-              env-params (-> uri-map :query query-string->env-params)
-              {:keys [env-lifetime-mins env-name]} env-params
-              temp? (boolean env-lifetime-mins)]
-          (swap! *env-name->info
-                 (fn [env-name->info]
-                   (let [exists? (contains? env-name->info env-name)]
-                     (cond
-                       exists?
-                       (do
-                        env-name->info) ; no change needed
-
-                       temp? ; Create the temp env
-                       (let [env-info (->temp-env-info (u/sym-map env-name->info
-                                                                  env-params))]
-
-                         (<copy-from-branch-sources!
-                          (assoc fn-arg :env-info env-info))
-                         (assoc env-name->info (:env-name env-params) env-info))
-
-                       :else
-                       (throw (ex-info
-                               (str "The env `" env-name "` does not "
-                                    "exist. It must be created via the admin "
-                                    "interface or made into a temporary env "
-                                    "by specifying `env-lifetime-mins`.")
-                               (u/sym-map env-name)))))))
+              env-params (-> uri-map :query u/query-string->env-params)
+              {:keys [env-name source-env-name]} env-params]
+          (when-not env-name
+            (throw (ex-info
+                    (str "Must provide an :env-name in order to connect. "
+                         "Got `" (or env-name "nil") "`.")
+                    env-params)))
+          (when-not (contains? @*env-name->info env-name)
+            ;; Create a temp env
+            (swap! *env-name->info
+                   (fn [env-name->info]
+                     (let [env-info (->temp-env-info (u/sym-map env-name->info
+                                                                env-params))]
+                       (assoc env-name->info env-name env-info))))
+            (au/<? (<copy-from-branch-sources!
+                    {:env-info (@*env-name->info env-name)
+                     :source-env-name source-env-name
+                     :temp? true})))
           (swap! *conn-id->auth-info assoc conn-id {})
           (swap! *conn-id->env-name assoc conn-id env-name)
           (log/info
@@ -865,7 +735,8 @@
 
 (defn make-talk2-server [{:keys [port] :as arg}]
   (let [server (t2s/server (assoc arg :port port))
-        admin-client-ep-info (make-admin-client-ep-info arg)
+        admin-client-ep-info (make-admin-client-ep-info
+                              (assoc arg :talk2-server server))
         client-ep-info (make-client-ep-info arg)]
     (t2s/add-endpoint! (assoc admin-client-ep-info :server server))
     (t2s/add-endpoint! (assoc client-ep-info :server server))
@@ -1003,27 +874,34 @@
              #{}
              @*env-name->info))
 
-(defn initialize-state-providers!
-  [{:keys [*env-name->info root->state-provider storage talk2-server]}]
-  (doseq [[root sp] root->state-provider]
-    (let [{::sp-impl/keys [init! msg-protocol state-provider-name]} sp]
-      (when init!
-        (let [<send-msg (fn [{:keys [arg conn-id msg-type timeout-ms]}]
-                          (<sp-send-msg (u/sym-map arg
-                                                   conn-id
-                                                   msg-protocol
-                                                   msg-type
-                                                   state-provider-name
-                                                   storage
-                                                   talk2-server
-                                                   timeout-ms)))
-              prefix (str storage/state-provider-prefix
-                          (namespace state-provider-name) "-"
-                          (name state-provider-name))
-              branches (get-sp-branches (u/sym-map *env-name->info root))]
-          (init! {:<send-msg <send-msg
-                  :branches branches
-                  :storage (storage/make-prefixed-storage prefix storage)}))))))
+(defn <initialize-state-providers!
+  [{:keys [*env-name->info bulk-storage root->state-provider
+           storage talk2-server]}]
+  (au/go
+    (doseq [[root sp] root->state-provider]
+      (let [{::sp-impl/keys [init! msg-protocol state-provider-name]} sp]
+        (when init!
+          (let [<send-msg (fn [{:keys [arg conn-id msg-type timeout-ms]}]
+                            (<sp-send-msg (u/sym-map arg
+                                                     conn-id
+                                                     msg-protocol
+                                                     msg-type
+                                                     state-provider-name
+                                                     storage
+                                                     talk2-server
+                                                     timeout-ms)))
+                prefix (str storage/state-provider-prefix
+                            (namespace state-provider-name) "-"
+                            (name state-provider-name))
+                branches (get-sp-branches (u/sym-map *env-name->info root))
+                ret (init! {:<send-msg <send-msg
+                            :branches branches
+                            :bulk-storage (bulk-storage/->prefixed-bulk-storage
+                                           (u/sym-map bulk-storage prefix))
+                            :storage (storage/make-prefixed-storage
+                                      prefix storage)})]
+            (when (au/channel? ret)
+              (au/<? ret))))))))
 
 (defn make-name->state-provider [root->state-provider]
   (reduce-kv (fn [acc root state-provider]
@@ -1031,6 +909,8 @@
                       state-provider))
              {}
              root->state-provider))
+
+;; TODO: Start a temp env GC loop
 
 (defn ->zeno-server [config]
   (u/check-config {:config config
@@ -1040,6 +920,7 @@
                      <publish-member-urls
                      admin-password
                      authenticators
+                     bulk-storage
                      certificate-str
                      port
                      private-key-str
@@ -1059,6 +940,8 @@
                                (u/sym-map authenticator-name->info
                                           root->state-provider
                                           storage)))
+        ;; TODO: What if we have two state providers w/ the same name
+        ;; but different roots? Not handled properly currently.
         name->state-provider (make-name->state-provider root->state-provider)
         arg (u/sym-map *conn-id->auth-info
                        *conn-id->env-name
@@ -1069,37 +952,33 @@
                        *rpc-name-kw->handler
                        admin-password
                        authenticator-name->info
+                       bulk-storage
                        certificate-str
                        name->state-provider
+                       storage
                        port
                        private-key-str
                        root->state-provider
-                       rpcs
-                       storage)
-        talk2-server (make-talk2-server arg)
-        _ (initialize-state-providers! (assoc arg :talk2-server talk2-server))
-        member-id (u/compact-random-uuid)
-        mutex-clients (when (and <get-published-member-urls
-                                 <publish-member-urls)
-                        (make-mutex-clients storage
-                                            member-id
-                                            ws-url
-                                            <get-published-member-urls
-                                            <publish-member-urls))]
+                       rpcs)
+        talk2-server (make-talk2-server arg)]
+    (au/<?? (<initialize-state-providers!
+             (assoc arg :talk2-server talk2-server)))
     (u/sym-map *rpc-name-kw->handler
-               member-id
-               mutex-clients
-               rpcs
+               bulk-storage
                storage
+               root->state-provider
+               rpcs
                talk2-server
                ws-url)))
 
-(defn stop! [{:keys [mutex-clients talk2-server]}]
-  (when mutex-clients
-    (doseq [mutex-client mutex-clients]
-      (dm/stop! mutex-client)))
+(defn stop!
+  [{:keys [bulk-storage root->state-provider talk2-server]}]
   (when talk2-server
-    (t2s/stop! talk2-server)))
+    (t2s/stop! talk2-server))
+  (au/<?? (bulk-storage/<stop-server! bulk-storage))
+  (doseq [[root {::sp-impl/keys [stop!]}] root->state-provider]
+    (when stop!
+      (stop!))))
 
 (defn set-rpc-handler! [zeno-server rpc-name-kw handler]
   (let [{:keys [*rpc-name-kw->handler]} zeno-server]

@@ -1,10 +1,12 @@
 (ns com.oncurrent.zeno.state-providers.crdt.common
   (:require
    [clojure.core.async :as ca]
+   [clojure.edn :as edn]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
    [deercreeklabs.lancaster.utils :as lu]
    [com.oncurrent.zeno.common :as common]
+   [com.oncurrent.zeno.schemas :as schemas]
    [com.oncurrent.zeno.state-providers.crdt.shared :as shared]
    [com.oncurrent.zeno.storage :as storage]
    [com.oncurrent.zeno.utils :as u]
@@ -24,6 +26,7 @@
 (defmulti check-key (fn [{:keys [schema]}]
                       (schema->dispatch-type schema)))
 
+;; Returns a map w/ `:norm-path` and `:value`
 (defmulti get-value-info (fn [{:keys [schema]}]
                            (schema->dispatch-type schema)))
 
@@ -79,7 +82,7 @@
           (check-key (assoc arg :key k))
           (get-value-info (assoc arg
                                  :crdt (get-in crdt [:children k])
-                                 :norm-path (conj norm-path k)
+                                 :norm-path (conj (or norm-path []) k)
                                  :path (or ks [])
                                  :schema (get-child-schema k))))))))
 
@@ -203,52 +206,53 @@
         {:norm-path norm-path
          :value nil}))))
 
-(defn get-op-value-schema [{:keys [op-type schema path]}]
+(defn get-op-value-schema [{:keys [op-type schema op-path]}]
   (case op-type
     :add-array-edge shared/crdt-array-edge-schema
-    :add-value (l/schema-at-path schema path {:branches? true})
+    :add-value (l/schema-at-path schema op-path {:branches? true})
     :delete-array-edge nil
     :delete-value nil))
 
 (defn <crdt-op->serializable-crdt-op
-  [{:keys [storage schema op]}]
+  [{:keys [storage schema crdt-op]}]
   (au/go
-    (when op
-      (let [{:keys [path op-type value]} op
+    (when crdt-op
+      (let [{:keys [op-path op-type value]} crdt-op
             w-schema (get-op-value-schema
-                      (u/sym-map op-type path schema))]
-        (cond-> op
+                      (u/sym-map op-type op-path schema))]
+        (cond-> crdt-op
           true (dissoc :value)
           w-schema (assoc :serialized-value
                           (au/<? (storage/<value->serialized-value
                                   storage w-schema value))))))))
 
 (defn <serializable-crdt-op->crdt-op
-  [{:keys [storage schema op] :as arg}]
+  [{:keys [storage schema crdt-op] :as arg}]
   (au/go
-    (when op
-      (let [{:keys [path op-type serialized-value]} op
+    (when crdt-op
+      (let [{:keys [op-path op-type serialized-value]} crdt-op
             r-schema (get-op-value-schema
-                      (u/sym-map op-type path schema))]
-        (cond-> op
+                      (u/sym-map op-type op-path schema))]
+        (cond-> crdt-op
           true (dissoc :serialized-value)
           r-schema (assoc :value
-                          (au/<? (common/<serialized-value->value
-                                  (assoc arg
-                                         :reader-schema r-schema
-                                         :serialized-value serialized-value)))))))))
+                          (au/<?
+                           (common/<serialized-value->value
+                            (assoc arg
+                                   :reader-schema r-schema
+                                   :serialized-value serialized-value)))))))))
 
 (defn <crdt-ops->serializable-crdt-ops [arg]
   (au/go
-    (let [ops (vec (:ops arg))
-          last-i (count ops)]
+    (let [crdt-ops (vec (:crdt-ops arg))
+          last-i (count crdt-ops)]
       (if (zero? last-i)
         []
         (loop [i 0
                out []]
-          (let [op (nth ops i)
+          (let [crdt-op (nth crdt-ops i)
                 s-op (au/<? (<crdt-op->serializable-crdt-op
-                             (assoc arg :op op)))
+                             (assoc arg :crdt-op crdt-op)))
                 new-i (inc i)
                 new-out (conj out s-op)]
             (if (= last-i new-i)
@@ -257,103 +261,35 @@
 
 (defn <serializable-crdt-ops->crdt-ops [arg]
   (au/go
-    (let [ops (vec (:ops arg))
-          last-i (count ops)]
+    (let [crdt-ops (vec (:crdt-ops arg))
+          last-i (count crdt-ops)]
       (if (zero? last-i)
         []
         (loop [i 0
                out []]
-          (let [s-op (nth ops i)
-                op (au/<? (<serializable-crdt-op->crdt-op
-                           (assoc arg :op s-op)))
+          (let [s-op (nth crdt-ops i)
+                crdt-op (au/<? (<serializable-crdt-op->crdt-op
+                                (assoc arg :crdt-op s-op)))
                 new-i (inc i)
-                new-out (conj out op)]
+                new-out (conj out crdt-op)]
             (if (= last-i new-i)
               new-out
               (recur new-i new-out))))))))
 
-(defn <update-info->serializable-update-info
-  [{:keys [storage schema update-info]}]
+(defn <tx-info->serializable-tx-info
+  [{:keys [tx-info] :as arg}]
   (au/go
-    (when update-info
-      (let [{:keys [norm-path value]} update-info
-            value-schema (when-not (nil? value)
-                           (l/schema-at-path schema
-                                             (rest norm-path)))
-            range? (#{:zeno/insert-range-after
-                      :zeno/insert-range-before} (:op update-info))
-            range-schema (when range?
-                           (l/array-schema value-schema))]
-        (cond-> (dissoc update-info :value)
-          (not (nil? value)) (assoc :serialized-value
-                                    (au/<? (storage/<value->serialized-value
-                                            storage
-                                            (if range?
-                                              range-schema
-                                              value-schema)
-                                            value))))))))
-
-(defn <serializable-update-info->update-info
-  [{:keys [schema update-info] :as arg}]
-  (au/go
-    (when update-info
-      (let [{:keys [norm-path serialized-value]} update-info
-            value-schema (l/schema-at-path schema (rest norm-path))]
-        (-> update-info
-            (dissoc :serialized-value)
-            (assoc :value
-                   (au/<? (common/<serialized-value->value
-                           (assoc arg
-                                  :reader-schema value-schema
-                                  :serialized-value serialized-value)))))))))
-
-(defn <update-infos->serializable-update-infos [{:keys [update-infos] :as arg}]
-  (au/go
-    (let [infos (vec update-infos)
-          last-i (count infos)]
-      (if (zero? last-i)
-        []
-        (loop [i 0
-               out []]
-          (let [info (nth infos i)
-                s-info (au/<? (<update-info->serializable-update-info
-                               (assoc arg :update-info info)))
-                new-i (inc i)
-                new-out (conj out s-info)]
-            (if (= last-i new-i)
-              new-out
-              (recur new-i new-out))))))))
-
-(defn <serializable-update-infos->update-infos [arg]
-  (au/go
-    (let [infos (vec (:update-infos arg))
-          last-i (count infos)]
-      (if (zero? last-i)
-        []
-        (loop [i 0
-               out []]
-          (let [s-info (nth infos i)
-                info (au/<? (<serializable-update-info->update-info
-                             (assoc arg :update-info s-info)))
-                new-i (inc i)
-                new-out (conj out info)]
-            (if (= last-i new-i)
-              new-out
-              (recur new-i new-out))))))))
+    (let [ser-crdt-ops (au/<? (<crdt-ops->serializable-crdt-ops
+                               (assoc arg :crdt-ops (:crdt-ops tx-info))))]
+      (assoc tx-info :crdt-ops ser-crdt-ops))))
 
 (defn <serializable-tx-info->tx-info
   [{:keys [serializable-tx-info storage] :as fn-arg}]
   (au/go
     (let [crdt-ops (au/<? (<serializable-crdt-ops->crdt-ops
-                           (assoc fn-arg :ops
-                                  (:crdt-ops serializable-tx-info))))
-          update-infos (au/<? (<serializable-update-infos->update-infos
-                               (assoc fn-arg
-                                      :update-infos
-                                      (:update-infos serializable-tx-info))))]
-      (-> serializable-tx-info
-          (assoc :crdt-ops crdt-ops)
-          (assoc :update-infos update-infos)))))
+                           (assoc fn-arg
+                                  :crdt-ops (:crdt-ops serializable-tx-info))))]
+      (assoc serializable-tx-info :crdt-ops crdt-ops))))
 
 (defn <serializable-tx-infos->tx-infos
   [{:keys [serializable-tx-infos] :as fn-arg}]
@@ -409,3 +345,24 @@
 (defn get-value [{:keys [crdt make-id path norm-path schema] :as arg}]
   (-> (get-value-info (assoc arg :norm-path (or norm-path [])))
       (:value)))
+
+(defn <ba->snapshot [{:keys [ba schema storage] :as arg}]
+  (au/go
+    (when ba
+      (let [serialized-value (l/deserialize-same schemas/serialized-value-schema
+                                                 ba)
+            sv->v-arg (assoc arg
+                             :reader-schema shared/serializable-snapshot-schema
+                             :serialized-value serialized-value)
+            ser-snap (au/<? (common/<serialized-value->value sv->v-arg))
+            crdt (edn/read-string (:edn-crdt ser-snap))
+            {:keys [bytes fp]} (:serialized-value ser-snap)
+            writer-schema (au/<? (storage/<fp->schema storage fp))
+            v (l/deserialize schema writer-schema bytes)]
+        (u/sym-map crdt v)))))
+
+(defn <get-snapshot-from-url [{:keys [url] :as arg}]
+  (au/go
+    (when url
+      (let [ba (au/<? (u/<http-get {:url url}))]
+        (au/<? (<ba->snapshot (assoc arg :ba ba)))))))

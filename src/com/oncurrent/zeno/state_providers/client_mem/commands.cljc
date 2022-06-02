@@ -88,10 +88,7 @@
         new-state (if (seq state-path)
                     (assoc-in state state-path arg)
                     arg)]
-    {:state new-state
-     :update-info {:norm-path norm-path
-                   :op op
-                   :value arg}}))
+    {:state new-state}))
 
 (defmethod eval-cmd :zeno/remove
   [state {:zeno/keys [path op]} root]
@@ -130,10 +127,7 @@
 
                     :else
                     (assoc-in state state-path new-parent))]
-    {:state new-state
-     :update-info {:norm-path (conj norm-path path-k)
-                   :op op
-                   :value nil}}))
+    {:state new-state}))
 
 (defmethod eval-cmd :zeno/insert*
   [state {:zeno/keys [arg op path]} root]
@@ -169,17 +163,14 @@
         new-state (if (empty? state-path)
                     new-parent
                     (assoc-in state state-path new-parent))]
-    {:state new-state
-     :update-info {:norm-path (conj norm-path split-i)
-                   :op op
-                   :value arg}}))
+    {:state new-state}))
 
 (defn eval-cmds [initial-state cmds root]
   (reduce (fn [{:keys [state] :as acc} cmd]
             (let [ret (eval-cmd state cmd root)]
               (-> acc
                   (assoc :state (:state ret))
-                  (update :update-infos conj (:update-info ret)))))
+                  (update :updated-paths conj (:zeno/path cmd)))))
           {:state initial-state
-           :update-infos []}
+           :updated-paths []}
           cmds))

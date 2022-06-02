@@ -68,16 +68,15 @@
                 state-provider (root->state-provider root)
                 _ (when-not state-provider
                     (throw
-                     (ex-info (str "No state provider found "
-                                   "for root `" (or root "nil")
-                                   "`.")
+                     (ex-info (str "No state provider found for root `"
+                                   (or root "nil") "`.")
                               {:root root
                                :known-roots (keys root->state-provider)})))
                 {::sp-impl/keys [<update-state!]} state-provider
                 cmds (root->cmds root)
-                update-infos (au/<? (<update-state! {:zeno/cmds cmds
-                                                     :root root}))
-                new-out (concat out update-infos)]
+                {:keys [updated-paths]} (au/<? (<update-state! {:zeno/cmds cmds
+                                                                :root root}))
+                new-out (concat out updated-paths)]
             (if (= last-i i)
               new-out
               (recur (inc i)
@@ -91,9 +90,10 @@
   ;; updates.
   (au/go
     (let [{:keys [talk2-client]} zc
-          update-infos (au/<? (<do-state-updates!*
-                               (assoc zc :root->cmds (split-cmds cmds))))]
-      (state-subscriptions/do-subscription-updates! zc update-infos)
+          updated-paths (au/<? (<do-state-updates!*
+                                (assoc zc :root->cmds (split-cmds cmds))))]
+      (state-subscriptions/do-subscription-updates! (u/sym-map updated-paths
+                                                               zc))
       true)))
 
 (defn start-update-state-loop! [zc]
@@ -101,9 +101,8 @@
     (let [{:keys [*stop? update-state-ch]} zc]
       (loop []
         (try
-          (let [[update-info ch] (ca/alts! [update-state-ch
-                                            (ca/timeout 1000)])
-                {:keys [cmds cb]} update-info]
+          (let [[{:keys [cmds cb]} ch] (ca/alts! [update-state-ch
+                                                  (ca/timeout 1000)])]
             (try
               (when (= update-state-ch ch)
                 (-> (<do-update-state! zc cmds)
@@ -146,9 +145,7 @@
 (defn make-get-url [{:keys [get-server-base-url] :as arg}]
   (fn []
     (let [base-url (get-server-base-url)
-          ks [:env-name :source-env-name :env-lifetime-mins]
-          query-str (u/map->query-string {:ks ks
-                                          :m arg})]
+          query-str (u/env-params->query-string arg)]
       (str base-url
            (when-not (str/ends-with? base-url "/")
              "/")
@@ -158,7 +155,7 @@
            query-str))))
 
 (defn make-talk2-client
-  [{:keys [*talk2-client env-name get-server-base-url storage] :as arg}]
+  [{:keys [storage] :as arg}]
   (let [handlers {:get-schema-pcf-for-fingerprint
                   (fn [fn-arg]
                     (au/go
@@ -240,12 +237,14 @@
                        :state-provider-name state-provider-name}]
           (au/<? (t2c/<send-msg! talk2-client :state-provider-msg msg-arg)))))))
 
-(defn make-update-subscriptions! [fn-arg]
-  (fn [update-infos]
-    (state-subscriptions/do-subscription-updates! fn-arg update-infos)))
+(defn make-update-subscriptions! [zc]
+  (fn [{:keys [updated-paths]}]
+    (state-subscriptions/do-subscription-updates!
+     (u/sym-map updated-paths zc))))
 
 (defn initialize-state-providers!
-  [{:keys [*connected? root->state-provider storage talk2-client] :as fn-arg}]
+  [{:keys [*connected? env-name root->state-provider storage talk2-client]
+    :as fn-arg}]
   (doseq [[root sp] root->state-provider]
     (let [{::sp-impl/keys [init! msg-protocol state-provider-name]} sp]
       (when init!
@@ -267,6 +266,7 @@
                   :update-subscriptions! (make-update-subscriptions! fn-arg)
                   :connected? (fn []
                                 @*connected?)
+                  :env-name env-name
                   :storage (storage/make-prefixed-storage prefix storage)}))))))
 
 (defn update-state! [zc cmds cb]
@@ -274,7 +274,8 @@
   (ca/put! (:update-state-ch zc) (u/sym-map cmds cb)))
 
 (defn zeno-client [config]
-  (let [config* (merge default-config config)
+  (let [config* (-> (merge default-config config)
+                    (u/fill-env-defaults))
         _ (u/check-config {:config config*
                            :config-type :client
                            :config-rules client-config-rules})
@@ -297,35 +298,32 @@
         *actor-id (atom nil)
         *talk2-client (atom nil)
         *connected? (atom false)
-        ;; TODO: Is there a case where this would drop data
+        ;; TODO: Is there a case where this would drop data?
         update-state-ch (ca/chan (ca/sliding-buffer 1000))
-        actor-id-root->sp {::sp-impl/get-state-atom (constantly *actor-id)}
-        arg (-> (u/sym-map *actor-id
-                           *connected?
-                           *state-sub-name->info
-                           *stop?
-                           *talk2-client
-                           admin-password
-                           client-name
-                           env-lifetime-mins
-                           env-name
-                           get-server-base-url
-                           root->state-provider
-                           rpcs
-                           storage
-                           source-env-name
-                           update-state-ch)
-                (update :root->state-provider
-                        assoc :zeno/actor-id actor-id-root->sp))
+        arg (u/sym-map *actor-id
+                       *connected?
+                       *state-sub-name->info
+                       *stop?
+                       *talk2-client
+                       admin-password
+                       client-name
+                       env-lifetime-mins
+                       env-name
+                       get-server-base-url
+                       root->state-provider
+                       rpcs
+                       storage
+                       source-env-name
+                       update-state-ch)
         talk2-client (when (:zeno/get-server-base-url config*)
                        (make-talk2-client arg))
         _ (reset! *talk2-client talk2-client)
         _ (initialize-state-providers! (assoc arg :talk2-client talk2-client))
         <on-actor-id-change (fn [actor-id]
                               (au/go
-                               (doseq [[root sp] root->state-provider]
-                                 (when-let [<oaic (::sp-impl/<on-actor-id-change sp)]
-                                   (au/<? (<oaic actor-id))))))
+                                (doseq [[root sp] root->state-provider]
+                                  (when-let [<oaic (::sp-impl/<on-actor-id-change sp)]
+                                    (au/<? (<oaic actor-id))))))
         zc (merge arg (u/sym-map *next-instance-num
                                  *next-topic-sub-id
                                  *topic-name->sub-id->cb

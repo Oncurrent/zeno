@@ -4,6 +4,7 @@
    [clojure.string :as str]
    [com.oncurrent.zeno.authenticators.password.server :as password]
    [com.oncurrent.zeno.authorizers.affirmative-authorizer.server :as authz]
+   [com.oncurrent.zeno.bulk-storage :as bulk-storage]
    [com.oncurrent.zeno.server :as server]
    [com.oncurrent.zeno.state-providers.crdt :as crdt]
    [com.oncurrent.zeno.state-providers.crdt.server :as crdt-server]
@@ -59,11 +60,14 @@
         port (u/str->int port-str)
         crdt-sp (crdt-server/->state-provider
                  #::crdt{:authorizer (authz/->authorizer)
+                         :s3-snapshot-bucket "oncurrent-test-snapshots"
                          :schema c/crdt-schema
                          :root :zeno/crdt})
         root->sp {:zeno/crdt crdt-sp}
         config #:zeno{:admin-password c/admin-password
                       :authenticators [(password/->authenticator)]
+                      :bulk-storage (bulk-storage/->mem-bulk-storage
+                                     {:server-port 9995})
                       :port port
                       :root->state-provider root->sp
                       :rpcs c/rpcs

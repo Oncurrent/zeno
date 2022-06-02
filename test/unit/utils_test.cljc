@@ -4,6 +4,7 @@
    [clojure.test :as t :refer [deftest is are]]
    [deercreeklabs.async-utils :as au]
    [com.oncurrent.zeno.utils :as u]
+   #?(:clj [kaocha.repl])
    [taoensso.timbre :as log]))
 
 (deftest test-sub-map->map-info
@@ -88,10 +89,32 @@
     (catch #?(:clj Exception :cljs js/Error) e
       (is (= :unexpected e)))))
 
-(deftest chop-root
+(deftest test-chop-root
   (let [f u/chop-root]
     (is (= [] (f [] nil)))
     (is (= [] (f [:zeno/crdt] :zeno/crdt)))
     (is (= [:pigs] (f [:zeno/crdt :pigs] :zeno/crdt)))
     (is (= [:zeno/crdt :pigs] (f [:zeno/crdt :pigs] :pigs)))
     (is (= [:pigs] (f [:zeno/crdt :zeno/crdt :zeno/crdt :pigs] :zeno/crdt)))))
+
+(comment
+ (kaocha.repl/run #'test-fill-env-defaults {:color? false}))
+(deftest test-fill-env-defaults
+  (let [f u/fill-env-defaults]
+    (is (= #:zeno{:env-name u/default-env-name
+                  :source-env-name u/default-env-name
+                  :env-lifetime-mins u/default-env-lifetime-mins}
+           (f {})))
+    (is (= #:zeno{:env-name "nacho"
+                  :source-env-name u/default-env-name
+                  :env-lifetime-mins 1}
+           (f #:zeno{:env-name "nacho"
+                     :env-lifetime-mins 1})))
+    (let [ret (f #:zeno{:source-env-name "nacho"})]
+      (is (= "nacho" (:zeno/source-env-name ret)))
+      (is (= u/default-env-lifetime-mins (:zeno/env-lifetime-mins ret)))
+      (is (= 26 (count (:zeno/env-name ret)))))
+    (let [ret (f #:zeno{:env-lifetime-mins 1})]
+      (is (= u/default-env-name (:zeno/source-env-name ret)))
+      (is (= 1 (:zeno/env-lifetime-mins ret)))
+      (is (= 26 (count (:zeno/env-name ret)))))))

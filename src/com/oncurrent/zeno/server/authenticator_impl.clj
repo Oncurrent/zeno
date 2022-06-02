@@ -57,6 +57,10 @@
     (let [{:keys [authenticator-name serialized-login-info]} arg
           auth-info (env-authenticator-name->info authenticator-name)
           _ (when-not auth-info
+              (log/info (str "HLI:\n"
+                             (u/pprint-str
+                              (u/sym-map env-authenticator-name->info
+                                         authenticator-name))))
               (throw (ex-info
                       (str "No authenticator with name `" authenticator-name
                            "` was found in this env.")
@@ -144,11 +148,13 @@
           token-k (str storage/login-session-token-to-token-info-key-prefix
                        (:login-session-token auth-info))]
       (au/<? (storage/<delete! storage token-k))
-      (au/<? (<log-out! (:authenticator auth-info)
-                        (u/sym-map <get-authenticator-state
-                                   <get-state
-                                   <set-state!
-                                   <update-state!))))))
+      (if (:authenticator auth-info)
+        (au/<? (<log-out! (:authenticator auth-info)
+                          (u/sym-map <get-authenticator-state
+                                     <get-state
+                                     <set-state!
+                                     <update-state!)))
+        false))))
 
 (defn <handle-resume-login-session
   [{:keys [*conn-id->auth-info *connected-actor-id->conn-ids
@@ -254,10 +260,10 @@
           reader-schema (get-read-state-info-schema authenticator read-type)
           <request-schema (su/make-schema-requester fn-arg)
           read-info (au/<? (common/<serialized-value->value
-                           {:<request-schema <request-schema
-                            :reader-schema reader-schema
-                            :serialized-value serialized-read-info
-                            :storage storage}))
+                            {:<request-schema <request-schema
+                             :reader-schema reader-schema
+                             :serialized-value serialized-read-info
+                             :storage storage}))
           {:keys [actor-id]} (some-> @*conn-id->auth-info
                                      (get conn-id))
           ret (au/<? (<read-authenticator-state
@@ -277,26 +283,39 @@
 ;; I should have the authenticator-storage available and the different branches
 ;; are just different keys so copying should be easy.
 (defn <copy-branch!
+  [{:keys [authenticator
+           authenticator-branch
+           authenticator-branch-source
+           authenticator-storage
+           temp?]}]
+  (au/go
+    (when authenticator-branch-source
+      (let [arg (u/sym-map authenticator authenticator-storage)
+            <get* (make-<get-authenticator-state
+                   (assoc arg :authenticator-branch
+                          authenticator-branch-source))
+            <swap!* (make-<swap-authenticator-state!
+                     (assoc arg :authenticator-branch authenticator-branch))
+            src-state (au/<? (<get*))
+            err-str (str "Authenticator branch `" authenticator-branch "` must "
+                         "be empty in order to be populated from the source "
+                         "branch `" authenticator-branch-source"`.")
+            swap-fn (fn [old-state]
+                      (log/info (str "<SAS!:\n"
+                                     (u/pprint-str
+                                      (u/sym-map old-state src-state))))
+                      (if (empty? old-state)
+                        src-state
+                        (throw
+                         (ex-info err-str
+                                  (u/sym-map authenticator-branch
+                                             authenticator-branch-source)))))]
+        (when src-state
+          (au/<? (<swap!* swap-fn)))))))
+
+(defn <delete-branch!
   [{:keys [authenticator authenticator-storage
            authenticator-branch authenticator-branch-source]}]
   (au/go
-   (when authenticator-branch-source
-     (let [arg (u/sym-map authenticator authenticator-storage)
-           <get* (make-<get-authenticator-state
-                  (assoc arg :authenticator-branch
-                         authenticator-branch-source))
-           <swap!* (make-<swap-authenticator-state!
-                    (assoc arg :authenticator-branch authenticator-branch))
-           src-state (au/<? (<get*))
-           err-str (str "Authenticator branch `" authenticator-branch "` must "
-                        "be empty in order to be populated from the source "
-                        "branch `" authenticator-branch-source"`.")
-           swap-fn (fn [old-state]
-                     (if (empty? old-state)
-                       src-state
-                       (throw
-                        (ex-info err-str
-                                 (u/sym-map authenticator-branch
-                                            authenticator-branch-source)))))]
-       (when src-state
-         (au/<? (<swap!* swap-fn)))))))
+    ;; TODO: Implement
+    ))

@@ -27,44 +27,42 @@
 (defn get-non-numeric-part [path]
   (take-while #(not (number? %)) path))
 
-(defn update-numeric? [updated-path sub-path op]
-  ;; TODO: Improve this using op / normalized paths
+(defn update-numeric? [updated-path sub-path]
   (let [u-front (get-non-numeric-part updated-path)
         s-front (get-non-numeric-part sub-path)]
-    (if (or (not (seq u-front))
-            (not (seq s-front)))
-      true
-      (let [[relationship _] (u/relationship-info u-front s-front)]
-        (not= :sibling relationship)))))
+    (or (empty? u-front)
+        (empty? s-front)
+        (let [[relationship _] (u/relationship-info u-front s-front)]
+          (not= :sibling relationship)))))
 
-(defn update-sub?* [update-infos sub-path]
-  (reduce (fn [acc {:keys [norm-path op]}]
+(defn update-sub?* [updated-paths sub-path]
+  (reduce (fn [acc updated-path]
             (cond
               (= [:zeno/actor-id] sub-path)
-              (if (= [:zeno/actor-id] norm-path)
+              (if (= [:zeno/actor-id] updated-path)
                 (reduced true)
                 false)
 
-              (= [:zeno/actor-id] norm-path)
+              (= [:zeno/actor-id] updated-path)
               (if (= [:zeno/actor-id] sub-path)
                 (reduced true)
                 false)
 
-              (or (some number? norm-path)
+              (or (some number? updated-path)
                   (some number? sub-path))
-              (if (update-numeric? norm-path sub-path op)
+              (if (update-numeric? updated-path sub-path)
                 (reduced true)
                 false)
 
               :else
               (let [[relationship _] (u/relationship-info
-                                      (or norm-path [])
+                                      (or updated-path [])
                                       (or sub-path []))]
                 (if (= :sibling relationship)
                   false
-                  ;; TODO: Compare values here if :parent
                   (reduced true)))))
-          false update-infos))
+          false
+          updated-paths))
 
 (defn transform-operators-in-sub-path [sub-path]
   (reduce (fn [acc k]
@@ -73,23 +71,24 @@
               (conj acc k)))
           [] sub-path))
 
-(defn update-sub? [update-infos sub-paths]
+(defn update-sub? [updated-paths sub-paths]
   (reduce
    (fn [acc sub-path]
      (when-not (sequential? sub-path)
        (throw (ex-info (str "`sub-path` must be seqential. Got: `"
                             (or sub-path "nil") "`.")
                        (u/sym-map sub-path))))
-     (if (update-sub?* update-infos (transform-operators-in-sub-path sub-path))
+     (if (update-sub?* updated-paths
+                       (transform-operators-in-sub-path sub-path))
        (reduced true)
        false))
    false
    sub-paths))
 
-(defn get-state-sub-names-to-update [update-infos *state-sub-name->info]
+(defn get-state-sub-names-to-update [updated-paths *state-sub-name->info]
   (reduce-kv (fn [acc state-sub-name info]
                (let [{:keys [expanded-paths]} info]
-                 (if (update-sub? update-infos expanded-paths)
+                 (if (update-sub? updated-paths expanded-paths)
                    (conj acc state-sub-name)
                    acc)))
              #{}
@@ -114,8 +113,8 @@
     (->> (dep/topo-sort g)
          (filter #(not= :zeno/root %)))))
 
-(defn ks-at-path [{:keys [full-path kw state path root zc]}]
-  (let [coll (:value (get-in-state (u/sym-map state path root zc)))]
+(defn ks-at-path [{:keys [full-path kw path root zc]}]
+  (let [coll (:value (get-in-state (u/sym-map path root zc)))]
     (cond
       (map? coll)
       (keys coll)
@@ -135,8 +134,8 @@
          :missing-collection-path path
          :value coll})))))
 
-(defn count-at-path [{:keys [path root state zc]}]
-  (let [coll (:value (get-in-state (u/sym-map state path root zc)))]
+(defn count-at-path [{:keys [path root zc]}]
+  (let [coll (:value (get-in-state (u/sym-map path root zc)))]
     (cond
       (or (map? coll) (sequential? coll))
       (count coll)
@@ -152,8 +151,8 @@
         {:path path
          :value coll})))))
 
-(defn do-concat [{:keys [state path root zc]}]
-  (let [seqs (:value (get-in-state (u/sym-map state path root zc)))]
+(defn do-concat [{:keys [path root zc]}]
+  (let [seqs (:value (get-in-state (u/sym-map path root zc)))]
     (when (and (not (nil? seqs))
                (or (not (sequential? seqs))
                    (not (sequential? (first seqs)))))
@@ -165,7 +164,7 @@
          :value seqs})))
     (apply concat seqs)))
 
-(defn get-value-and-expanded-paths [zc state path root]
+(defn get-value-and-expanded-paths [zc path root]
   ;; TODO: Optimize this. Only traverse the path once.
   (let [last-path-k (last path)
         join? (u/has-join? path)
@@ -175,7 +174,6 @@
         terminal-kw? (u/terminal-kw-ops last-path-k)
         ks-at-path* #(ks-at-path {:full-path path
                                   :kw :zeno/*
-                                  :state state
                                   :path %
                                   :root root
                                   :zc zc})]
@@ -184,11 +182,11 @@
       [nil [path]]
 
       (= [:zeno/actor-id] path)
-      [@state [path]]
+      [@(:*actor-id zc) [path]]
 
       (and (not terminal-kw?) (not join?))
       (let [{:keys [norm-path value]} (get-in-state
-                                       (u/sym-map state path root zc))]
+                                       (u/sym-map path root zc))]
         [value [norm-path]])
 
       (and terminal-kw? (not join?))
@@ -197,7 +195,6 @@
                     :zeno/keys
                     (ks-at-path {:full-path path
                                  :kw :zeno/keys
-                                 :state state
                                  :path path*
                                  :root root
                                  :zc zc})
@@ -205,13 +202,11 @@
                     :zeno/count
                     (count-at-path {:path path*
                                     :root root
-                                    :state state
                                     :zc zc})
 
                     :zeno/concat
                     (do-concat {:path path*
                                 :root root
-                                :state state
                                 :zc zc}))]
         [value [path*]])
 
@@ -228,7 +223,7 @@
                  i 0]
             (let [path* (nth xpaths i)
                   ret (get-value-and-expanded-paths
-                       zc state path* root)
+                       zc path* root)
                   new-out (conj out (first ret))
                   new-i (inc i)]
               (if (not= num-results new-i)
@@ -247,7 +242,7 @@
                                i 0]
                           (let [path* (nth xpaths i)
                                 ret (get-value-and-expanded-paths
-                                     zc state path* root)
+                                     zc path* root)
                                 new-out (conj out (first ret))
                                 new-i (inc i)]
                             (if (not= num-results new-i)
@@ -275,25 +270,16 @@
                         (resolve-symbols-in-path {:path path
                                                   :state acc-state})
                         path)
-        [root & tail] resolved-path
-        state-provider (root root->state-provider)
-        _ (when-not state-provider
-            (throw (ex-info (str "No state provider found "
-                                 "for root `" (or root "nil")
-                                 "`.")
-                            {:root root
-                             :known-roots (keys root->state-provider)})))
-        {::sp-impl/keys [get-state-atom]} state-provider
-        state-src (get-state-atom)]
-    (u/sym-map state-src resolved-path root)))
+        [root & tail] resolved-path]
+    (u/sym-map resolved-path root)))
 
 (defn get-state-and-expanded-paths
   [zc independent-pairs ordered-dependent-pairs]
   (let [reducer* (fn [resolve-path? acc [sym path]]
                    (let [info (get-path-info zc (:state acc) path resolve-path?)
-                         {:keys [state-src resolved-path root]} info
+                         {:keys [resolved-path root]} info
                          [v xps] (get-value-and-expanded-paths
-                                  zc state-src resolved-path root)]
+                                  zc resolved-path root)]
                      (-> acc
                          (update :state assoc sym v)
                          (update :expanded-paths concat xps))))
@@ -303,37 +289,40 @@
     (reduce (partial reducer* true) indep-ret ordered-dependent-pairs)))
 
 (defn make-applied-update-fn [zc state-sub-name]
-  (let [sub-info (@(:*state-sub-name->info zc) state-sub-name)
-        {:keys [independent-pairs ordered-dependent-pairs update-fn]} sub-info
+  (let [{:keys [*state-sub-name->info]} zc
+        sub-info (@*state-sub-name->info state-sub-name)
+        {:keys [independent-pairs ordered-dependent-pairs
+                react? update-fn]} sub-info
         {:keys [state expanded-paths]} (get-state-and-expanded-paths
                                         zc
                                         independent-pairs
                                         ordered-dependent-pairs)]
-    (when-let [old-sub-info (@(:*state-sub-name->info zc) state-sub-name)]
-      (when (not= (:state old-sub-info) state)
-        (fn []
-          (let [{:keys [update-fn]} old-sub-info
-                new-sub-info (-> old-sub-info
-                                 (assoc :state state)
-                                 (assoc :expanded-paths expanded-paths))]
-            (swap! (:*state-sub-name->info zc)
-                   assoc state-sub-name new-sub-info)
-            (update-fn state)))))))
+    (when (and sub-info
+               (not= (:state sub-info) state))
+      {:react? react?
+       :update-fn (fn []
+                    (let [{:keys [update-fn]} sub-info
+                          sub-info* (-> sub-info
+                                        (assoc :state state)
+                                        (assoc :expanded-paths expanded-paths))]
+                      (swap! *state-sub-name->info
+                             assoc state-sub-name sub-info*)
+                      (update-fn state)))})))
 
 (defn get-update-fn-info [zc state-sub-names]
   (reduce
    (fn [acc state-sub-name]
-     (let [{:keys [react?]} (@(:*state-sub-name->info zc) state-sub-name)
-           update-fn* (make-applied-update-fn zc state-sub-name)]
+     (let [{:keys [update-fn react?]} (make-applied-update-fn
+                                       zc state-sub-name)]
        (cond
-         (not update-fn*)
+         (not update-fn)
          acc
 
          react?
-         (update acc :react-update-fns conj update-fn*)
+         (update acc :react-update-fns conj update-fn)
 
          :else
-         (update acc :non-react-update-fns conj update-fn*))))
+         (update acc :non-react-update-fns conj update-fn))))
    {:react-update-fns []
     :non-react-update-fns []}
    state-sub-names))
@@ -347,11 +336,12 @@
      #(doseq [rf react-update-fns]
         (rf)))))
 
-(defn do-subscription-updates! [zc update-infos]
-  (let [{:keys [*state-sub-name->info]} zc]
-    (-> (get-state-sub-names-to-update update-infos *state-sub-name->info)
-        (order-by-lineage *state-sub-name->info)
-        (update-subs! zc))))
+(defn do-subscription-updates! [{:keys [zc updated-paths]}]
+  (let [{:keys [*state-sub-name->info]} zc
+        subs-to-update (get-state-sub-names-to-update updated-paths
+                                                      *state-sub-name->info)
+        subs-by-lineage (order-by-lineage subs-to-update *state-sub-name->info)]
+    (update-subs! subs-by-lineage zc)))
 
 (defn subscribe-to-state!
   [zc state-sub-name sub-map update-fn opts]

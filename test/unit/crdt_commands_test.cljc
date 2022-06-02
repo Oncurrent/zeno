@@ -21,17 +21,6 @@
      ([sym opts]
       (kaocha.repl/run sym (merge {:color? false :capture-output? false} opts)))))
 
-(defn ->norm-paths [ops]
-  (->> ops
-       (map :norm-path)
-       (remove nil?)
-       (into #{})))
-
-(defn op-type->norm-paths [op-type ops]
-  (->> ops
-       (filter #(= op-type (:op-type %)))
-       (->norm-paths)))
-
 (l/def-record-schema pet-schema
   [:name l/string-schema]
   [:species l/string-schema])
@@ -152,7 +141,7 @@
              :root :zeno/crdt
              :schema l/string-schema
              :sys-time-ms sys-time-ms}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value "Hi"]
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
@@ -169,7 +158,7 @@
              :root :zeno/crdt
              :schema l/string-schema
              :sys-time-ms sys-time-ms}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value nil]
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
@@ -187,7 +176,7 @@
              :root :zeno/crdt
              :schema l/string-schema
              :sys-time-ms sys-time-ms}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value "Goodbye"]
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
@@ -208,7 +197,7 @@
              :root :zeno/crdt
              :schema (l/map-schema l/int-schema)
              :sys-time-ms sys-time-ms}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value {"Alice" 31
                         "Bob" 12}]
     (is (= expected-value (crdt/get-value {:crdt crdt
@@ -230,7 +219,7 @@
              :root :zeno/crdt
              :schema pet-schema
              :sys-time-ms sys-time-ms}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value {:name "Sheepy"
                         :species "Ovis aries"}]
     (is (= expected-value (crdt/get-value {:crdt crdt
@@ -246,7 +235,7 @@
              :root :zeno/crdt
              :schema pet-schema
              :sys-time-ms sys-time-ms}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value {:name "Sheepy"}]
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
@@ -265,19 +254,12 @@
              :root :zeno/crdt
              :schema (l/array-schema pet-trainer-schema)
              :sys-time-ms sys-time-ms}
-        {:keys [crdt ops]} (commands/process-cmds arg)
-        del-norm-paths (op-type->norm-paths :delete-value ops)
-        add-norm-paths (op-type->norm-paths :add-value ops)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value [{:name "Bill"
                          :specialties {:aggression true}}]]
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
-                                           :schema (:schema arg)})))
-    (is (= #{'(0 :specialties :barking)} del-norm-paths))
-    (is (= #{'(0 :name)
-             '(0 :specialties :aggression)
-             '(0 :specialties :barking)}
-           add-norm-paths))))
+                                           :schema (:schema arg)})))))
 
 (comment (krun #'test-crdt-union-set-and-reset))
 (deftest test-crdt-union-set-and-reset
@@ -291,7 +273,7 @@
              :root :zeno/crdt
              :schema (l/union-schema [l/string-schema l/float-schema])
              :sys-time-ms sys-time-ms}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value "pi"]
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
@@ -305,7 +287,7 @@
              :root :zeno/crdt
              :schema (l/array-schema l/string-schema)
              :sys-time-ms sys-time-ms}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value ["Hi" "There"]]
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
@@ -321,7 +303,7 @@
              :root :zeno/crdt
              :schema (l/array-schema l/string-schema)
              :sys-time-ms sys-time-ms}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value []]
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
@@ -339,7 +321,7 @@
              :root :zeno/crdt
              :schema (l/array-schema l/string-schema)
              :sys-time-ms sys-time-ms}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value ["Hi" "Bob"]]
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
@@ -357,7 +339,7 @@
              :root :zeno/crdt
              :schema (l/array-schema l/string-schema)
              :sys-time-ms sys-time-ms}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value ["Bob" "there"]]
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
@@ -421,7 +403,7 @@
              :root :zeno/crdt
              :schema (l/array-schema l/string-schema)
              :sys-time-ms sys-time-ms}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value ["There"]]
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
@@ -440,22 +422,13 @@
              :root :zeno/crdt
              :schema (l/map-schema (l/map-schema l/int-schema))
              :sys-time-ms sys-time-ms}
-        {:keys [crdt ops]} (commands/process-cmds arg)
-        del-norm-paths (op-type->norm-paths :delete-value ops)
-        add-norm-paths (op-type->norm-paths :add-value ops)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value {"j" {"a" 1 "b" 2}
                         "k" {"z" 20}
                         "l" {"c" 3}}]
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
-                                           :schema (:schema arg)})))
-    (is (= #{'("k" "y")} del-norm-paths))
-    (is (= #{'("j" "a")
-             '("j" "b")
-             '("k" "y")
-             '("k" "z")
-             '("l" "c")}
-           add-norm-paths))))
+                                           :schema (:schema arg)})))))
 
 (comment (krun #'test-crdt-array-of-maps-set-and-remove))
 (deftest test-crdt-array-of-maps-set-and-remove
@@ -470,7 +443,7 @@
              :root :zeno/crdt
              :schema (l/array-schema (l/map-schema l/int-schema))
              :sys-time-ms sys-time-ms}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value [{"a" 1 "b" 2}
                         {"z" 20}
                         {"c" 3}]]
@@ -487,7 +460,7 @@
                      :zeno/path [:zeno/crdt 0]}]
              :root :zeno/crdt
              :schema (l/array-schema l/string-schema)}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value ["Go" "There"]]
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
@@ -505,7 +478,7 @@
                      :zeno/path [:zeno/crdt -1]}]
              :root :zeno/crdt
              :schema (l/array-schema l/string-schema)}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value ["Hello!" "Hi" "There" "Bob"]]
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
@@ -517,7 +490,7 @@
                      :zeno/path [:zeno/crdt 0]}]
              :root :zeno/crdt
              :schema (l/array-schema l/string-schema)}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value ["Hello!"]]
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
@@ -531,7 +504,7 @@
              :root :zeno/crdt
              :schema (l/array-schema l/string-schema)
              :sys-time-ms sys-time-ms}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         ret (crdt/get-value-info {:crdt crdt
                                   :path [-1]
                                   :schema (:schema arg)})
@@ -553,7 +526,7 @@
              :root :zeno/crdt
              :schema (l/array-schema l/string-schema)
              :sys-time-ms sys-time-ms}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value ["1" "2" "3"]]
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
@@ -567,7 +540,7 @@
              :root :zeno/crdt
              :schema (l/array-schema l/string-schema)
              :sys-time-ms sys-time-ms}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value ["1" "2" "3"]]
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
@@ -583,7 +556,7 @@
                      :zeno/path [:zeno/crdt 0]}]
              :root :zeno/crdt
              :schema (l/array-schema l/string-schema)}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value ["1" "2" "3" "4" "5"]]
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
@@ -598,7 +571,7 @@
                      :zeno/path [:zeno/crdt -1]}]
              :root :zeno/crdt
              :schema (l/array-schema l/string-schema)}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value ["4" "5" "1" "2" "3"]]
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
@@ -613,7 +586,7 @@
                      :zeno/path [:zeno/crdt -2]}]
              :root :zeno/crdt
              :schema (l/array-schema l/string-schema)}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value ["1" "A" "B" "2" "3"]]
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
@@ -677,7 +650,7 @@
              :schema pet-owner-schema
              :make-id #(let [n (swap! *next-id-num inc)]
                          (str "I" n))}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value {:name "Bill"
                         :pets [{:name "Fishy"
                                 :species "Carassius auratus"}]}]
@@ -737,9 +710,9 @@
               :schema pet-owner-schema}
         ret1 (commands/process-cmds arg1)
         ret2 (commands/process-cmds arg2)
-        new-ops (set/union (:ops ret1) (:ops ret2))
+        new-crdt-ops (set/union (:crdt-ops ret1) (:crdt-ops ret2))
         merged-crdt (apply-ops/apply-ops {:crdt (:crdt ret0)
-                                          :ops new-ops
+                                          :crdt-ops new-crdt-ops
                                           :schema pet-owner-schema})
         expected-value [{:name "Chris"
                          :species "Canis familiaris"}
@@ -786,9 +759,9 @@
               :make-id make-id}
         ret1 (commands/process-cmds arg1)
         ret2 (commands/process-cmds arg2)
-        new-ops (set/union (:ops ret1) (:ops ret2))
+        new-crdt-ops (set/union (:crdt-ops ret1) (:crdt-ops ret2))
         merged-crdt (apply-ops/apply-ops {:crdt (:crdt ret0)
-                                          :ops new-ops
+                                          :crdt-ops new-crdt-ops
                                           :schema pet-owner-schema})
         expected-value [{:name "Chris"
                          :species "Canis familiaris"}
@@ -838,9 +811,9 @@
         ret1 (commands/process-cmds arg1)
         ret2 (commands/process-cmds arg2)
         ret3 (commands/process-cmds arg3)
-        new-ops (set/union (:ops ret1) (:ops ret2) (:ops ret3))
+        new-crdt-ops (set/union (:crdt-ops ret1) (:crdt-ops ret2) (:crdt-ops ret3))
         merged-crdt (apply-ops/apply-ops {:crdt (:crdt ret0)
-                                          :ops new-ops
+                                          :crdt-ops new-crdt-ops
                                           :schema schema})
         ;; Order of the first three items is determined by their add-ids.
         ;; Any ordering would be fine, as long as it is deterministic.
@@ -896,9 +869,9 @@
         ret1 (commands/process-cmds arg1)
         ret2 (commands/process-cmds arg2)
         ret3 (commands/process-cmds arg3)
-        new-ops (set/union (:ops ret1) (:ops ret2) (:ops ret3))
+        new-crdt-ops (set/union (:crdt-ops ret1) (:crdt-ops ret2) (:crdt-ops ret3))
         merged-crdt (apply-ops/apply-ops {:crdt (:crdt ret0)
-                                          :ops new-ops
+                                          :crdt-ops new-crdt-ops
                                           :schema schema})
         ;; Order of the first three pairs of items is determined by their
         ;; add-ids. Any ordering would be fine, as long as it is deterministic.
@@ -954,9 +927,9 @@
         ret1 (commands/process-cmds arg1)
         ret2 (commands/process-cmds arg2)
         ret3 (commands/process-cmds arg3)
-        new-ops (set/union (:ops ret1) (:ops ret2) (:ops ret3))
+        new-crdt-ops (set/union (:crdt-ops ret1) (:crdt-ops ret2) (:crdt-ops ret3))
         merged-crdt (apply-ops/apply-ops {:crdt (:crdt ret0)
-                                          :ops new-ops
+                                          :crdt-ops new-crdt-ops
                                           :schema schema})
         expected-value ["XF" "YF" "ZF" "A" "B" "C" "XL" "YL" "ZL"]]
     (is (= expected-value (crdt/get-value {:crdt merged-crdt
@@ -991,9 +964,10 @@
               :sys-time-ms (u/str->long "1640205282999")}
         ret1 (commands/process-cmds arg1)
         ret2 (commands/process-cmds arg2)
-        merged-crdt (apply-ops/apply-ops {:crdt (:crdt ret0)
-                                          :ops (set/union (:ops ret1) (:ops ret2))
-                                          :schema pet-owner-schema})]
+        merged-crdt (apply-ops/apply-ops
+                     {:crdt (:crdt ret0)
+                      :crdt-ops (set/union (:crdt-ops ret1) (:crdt-ops ret2))
+                      :schema pet-owner-schema})]
     ;; We expect "Herman" because its sys-time-ms is later
     (is (= "Herman" (crdt/get-value {:crdt merged-crdt
                                      :path [:pets -1 :name]
@@ -1056,19 +1030,10 @@
              :schema (-> l/int-schema l/array-schema l/array-schema
                          l/array-schema l/array-schema l/array-schema)
              :sys-time-ms sys-time-ms}
-        {:keys [crdt ops]} (commands/process-cmds arg)
-        norm-paths (->norm-paths ops)]
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)]
     (is (= value (crdt/get-value {:crdt crdt
                                   :path []
-                                  :schema (:schema arg)})))
-    (is (= #{'(0 0 0 0 0)
-             '(0 0 0 0 1)
-             '(1 0 0 0 0)
-             '(1 0 1 0 0)
-             '(2 0 0 0 0)
-             '(2 1 0 0 0)
-             '(2 1 0 0 1)}
-           norm-paths))))
+                                  :schema (:schema arg)})))))
 
 (comment (krun #'test-crdt-nested-arrays-set-index))
 (deftest test-crdt-nested-arrays-set-index
@@ -1083,14 +1048,10 @@
              :schema (l/array-schema (l/array-schema l/int-schema))
              :sys-time-ms sys-time-ms}
         expected-value [[1 2] [3]]
-        {:keys [crdt ops]} (commands/process-cmds arg)
-        del-norm-paths (op-type->norm-paths :delete-value ops)
-        add-norm-paths (op-type->norm-paths :add-value ops)]
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)]
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
-                                           :schema (:schema arg)})))
-    (is (= #{'(1 0)} del-norm-paths))
-    (is (= #{'(0 0) '(0 1) '(1 0)} add-norm-paths))))
+                                           :schema (:schema arg)})))))
 
 (comment (krun #'test-crdt-nested-arrays-set-index-out-of-bounds))
 (deftest test-crdt-nested-arrays-set-index-out-of-bounds
@@ -1124,18 +1085,10 @@
                        (l/array-schema
                         (l/array-schema l/int-schema))))
              :sys-time-ms sys-time-ms}
-        {:keys [crdt ops]} (commands/process-cmds arg)
-        norm-paths (->norm-paths ops)]
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)]
     (is (= value (crdt/get-value {:crdt crdt
                                   :path []
-                                  :schema (:schema arg)})))
-    (is (= #{'("a" "aa" 0 0)
-             '("a" "aa" 0 1)
-             '("a" "aa" 1 0)
-             '("b" "bb" 0 0)
-             '("b" "bb" 0 1)
-             '("b" "bb" 1 0)}
-           norm-paths))))
+                                  :schema (:schema arg)})))))
 
 (comment (krun #'test-set-remove-nested-arrays))
 (deftest test-set-remove-nested-arrays
@@ -1178,7 +1131,7 @@
                      :zeno/path [:zeno/crdt]}]
              :root :zeno/crdt
              :schema (l/map-schema (l/array-schema l/string-schema))}
-        {:keys [crdt ops]} (commands/process-cmds arg)]
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)]
     (is (= value (crdt/get-value {:crdt crdt
                                   :path []
                                   :schema (:schema arg)})))))
@@ -1194,10 +1147,10 @@
              :schema (l/record-schema :r1
                                       [[:a (l/array-schema
                                             l/string-schema)]])}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value {:a [value]}
         applied-crdt (apply-ops/apply-ops {:crdt {}
-                                           :ops ops
+                                           :crdt-ops crdt-ops
                                            :schema (:schema arg)})]
     (is (= crdt applied-crdt))
     (is (= value (crdt/get-value {:crdt crdt
@@ -1215,10 +1168,10 @@
                      :zeno/path [:zeno/crdt -1]}]
              :root :zeno/crdt
              :schema (l/array-schema l/string-schema)}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value [value]
         applied-crdt (apply-ops/apply-ops {:crdt {}
-                                           :ops ops
+                                           :crdt-ops crdt-ops
                                            :schema (:schema arg)})]
     (is (= crdt applied-crdt))
     (is (= value (crdt/get-value {:crdt crdt
@@ -1236,10 +1189,10 @@
                      :zeno/path [:zeno/crdt 0 -1]}]
              :root :zeno/crdt
              :schema (l/array-schema (l/array-schema l/string-schema))}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value [[value]]
         applied-crdt (apply-ops/apply-ops {:crdt {}
-                                           :ops ops
+                                           :crdt-ops crdt-ops
                                            :schema (:schema arg)})]
     (is (= crdt applied-crdt))
     (is (= value (crdt/get-value {:crdt crdt
@@ -1264,10 +1217,10 @@
                                    :r2 [[:d (l/array-schema
                                              (l/array-schema
                                               l/string-schema))]]))))]])}
-        {:keys [crdt ops]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         expected-value {:a {"b" [{"c" {:d [[value]]}}]}}
         applied-crdt (apply-ops/apply-ops {:crdt {}
-                                           :ops ops
+                                           :crdt-ops crdt-ops
                                            :schema (:schema arg)})]
     (is (= crdt applied-crdt))
     (is (= value (crdt/get-value {:crdt crdt

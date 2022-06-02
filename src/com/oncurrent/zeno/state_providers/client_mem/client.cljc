@@ -14,11 +14,11 @@
 (defn make-<update-state! [{:keys [*state]}]
   (fn [{:zeno/keys [cmds] :keys [root]}]
     (au/go
-     (let [ret (commands/eval-cmds @*state cmds root)
-           {:keys [state update-infos]} ret]
+      (let [ret (commands/eval-cmds @*state cmds root)
+            {:keys [state updated-paths]} ret]
         ;; We can use `reset!` here b/c there are no concurrent updates
         (reset! *state state)
-        update-infos))))
+        (u/sym-map updated-paths)))))
 
 (defn ->state-provider
   ([] (->state-provider nil))
@@ -27,5 +27,4 @@
      #::sp-impl{:<update-state! (make-<update-state! (u/sym-map *state))
                 :get-in-state (fn [{:keys [root path]}]
                                 (commands/get-in-state @*state path root))
-                :get-state-atom (constantly *state)
                 :state-provider-name shared/state-provider-name})))
