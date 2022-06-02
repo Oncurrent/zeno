@@ -386,14 +386,17 @@
          (ex-info
           (str "`" k "` is required, but is missing from the "
                (name config-type) " config map.")
-          (sym-map k config))))
+          {:missing-k k
+           :config-ks (keys config)})))
       (doseq [{:keys [pred msg]} checks]
         (when (and v pred (not (pred v)))
           (throw
            (ex-info
             (str "The value of `" k "` in the " (name config-type) " config "
                  "map is invalid. It " msg ". Got `" (or v "nil") "`.")
-            (sym-map k v config))))))))
+            {:k k
+             :v v
+             :config-ks (keys config)})))))))
 
 (defn get-normalized-array-index
   "Translates relative indexing (e.g. using negative numbers to index from the
