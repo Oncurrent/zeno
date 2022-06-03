@@ -357,7 +357,9 @@
             ser-snap (au/<? (common/<serialized-value->value sv->v-arg))
             crdt (edn/read-string (:edn-crdt ser-snap))
             {:keys [bytes fp]} (:serialized-value ser-snap)
-            writer-schema (au/<? (storage/<fp->schema storage fp))
+            writer-schema (or (au/<? (storage/<fp->schema storage fp))
+                              (au/<? (common/<get-schema-from-peer
+                                      (assoc arg :fp fp))))
             v (l/deserialize schema writer-schema bytes)]
         (u/sym-map crdt v)))))
 

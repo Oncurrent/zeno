@@ -214,7 +214,9 @@
             snapshot (au/<? (common/<get-snapshot-from-url
                              (assoc arg
                                     :<request-schema <request-schema
-                                    :url snapshot-url)))
+                                    :url snapshot-url
+                                    :schema schema
+                                    :storage storage)))
             ser-tx-infos (when (and @*connected?
                                     (seq tx-ids-since-snapshot))
                            (au/<? (<send-msg
@@ -225,7 +227,6 @@
                                     :<request-schema <request-schema
                                     :serializable-tx-infos ser-tx-infos
                                     :storage storage)))
-
             usi-ret (update-state-info! (u/sym-map *state-info last-tx-index
                                                    schema snapshot tx-infos))]
         (cond
