@@ -105,7 +105,8 @@
                                  :storage storage}))
               auth-info (some-> @*conn-id->auth-info
                                 (get conn-id))
-              actor-id (:actor-id auth-info)
+              actor-id (or (:actor-id auth-info)
+                           u/unauthenticated-actor-id-str)
               h-arg #:zeno{:<get-state <get-state
                            :<set-state! <set-state!
                            :<update-state! <update-state!
@@ -518,7 +519,8 @@
                              (assoc :env-name env-name))
                 auth-info (some-> @*conn-id->auth-info
                                   (get conn-id))
-                actor-id (:actor-id auth-info)
+                actor-id (or (:actor-id auth-info)
+                             u/unauthenticated-actor-id-str)
                 {:keys [arg-schema ret-schema]} (get msg-protocol rpc-name-kw)
                 deser-arg (au/<? (common/<serialized-value->value
                                   {:<request-schema <request-schema
