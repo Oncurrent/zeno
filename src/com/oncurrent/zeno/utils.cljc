@@ -38,6 +38,8 @@
 (def default-rpc-timeout-ms 30000)
 (def terminal-kw-ops #{:zeno/keys :zeno/count :zeno/concat})
 (def kw-ops (conj terminal-kw-ops :zeno/*))
+(def unauthenticated-actor-id-kw :unauthenticated)
+(def unauthenticated-actor-id-str "UNAUTHENTICATED")
 
 (defmacro sym-map
   "Builds a map from symbols.

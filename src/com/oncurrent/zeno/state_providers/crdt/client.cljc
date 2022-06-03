@@ -22,8 +22,8 @@
   (str unsynced-log-prefix env-name))
 
 (defn get-actor-id-str [actor-id]
-  (if (= :unauthenticated actor-id)
-    "UNAUTHENTICATED"
+  (if (= u/unauthenticated-actor-id-kw actor-id)
+    u/unauthenticated-actor-id-str
     actor-id))
 
 (defn <get-unsynced-log [{:keys [*env-name *storage]}]
