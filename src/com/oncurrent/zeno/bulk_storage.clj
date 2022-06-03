@@ -226,16 +226,17 @@
     (<stop-server! bulk-storage)))
 
 (defn opts->headers [opts]
-  (let [k->header-k {:cache-control "Cache-Control"
+  (let [k->header-k {:access-control-allow-origin "Access-Control-Allow-Origin"
+                     :cache-control "Cache-Control"
                      :content-disposition "Content-Disposition"
                      :content-encoding "Content-Encoding"
                      :content-type "Content-Type"}]
     (reduce-kv (fn [acc k v]
                  (assoc acc (k->header-k k) v))
                {}
-               opts)))
+               (select-keys opts (keys k->header-k)))))
 
-(defn make-server-handler [{:keys [*store]}]
+(defn make-server-handler [{:keys [*store] :as config}]
   (fn [{:keys [request-method query-string]}]
     (if (not= :get request-method)
       {:status 405}
@@ -244,7 +245,7 @@
                        (>= (u/current-time-ms)
                            (u/str->long expiration-ms)))
             {:keys [opts ba]} (@*store k)
-            headers (opts->headers opts)]
+            headers (opts->headers (merge config opts))]
         (cond
           expired?
           {:status 403
@@ -267,7 +268,7 @@
   ([{:keys [server-port] :as config}]
    (let [*store (atom {})
          host (or (:host config) "localhost")
-         server-handler (make-server-handler (u/sym-map *store))
+         server-handler (make-server-handler (assoc config :*store *store))
          server (when server-port
                   (when-not (int? server-port)
                     (throw (ex-info (str "`:server-port` must be an integer. "
