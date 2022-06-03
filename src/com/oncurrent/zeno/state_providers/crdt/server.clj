@@ -327,7 +327,7 @@
                    snapshot-tx-index
                    tx-ids-since-snapshot)))))
 
-(defn make-log-info-for-actor-id!
+(defn make-log-info-for-actor-id
   [{:keys [authorizer branch-tx-ids snapshot-interval]
     :as arg}]
   (let [tx-infos (au/<?? (<get-tx-infos-for-tx-ids
@@ -348,7 +348,7 @@
         split-i (- (count tx-ids) tail-len)
         snapshot-tx-index (when (pos? split-i)
                             (dec split-i))
-        branch-log-tx-indices-since-snapshot (drop split-i tx-indices)
+        branch-log-tx-indices-since-snapshot (vec (drop split-i tx-indices))
         snapshot-tx-ids (take split-i tx-ids)
         snapshot-txs-hash (au/<?? (<add-to-snapshot!
                                    (assoc arg :tx-ids snapshot-tx-ids)))]
@@ -369,10 +369,16 @@
                                             :branch-tx-ids branch-tx-ids
                                             :last-tx-index last-tx-index
                                             :log-info ba-log-info)))
-        (let [ba-log-info (make-log-info-for-actor-id!
+        (let [ba-log-info (make-log-info-for-actor-id
                            (assoc arg
                                   :actor-id actor-id
                                   :branch-tx-ids branch-tx-ids))]
+          (au/<? (storage/<swap!
+                  storage branch-log-k shared/branch-log-info-schema
+                  (fn [old]
+                    (assoc-in old
+                              [:actor-id-to-log-info actor-id]
+                              ba-log-info))))
           (au/<? (<log-info->sync-info (assoc arg
                                               :branch-tx-ids branch-tx-ids
                                               :last-tx-index last-tx-index
