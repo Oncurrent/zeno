@@ -208,8 +208,9 @@
             {:keys [snapshot-url
                     snapshot-tx-index
                     tx-ids-since-snapshot]} sync-info
-            last-tx-index (+ (or snapshot-tx-index -1)
-                             (count tx-ids-since-snapshot))
+            last-tx-index (when snapshot-tx-index
+                            (+ snapshot-tx-index
+                               (count tx-ids-since-snapshot)))
             snapshot (au/<? (common/<get-snapshot-from-url
                              (assoc arg
                                     :<request-schema <request-schema
