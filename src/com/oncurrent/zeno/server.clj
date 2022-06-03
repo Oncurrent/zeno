@@ -518,7 +518,7 @@
                              (assoc :env-name env-name))
                 auth-info (some-> @*conn-id->auth-info
                                   (get conn-id))
-                actor-id (:actor-id auth-info)
+                actor-id (or (:actor-id auth-info) "UNAUTHENTICATED")
                 {:keys [arg-schema ret-schema]} (get msg-protocol rpc-name-kw)
                 deser-arg (au/<? (common/<serialized-value->value
                                   {:<request-schema <request-schema
