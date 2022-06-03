@@ -933,7 +933,7 @@
         *conn-id->auth-info (atom {})
         *conn-id->env-name (atom {})
         *connected-actor-id->conn-ids (atom {})
-        *consumer-actor-id->last-branch-log-tx-i (atom {})
+        *consumer-actor-id->last-branch-log-tx-index (atom {})
         *rpc-name-kw->handler (atom {})
         *logged-in-admin-conn-ids (atom #{})
         authenticator-name->info (xf-authenticator-info
@@ -948,7 +948,7 @@
         arg (u/sym-map *conn-id->auth-info
                        *conn-id->env-name
                        *connected-actor-id->conn-ids
-                       *consumer-actor-id->last-branch-log-tx-i
+                       *consumer-actor-id->last-branch-log-tx-index
                        *env-name->info
                        *logged-in-admin-conn-ids
                        *rpc-name-kw->handler
