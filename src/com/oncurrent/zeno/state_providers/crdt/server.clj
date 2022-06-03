@@ -158,7 +158,7 @@
 
 (defn update-actor-log-info!
   [{:keys [i log-info snapshot-interval tx-info] :as arg}]
-  (let [{:keys [tx-index]} tx-info
+  (let [{tx-index :tx-i} tx-info
         {:keys [branch-log-tx-indices-since-snapshot]} log-info
         new-snapshot? (>= (inc (count branch-log-tx-indices-since-snapshot))
                           snapshot-interval)]
