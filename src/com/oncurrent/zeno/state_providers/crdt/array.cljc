@@ -93,32 +93,34 @@
                 linked-nodes))))
 
 (defn make-connections-to-terminal
-  [{:keys [make-id terminal]
-    :or {make-id u/compact-random-uuid}
-    :as arg}]
-  (reduce (fn [acc node]
-            (let [node->edge-info (make-node->edge-info (:edges acc))
-                  arg* (assoc arg
-                              :node node
-                              :node->edge-info node->edge-info
-                              :terminal terminal)]
-              (if (connected-to-terminal? arg*)
-                acc
-                (let [conn-node (get-connected-node arg*)
-                      [self-add-id opp-add-id] (if (= :start terminal)
-                                                 [:tail-node-id
-                                                  :head-node-id]
-                                                 [:head-node-id
-                                                  :tail-node-id])
-                      edge {:add-id (make-id)
-                            self-add-id node
-                            opp-add-id conn-node}
-                      new-edges (:new-edges acc)]
-                  (-> acc
-                      (update :edges conj edge)
-                      (update :new-edges conj edge))))))
-          arg
-          (:live-nodes arg)))
+  [{:keys [make-id terminal] :as arg}]
+  (let [make-id (or make-id u/compact-random-uuid)]
+    (reduce (fn [acc node]
+              (let [node->edge-info (make-node->edge-info (:edges acc))
+                    arg* (assoc arg
+                                :node node
+                                :node->edge-info node->edge-info
+                                :terminal terminal)]
+                (if (connected-to-terminal? arg*)
+                  acc
+                  (let [conn-node (get-connected-node arg*)
+                        [self-add-id opp-add-id] (if (= :start terminal)
+                                                   [:tail-node-id
+                                                    :head-node-id]
+                                                   [:head-node-id
+                                                    :tail-node-id])
+                        _ (log/info 1)
+                        _ (log/info make-id)
+                        edge {:add-id (make-id)
+                              self-add-id node
+                              opp-add-id conn-node}
+                        _ (log/info 2)
+                        new-edges (:new-edges acc)]
+                    (-> acc
+                        (update :edges conj edge)
+                        (update :new-edges conj edge))))))
+            arg
+            (:live-nodes arg))))
 
 (defn make-connecting-edges [{:keys [edges] :as arg}]
   (if (empty? edges)
@@ -158,34 +160,34 @@
           edges))
 
 (defn get-serializing-crdt-ops-for-path
-  [{:keys [combining-node edges make-id paths splitting-node sys-time-ms]
-    :or {make-id u/compact-random-uuid}}]
-  (reduce (fn [acc [path next-path]]
-            (let [del-op-1 {:add-id (find-edge-add-id
-                                     {:edges edges
-                                      :head-node-id (last path)
-                                      :tail-node-id combining-node})
+  [{:keys [combining-node edges make-id paths splitting-node sys-time-ms]}]
+  (let [make-id (or make-id u/compact-random-uuid)]
+    (reduce (fn [acc [path next-path]]
+              (let [del-op-1 {:add-id (find-edge-add-id
+                                       {:edges edges
+                                        :head-node-id (last path)
+                                        :tail-node-id combining-node})
+                              :op-path '()
+                              :op-type :delete-array-edge}
+                    del-op-2 {:add-id (find-edge-add-id
+                                       {:edges edges
+                                        :head-node-id splitting-node
+                                        :tail-node-id (first next-path)})
+                              :op-path '()
+                              :op-type :delete-array-edge}
+                    add-id (make-id)
+                    add-op {:add-id add-id
                             :op-path '()
-                            :op-type :delete-array-edge}
-                  del-op-2 {:add-id (find-edge-add-id
-                                     {:edges edges
-                                      :head-node-id splitting-node
-                                      :tail-node-id (first next-path)})
-                            :op-path '()
-                            :op-type :delete-array-edge}
-                  add-id (make-id)
-                  add-op {:add-id add-id
-                          :op-path '()
-                          :op-type :add-array-edge
-                          :sys-time-ms (or sys-time-ms (u/current-time-ms))
-                          :value {:head-node-id (last path)
-                                  :tail-node-id (first next-path)}}]
-              (-> acc
-                  (conj del-op-1)
-                  (conj del-op-2)
-                  (conj add-op))))
-          #{}
-          (partition 2 1 paths)))
+                            :op-type :add-array-edge
+                            :sys-time-ms (or sys-time-ms (u/current-time-ms))
+                            :value {:head-node-id (last path)
+                                    :tail-node-id (first next-path)}}]
+                (-> acc
+                    (conj del-op-1)
+                    (conj del-op-2)
+                    (conj add-op))))
+            #{}
+            (partition 2 1 paths))))
 
 (defn get-serializing-crdt-ops [{:keys [edges] :as arg}]
   (let [node->edge-info (make-node->edge-info edges)]

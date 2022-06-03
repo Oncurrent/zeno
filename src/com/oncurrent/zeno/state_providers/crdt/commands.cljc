@@ -595,10 +595,9 @@
                       (assoc :cmd-type (:zeno/op cmd))
                       (assoc :path (u/chop-root cmd-path root))))))
 
-(defn process-cmds [{:keys [cmds make-id root]
-                     :or {make-id u/compact-random-uuid}
-                     :as arg}]
-  (let [result (reduce (fn [acc cmd]
+(defn process-cmds [{:keys [cmds make-id root] :as arg}]
+  (let [make-id (or make-id u/compact-random-uuid)
+        result (reduce (fn [acc cmd]
                          (let [ret (process-cmd (assoc acc
                                                        :cmd cmd
                                                        :make-id make-id))]
