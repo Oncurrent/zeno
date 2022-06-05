@@ -42,6 +42,11 @@
 (l/def-record-schema pet-school-schema
   [:pet-owners (l/map-schema pet-owner-schema)])
 
+(l/def-record-schema tree-schema
+  [:value l/int-schema]
+  [:right-child ::tree]
+  [:left-child ::tree])
+
 (comment (krun #'test-empty-map-of-records))
 (deftest test-empty-map-of-records
   (let [get-arg {:crdt {} :path [] :schema pet-owners-schema}]
@@ -1255,3 +1260,30 @@
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:schema arg)})))))
+
+(deftest test-recursive-schema
+  (let [data {:value 42
+              :right-child {:value 3
+                            :right-child {:value 8
+                                          :right-child {:value 21}
+                                          :left-child {:value 43}}
+                            :left-child {:value 8
+                                         :right-child {:value 21}
+                                         :left-child {:value 43}}}
+              :left-child {:value 3
+                           :right-child {:value 8
+                                         :right-child {:value 21}
+                                         :left-child {:value 43}}
+                           :left-child {:value 8
+                                        :right-child {:value 21}
+                                        :left-child {:value 43}}}}
+        arg {:cmds [{:zeno/arg data
+                     :zeno/op :zeno/set
+                     :zeno/path []}]
+             :root :zeno/crdt
+             :schema tree-schema}
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        rt-data (crdt/get-value {:crdt crdt
+                                 :path []
+                                 :schema tree-schema})]
+    (is (= data rt-data))))
