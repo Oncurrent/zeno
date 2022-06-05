@@ -93,10 +93,12 @@
        (last)))
 
 (defn get-single-value [{:keys [crdt schema] :as arg}]
-  (let [{:keys [current-add-id-to-value-info]} crdt]
-    (when (pos? (count current-add-id-to-value-info))
-      (-> (get-most-recent current-add-id-to-value-info)
-          (:value)))))
+  (let [{:keys [current-add-id-to-value-info]} crdt
+        num-items (count current-add-id-to-value-info)]
+    (case num-items
+      0 nil
+      1 (-> current-add-id-to-value-info first val)
+      (get-most-recent current-add-id-to-value-info))))
 
 (defmethod get-value-info :single-value
   [{:keys [norm-path path] :as arg}]
