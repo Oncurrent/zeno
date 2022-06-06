@@ -97,8 +97,8 @@
         num-items (count current-add-id-to-value-info)]
     (case num-items
       0 nil
-      1 (-> current-add-id-to-value-info first val)
-      (get-most-recent current-add-id-to-value-info))))
+      1 (-> current-add-id-to-value-info first val :value)
+      (:value (get-most-recent current-add-id-to-value-info)))))
 
 (defmethod get-value-info :single-value
   [{:keys [norm-path path] :as arg}]
