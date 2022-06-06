@@ -663,7 +663,7 @@
        (catch #?(:clj Exception :cljs js/Error) e
          (is (= :unexpected e)))))))
 
-(deftest  test-crdt-empty-sequence-join
+(deftest test-crdt-empty-sequence-join
   (au/test-async
    1000
    (ca/go
@@ -675,7 +675,7 @@
              sub-map '{my-book-ids [:zeno/crdt :my-book-ids]
                        my-books [:zeno/crdt :books my-book-ids]}
              update-fn (constantly nil)
-             expected '{my-book-ids nil
+             expected '{my-book-ids []
                         my-books nil}]
          (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/crdt :my-book-ids]
                                         :zeno/op :zeno/set

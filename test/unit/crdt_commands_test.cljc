@@ -1136,6 +1136,32 @@
                                   :path []
                                   :schema (:schema arg)})))))
 
+(comment (krun #'test-empty-array-in-record))
+(comment (krun #'test-empty-array-in-map))
+(deftest test-empty-array-in-record
+  (let [value []
+        arg {:cmds [{:zeno/arg value
+                     :zeno/op :zeno/set
+                     :zeno/path [:zeno/crdt :a]}]
+             :root :zeno/crdt
+             :schema (l/record-schema
+                      :r1 [[:a (l/array-schema l/string-schema)]])}
+        {:keys [crdt]} (commands/process-cmds arg)]
+    (is (= value (crdt/get-value {:crdt crdt
+                                  :path [:a]
+                                  :schema (:schema arg)})))))
+
+(deftest test-empty-array-in-map
+  (let [value []
+        arg {:cmds [{:zeno/arg value
+                     :zeno/op :zeno/set
+                     :zeno/path [:zeno/crdt "a"]}]
+             :root :zeno/crdt
+             :schema (l/map-schema (l/array-schema l/string-schema))}
+        {:keys [crdt]} (commands/process-cmds arg)]
+    (is (= value (crdt/get-value {:crdt crdt
+                                  :path ["a"]
+                                  :schema (:schema arg)})))))
 (comment
  (krun #'test-record-nested-negative-insert-after))
 (deftest test-record-nested-negative-insert-after
