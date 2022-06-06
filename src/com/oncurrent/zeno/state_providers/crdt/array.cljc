@@ -109,12 +109,9 @@
                                                     :head-node-id]
                                                    [:head-node-id
                                                     :tail-node-id])
-                        _ (log/info 1)
-                        _ (log/info make-id)
                         edge {:add-id (make-id)
                               self-add-id node
                               opp-add-id conn-node}
-                        _ (log/info 2)
                         new-edges (:new-edges acc)]
                     (-> acc
                         (update :edges conj edge)

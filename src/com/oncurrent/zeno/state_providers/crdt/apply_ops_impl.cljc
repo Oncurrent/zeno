@@ -100,8 +100,8 @@
   (apply-union-op arg))
 
 (defmethod apply-op [:union :add-array-edge]
-  [arg]
-  (apply-union-op arg))
+  [{:keys [op-path] :as arg}]
+  (apply-union-op (assoc-in arg [:crdt :union-branch] (first op-path))))
 
 (defmethod apply-op [:union :delete-array-edge]
   [arg]
