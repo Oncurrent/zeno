@@ -160,7 +160,7 @@
   [{:keys [i log-info snapshot-interval tx-info] :as arg}]
   (let [{:keys [tx-index]} tx-info
         {:keys [branch-log-tx-indices-since-snapshot]} log-info
-        new-snapshot? (>= (count branch-log-tx-indices-since-snapshot)
+        new-snapshot? (>= (inc (count branch-log-tx-indices-since-snapshot))
                           snapshot-interval)]
     (if new-snapshot?
       (make-new-snapshot! arg)

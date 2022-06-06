@@ -13,6 +13,7 @@
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.baracus :as ba]
    [deercreeklabs.lancaster :as l]
+   #?(:clj [kaocha.repl])
    [taoensso.timbre :as log]
    [test-common :as tc])
   (:import
@@ -41,6 +42,8 @@
       (au/<? (server/<log-producer-tx-batch!
               (assoc arg :serializable-tx-infos [ser-tx-info]))))))
 
+(comment
+ (kaocha.repl/run #'test-sync {:capture-output? false :color? false}))
 (deftest test-sync
   (au/test-async
    3000
@@ -75,17 +78,17 @@
                                  (get book-id))))
                _ (is (= {:actor-id-to-log-info
                          {"__BRANCH_MAIN__"
-                          {:branch-log-tx-indices-since-snapshot [0],
-                           :snapshot-tx-index -1,
+                          {:branch-log-tx-indices-since-snapshot [0]
+                           :snapshot-tx-index -1
                            :snapshot-txs-hash 0}}
-
                          :branch-tx-ids ["tx-1"]}
                         (au/<? (storage/<get storage branch-log-k
                                              shared/branch-log-info-schema))))
                gcsi-ret-1 (au/<? (server/<get-consumer-sync-info arg))
                _ (is (= {:snapshot-tx-index -1
                          :snapshot-url nil
-                         :tx-ids-since-snapshot ["tx-1"]} gcsi-ret-1))
+                         :tx-ids-since-snapshot ["tx-1"]}
+                        gcsi-ret-1))
                the-id "xyz-123"
                cmds-2 [{:zeno/arg the-id
                         :zeno/op :zeno/set
