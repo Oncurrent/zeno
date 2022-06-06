@@ -389,9 +389,10 @@
                     :get-child-schema (fn [_]
                                         (l/child-schema schema)))]
     (if (empty? path)
-      (let [id->v (:value (get-sub-value-info arg*))]
+      (let [id->v (:value (get-sub-value-info arg*))
+            v (mapv id->v ordered-node-ids)]
         {:norm-path norm-path
-         :value (mapv id->v ordered-node-ids)})
+         :value v})
       (let [[raw-k & sub-path] path
             [k i] (cond
                     (string? raw-k)
