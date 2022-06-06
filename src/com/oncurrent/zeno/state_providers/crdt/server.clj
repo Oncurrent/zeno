@@ -1,6 +1,7 @@
 (ns com.oncurrent.zeno.state-providers.crdt.server
   (:require
    [clojure.core.async :as ca]
+   [clojure.set :as set]
    [compact-uuids.core :as compact-uuid]
    [com.oncurrent.zeno.bulk-storage :as bulk-storage]
    [com.oncurrent.zeno.schemas :as schemas]
@@ -51,7 +52,7 @@
 (def hash-multiplier 6364136223846793005)
 
 (defn additive-hash
-  "Returns a new additive hash value (a long), given an old rolling
+  "Returns a new additive hash value (a long), given an old additive
    hash value and a new value (a long) to add to the hash.
    This is a rolling hash without removal."
   [{:keys [old-hash new-v]}]
@@ -104,9 +105,9 @@
     (let [tx-infos (au/<? (<get-tx-infos-for-tx-ids arg))]
       (reduce (fn [acc {:keys [crdt-ops updated-paths]}]
                 (-> acc
-                    (update :crdt-ops concat crdt-ops)
+                    (update :crdt-ops set/union crdt-ops)
                     (update :updated-paths concat updated-paths)))
-              {:crdt-ops []
+              {:crdt-ops #{}
                :updated-paths []}
               tx-infos))))
 
@@ -232,8 +233,8 @@
 (defn update-branch->crdt-info!
   [{:keys [*branch->crdt-info branch root schema tx-infos]}]
   (let [crdt-ops (reduce (fn [acc tx-info]
-                           (concat acc (:crdt-ops tx-info)))
-                         []
+                           (set/union acc (:crdt-ops tx-info)))
+                         #{}
                          tx-infos)]
     (swap! *branch->crdt-info update branch
            (fn [old-info]
@@ -438,8 +439,8 @@
                       (:branch-log-tx-indices-since-snapshot log-info))
           tx-infos (au/<? (<get-tx-infos-for-tx-ids (assoc arg :tx-ids tx-ids)))
           crdt-ops (reduce (fn [acc tx-info]
-                             (concat acc (:crdt-ops tx-info)))
-                           []
+                             (set/union acc (:crdt-ops tx-info)))
+                           #{}
                            tx-infos)
           crdt (apply-ops/apply-ops (assoc (u/sym-map crdt-ops schema)
                                            :crdt (:crdt snapshot)))

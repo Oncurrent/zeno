@@ -595,8 +595,9 @@
                       (assoc :cmd-type (:zeno/op cmd))
                       (assoc :path (u/chop-root cmd-path root))))))
 
-(defn process-cmds [{:keys [cmds make-id root] :as arg}]
-  (let [make-id (or make-id u/compact-random-uuid)
+(defn process-cmds [{:keys [cmds crdt make-id root] :as arg}]
+  (let [{:keys [repair-crdt-ops]} crdt
+        make-id (or make-id u/compact-random-uuid)
         result (reduce (fn [acc cmd]
                          (let [ret (process-cmd (assoc acc
                                                        :cmd cmd
@@ -607,4 +608,7 @@
                                (update :updated-paths conj (:zeno/path cmd)))))
                        arg
                        cmds)]
-    (update result :crdt-ops vec)))
+    (-> result
+        (update :crdt dissoc :repair-crdt-ops)
+        (update :crdt-ops set/union repair-crdt-ops))
+    #_(update result :crdt-ops vec)))
