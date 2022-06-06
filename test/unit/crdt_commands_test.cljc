@@ -1137,7 +1137,6 @@
                                   :schema (:schema arg)})))))
 
 (comment (krun #'test-empty-array-in-record))
-(comment (krun #'test-empty-array-in-map))
 (deftest test-empty-array-in-record
   (let [value []
         arg {:cmds [{:zeno/arg value
@@ -1151,6 +1150,7 @@
                                   :path [:a]
                                   :schema (:schema arg)})))))
 
+(comment (krun #'test-empty-array-in-map))
 (deftest test-empty-array-in-map
   (let [value []
         arg {:cmds [{:zeno/arg value
