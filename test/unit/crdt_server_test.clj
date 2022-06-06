@@ -13,7 +13,7 @@
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.baracus :as ba]
    [deercreeklabs.lancaster :as l]
-   #?(:clj [kaocha.repl])
+   [kaocha.repl]
    [taoensso.timbre :as log]
    [test-common :as tc])
   (:import
