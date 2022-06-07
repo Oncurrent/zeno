@@ -1,6 +1,7 @@
 (ns com.oncurrent.zeno.state-providers.crdt.client
   (:require
    [clojure.core.async :as ca]
+   [clojure.set :as set]
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.lancaster :as l]
    [com.oncurrent.zeno.schemas :as schemas]
@@ -10,6 +11,7 @@
    [com.oncurrent.zeno.state-providers.crdt.apply-ops-impl :as apply-ops]
    [com.oncurrent.zeno.state-providers.crdt.commands :as commands]
    [com.oncurrent.zeno.state-providers.crdt.common :as common]
+   [com.oncurrent.zeno.state-providers.crdt.repair :as repair]
    [com.oncurrent.zeno.state-providers.crdt.shared :as shared]
    [com.oncurrent.zeno.storage :as storage]
    [com.oncurrent.zeno.utils :as u]
@@ -53,73 +55,73 @@
           (ca/<! (ca/timeout 50))
           (recur))))))
 
-(defn update-state-info!
-  [{:keys [*state-info crdt last-tx-index root schema snapshot tx-infos]}]
-  (let [info (reduce (fn [acc {:keys [crdt-ops updated-paths]}]
-                       (-> acc
-                           (update :crdt-ops concat crdt-ops)
-                           (update :updated-paths concat updated-paths)))
-                     {:crdt-ops []
-                      :updated-paths []}
-                     tx-infos)
-        {:keys [crdt-ops updated-paths]} info
-        apply-ops (fn [crdt]
-                    (apply-ops/apply-ops {:crdt crdt
-                                          :crdt-ops crdt-ops
-                                          :schema schema}))]
-    (swap! *state-info
-           (fn [state-info]
-             (let [crdt* (or crdt
-                             (cond-> (:crdt (or snapshot state-info))
-                               (seq tx-infos) (apply-ops)))]
-               {:crdt crdt*
-                :last-tx-index (or last-tx-index
-                                   (:last-tx-index state-info))})))
-    (u/sym-map updated-paths)))
+(defn <log-tx-infos! [{:keys [*actor-id *env-name *state-info *storage schema]}]
+  (au/go
+    (let [actor-id @*actor-id
+          storage @*storage
+          env-name @*env-name
+          unsynced-log-k (->unsynced-log-k (u/sym-map env-name))
+          {:keys [tx-infos-to-log]} @*state-info]
+      (doseq [tx-info tx-infos-to-log]
+        (let [{:keys [tx-id]} tx-info
+              tx-info-k (common/tx-id->tx-info-k tx-id)
+              ser-tx-info (au/<? (common/<tx-info->serializable-tx-info
+                                  (u/sym-map schema storage tx-info)))]
+          (au/<? (storage/<swap! storage
+                                 tx-info-k
+                                 shared/serializable-tx-info-schema
+                                 (constantly ser-tx-info)))
+          (au/<? (storage/<swap! storage unsynced-log-k
+                                 shared/unsynced-log-schema
+                                 (fn [aid->tx-ids]
+                                   (let [aid (get-actor-id-str actor-id)]
+                                     (update aid->tx-ids aid
+                                             (fn [tx-ids]
+                                               (conj (or tx-ids #{})
+                                                     tx-id)))))))
+          (swap! *state-info (fn [state-info]
+                               (update state-info :tx-infos-to-log
+                                       disj tx-info))))))))
 
 (defn make-<update-state!
-  [{:keys [*actor-id *env-name *state-info *storage
-           authorizer client-id schema signal-producer-sync!]
-    :as arg}]
+  [{:keys [*actor-id *state-info authorizer client-id make-tx-id schema
+           signal-producer-sync!]
+    :as mus-arg}]
   (fn [{:zeno/keys [cmds]
         :keys [root]
         :as fn-arg}]
     (au/go
-      (au/<? (<wait-for-init arg))
+      (au/<? (<wait-for-init mus-arg))
       (let [actor-id @*actor-id
-            env-name @*env-name
+            tx-info-base (common/make-update-state-tx-info-base
+                          (assoc mus-arg
+                                 :actor-id actor-id
+                                 :cmds cmds))
             unauth-cmds (get-unauthorized-commands
                          (u/sym-map actor-id authorizer cmds))]
         (if (seq unauth-cmds)
           (throw (ex-info "Transaction aborted due to unauthorized cmds."
                           (u/sym-map cmds unauth-cmds actor-id)))
-          (let [ret (commands/process-cmds {:cmds cmds
-                                            :crdt (:crdt @*state-info)
-                                            :schema schema
-                                            :root root})
-                {:keys [crdt crdt-ops updated-paths]} ret
-                tx-id (u/compact-random-uuid)
-                k (common/tx-id->tx-info-k tx-id)
-                storage @*storage
-                sys-time-ms (u/current-time-ms)
-                tx-info (u/sym-map actor-id client-id crdt-ops sys-time-ms
-                                   tx-id updated-paths)
-                tx-infos [tx-info]
-                ser-tx-info (au/<? (common/<tx-info->serializable-tx-info
-                                    (u/sym-map schema storage tx-info)))
-                _ (update-state-info! (u/sym-map *state-info crdt root schema
-                                                 tx-infos))
-                unsynced-log-k (->unsynced-log-k (u/sym-map env-name))]
-            (au/<? (storage/<swap! storage k shared/serializable-tx-info-schema
-                                   (constantly ser-tx-info)))
-            (au/<? (storage/<swap! storage unsynced-log-k
-                                   shared/unsynced-log-schema
-                                   (fn [aid->tx-ids]
-                                     (let [aid (get-actor-id-str actor-id)]
-                                       (update aid->tx-ids aid
-                                               conj tx-id)))))
+
+          (do
+            (swap! *state-info
+                   (fn [{:keys [repair-crdt-ops
+                                tx-infos-to-log] :as state-info}]
+                     (let [ret (commands/process-cmds {:cmds cmds
+                                                       :crdt (:crdt state-info)
+                                                       :schema schema
+                                                       :root root})
+                           {:keys [crdt crdt-ops]} ret
+                           tx-info (assoc tx-info-base :crdt-ops
+                                          (set/union crdt-ops repair-crdt-ops))]
+                       (assoc state-info
+                              :crdt crdt
+                              :repair-crdt-ops #{}
+                              :tx-infos-to-log (conj (or tx-infos-to-log #{}
+                                                         tx-info))))))
+            (au/<? (<log-tx-infos! mus-arg))
             (signal-producer-sync!)
-            (u/sym-map updated-paths)))))))
+            (select-keys tx-info-base [:updated-paths])))))))
 
 (defn <sync-producer-txs-for-actor-id!
   [{:keys [*client-running? *connected? *host-fns
@@ -133,7 +135,7 @@
                                                shared/unsynced-log-schema))
               tx-ids (get aid->tx-ids actor-id-str)
               batch (set (take 10 tx-ids))
-              ser-tx-infos (when tx-ids
+              ser-tx-infos (when (seq tx-ids)
                              (au/<? (common/<get-serializable-tx-infos
                                      {:storage storage
                                       :tx-ids batch})))]
@@ -146,12 +148,9 @@
                                    shared/unsynced-log-schema
                                    (fn [aid->tx-ids]
                                      (update aid->tx-ids actor-id-str
-                                             #(reduce (fn [acc tx-id]
-                                                        (if (batch tx-id)
-                                                          acc
-                                                          (conj acc tx-id)))
-                                                      []
-                                                      %))))))
+                                             (fn [tx-ids]
+                                               (set/difference tx-ids
+                                                               batch)))))))
           (when (and @*client-running?
                      @*connected?
                      sync-whole-log?
@@ -189,7 +188,7 @@
 
 (defn <sync-consumer-txs!*
   [{:keys [*actor-id *client-running? *connected? *env-name *host-fns
-           *state-info *storage root schema]
+           *state-info *storage root]
     :as arg}]
   ;; TODO: Don't re-apply own txns
   (au/go
@@ -211,7 +210,6 @@
                              (assoc arg
                                     :<request-schema <request-schema
                                     :url snapshot-url
-                                    :schema schema
                                     :storage storage)))
             ser-tx-infos (when (and @*connected?
                                     (seq tx-ids-since-snapshot))
@@ -223,14 +221,38 @@
                                     :<request-schema <request-schema
                                     :serializable-tx-infos ser-tx-infos
                                     :storage storage)))
-            usi-ret (update-state-info! (u/sym-map *state-info last-tx-index
-                                                   schema snapshot tx-infos))]
+            tx-agg-info (reduce (fn [acc {:keys [crdt-ops updated-paths]}]
+                                  (-> acc
+                                      (update :crdt-ops
+                                              set/union crdt-ops)
+                                      (update :updated-paths
+                                              concat updated-paths)))
+                                {:crdt-ops #{}
+                                 :updated-paths []}
+                                tx-infos)
+            {:keys [crdt-ops updated-paths]} tx-agg-info]
+        (swap! *state-info
+               (fn [state-info]
+                 ;; TODO: Handle case where this retries due to a concurrent
+                 ;; update-state call and there was a snapshot.
+                 (let [crdt (apply-ops/apply-ops
+                             (assoc arg
+                                    :crdt (:crdt (or snapshot state-info))
+                                    :crdt-ops crdt-ops))
+                       repair-info (repair/repair (assoc arg :crdt crdt))]
+                   (-> state-info
+                       (assoc :crdt (:crdt repair-info))
+                       (assoc :last-tx-index (or last-tx-index
+                                                 (:last-tx-index state-info)))
+                       (update :repair-crdt-ops
+                               set/union (:crdt-ops repair-info))))))
+
         (cond
           snapshot
           (update-subscriptions! {:updated-paths [[root]]})
 
           (seq tx-infos)
-          (update-subscriptions! usi-ret))))))
+          (update-subscriptions! (u/sym-map updated-paths)))))))
 
 ;; TODO: Flesh this out, make sure it completes before any
 ;; other state updates are processed. Wait in the <init! process?

@@ -86,19 +86,8 @@
                                  :path (or ks [])
                                  :schema (get-child-schema k))))))))
 
-;; TODO: Replace this with conflict resolution?
-(defn get-most-recent [current-add-id-to-value-info]
-  (->> (vals current-add-id-to-value-info)
-       (sort-by :sys-time-ms)
-       (last)))
-
-(defn get-single-value [{:keys [crdt schema] :as arg}]
-  (let [{:keys [current-add-id-to-value-info]} crdt
-        num-items (count current-add-id-to-value-info)]
-    (case num-items
-      0 nil
-      1 (-> current-add-id-to-value-info first val :value)
-      (:value (get-most-recent current-add-id-to-value-info)))))
+(defn get-single-value [arg]
+  (some-> arg :crdt :current-add-id-to-value-info first val :value))
 
 (defmethod get-value-info :single-value
   [{:keys [norm-path path] :as arg}]
@@ -357,16 +346,20 @@
                              :reader-schema shared/serializable-snapshot-schema
                              :serialized-value serialized-value)
             ser-snap (au/<? (common/<serialized-value->value sv->v-arg))
-            crdt (edn/read-string (:edn-crdt ser-snap))
-            {:keys [bytes fp]} (:serialized-value ser-snap)
-            writer-schema (or (au/<? (storage/<fp->schema storage fp))
-                              (au/<? (common/<get-schema-from-peer
-                                      (assoc arg :fp fp))))
-            v (l/deserialize schema writer-schema bytes)]
-        (u/sym-map crdt v)))))
+            crdt (edn/read-string (:edn-crdt ser-snap))]
+        (u/sym-map crdt)))))
 
 (defn <get-snapshot-from-url [{:keys [url] :as arg}]
   (au/go
     (when url
       (let [ba (au/<? (u/<http-get {:url url}))]
         (au/<? (<ba->snapshot (assoc arg :ba ba)))))))
+
+(defn make-update-state-tx-info-base
+  [{:keys [actor-id client-id cmds make-tx-id]}]
+  (let [tx-id (if make-tx-id
+                (make-tx-id)
+                (u/compact-random-uuid))
+        sys-time-ms (u/current-time-ms)
+        updated-paths (map :zeno/path cmds)]
+    (u/sym-map actor-id client-id sys-time-ms tx-id updated-paths)))
