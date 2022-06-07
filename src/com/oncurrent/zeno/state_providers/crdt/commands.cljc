@@ -476,20 +476,20 @@
                           :i clamped-i
                           :new-node-id node-id
                           :ordered-node-ids ordered-node-ids))
-        add-info (get-add-info
-                  (assoc arg
-                         :crdt crdt
-                         :path sub-path
-                         :schema items-schema))
-        crdt-ops (set/union (:crdt-ops edge-info)
+        add-info (get-add-info (assoc arg
+                                      :path sub-path
+                                      :schema items-schema))
+        edge-ops (:crdt-ops edge-info)
+        crdt-ops (set/union (:crdt-ops arg)
+                            edge-ops
                             (xf-op-paths {:array? true
                                           :prefix node-id
                                           :i (inc clamped-i)
                                           :crdt-ops (:crdt-ops add-info)}))
+        crdt* (assoc-in crdt [:children node-id] (:crdt add-info))
         final-crdt (-> (apply-ops/apply-ops (assoc arg
-                                                   :crdt (:crdt add-info)
-                                                   :schema schema
-                                                   :crdt-ops crdt-ops))
+                                                   :crdt crdt*
+                                                   :crdt-ops edge-ops))
                        (assoc :ordered-node-ids (:ordered-node-ids edge-info)))]
     {:crdt final-crdt
      :crdt-ops crdt-ops}))
@@ -539,13 +539,14 @@
                           :i clamped-i
                           :new-node-ids new-node-ids
                           :ordered-node-ids ordered-node-ids))
+        edge-ops (:crdt-ops edge-info)
         crdt-ops (set/union (:crdt-ops arg)
                             node-crdt-ops
-                            (:crdt-ops edge-info))
+                            edge-ops)
         final-crdt (-> (apply-ops/apply-ops (assoc arg
                                                    :crdt (:crdt info)
                                                    :schema schema
-                                                   :crdt-ops crdt-ops))
+                                                   :crdt-ops edge-ops))
                        (assoc :ordered-node-ids (:ordered-node-ids edge-info)))]
     {:crdt final-crdt
      :crdt-ops crdt-ops}))
