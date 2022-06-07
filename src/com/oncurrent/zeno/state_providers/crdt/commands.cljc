@@ -269,7 +269,7 @@
                        (-> acc
                            (assoc-in [:crdt :children k] (:crdt add-info))
                            (assoc :crdt-ops crdt-ops))))
-                   {:crdt crdt
+                   {:crdt (or crdt {})
                     :crdt-ops (:crdt-ops arg)}
                    cmd-arg)))))
 
