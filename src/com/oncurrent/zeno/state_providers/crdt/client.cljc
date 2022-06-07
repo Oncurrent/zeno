@@ -71,14 +71,10 @@
            (fn [state-info]
              (let [crdt* (or crdt
                              (cond-> (:crdt (or snapshot state-info))
-                               (seq tx-infos) (apply-ops)))
-                   {:keys [value]} (common/get-value-info {:crdt crdt*
-                                                           :path []
-                                                           :schema schema})]
+                               (seq tx-infos) (apply-ops)))]
                {:crdt crdt*
                 :last-tx-index (or last-tx-index
-                                   (:last-tx-index state-info))
-                :v value})))
+                                   (:last-tx-index state-info))})))
     (u/sym-map updated-paths)))
 
 (defn make-<update-state!
@@ -257,31 +253,13 @@
                  "keywords, symbols, and strings are valid path keys.")
             (u/sym-map k path)))))
 
-(defn make-get-in-state [{:keys [*state-info]}]
+(defn make-get-in-state [{:keys [*state-info schema]}]
   (fn get-in-state [{:keys [path root] :as gis-arg}]
-    (reduce (fn [{:keys [value] :as acc} k]
-              (let [[k* value*] (cond
-                                  (or (keyword? k) (nat-int? k) (string? k))
-                                  [k (when value
-                                       (get value k))]
-
-                                  (and (int? k) (neg? k))
-                                  (let [arg {:array-len (count value)
-                                             :i k}
-                                        i (u/get-normalized-array-index arg)]
-                                    [i (nth value i)])
-
-                                  (nil? k)
-                                  [nil nil]
-
-                                  :else
-                                  (throw-bad-path-key path k))]
-                (-> acc
-                    (update :norm-path conj k*)
-                    (assoc :value value*))))
-            {:norm-path [root]
-             :value (:v @*state-info)}
-            (u/chop-root path root))))
+    (common/get-value-info (assoc gis-arg
+                                  :crdt (:crdt @*state-info)
+                                  :path (u/chop-root path root)
+                                  :norm-path [root]
+                                  :schema schema))))
 
 (defn ->state-provider
   [{::crdt/keys [authorizer schema root] :as config}]
@@ -357,7 +335,7 @@
     (load-local-data! lld-arg)
     #::sp-impl{:<update-state! (make-<update-state! mus-arg)
                :<wait-for-sync <wait-for-sync
-               :get-in-state (make-get-in-state (u/sym-map *state-info))
+               :get-in-state (make-get-in-state (u/sym-map *state-info schema))
                :init! init!
                :msg-handlers {:notify-consumer-log-sync
                               (fn [arg]

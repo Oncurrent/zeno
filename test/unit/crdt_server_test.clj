@@ -72,10 +72,6 @@
                         :zeno/op :zeno/set
                         :zeno/path [root :books book-id]}]
                _ (is (= true (au/<? (<log-tx! (assoc arg :cmds cmds-1)))))
-               _ (is (= book (-> (@*branch->crdt-info branch)
-                                 (:v)
-                                 (:books)
-                                 (get book-id))))
                _ (is (= {:actor-id-to-log-info
                          {"__BRANCH_MAIN__"
                           {:branch-log-tx-indices-since-snapshot [0]

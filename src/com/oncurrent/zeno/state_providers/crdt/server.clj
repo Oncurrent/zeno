@@ -240,12 +240,8 @@
            (fn [old-info]
              (let [crdt (apply-ops/apply-ops {:crdt (:crdt old-info)
                                               :crdt-ops crdt-ops
-                                              :schema schema})
-                   {:keys [value]} (common/get-value-info {:crdt crdt
-                                                           :path []
-                                                           :schema schema})]
-               {:crdt crdt
-                :v value})))))
+                                              :schema schema})]
+               {:crdt crdt})))))
 
 (defn <add-to-branch-log! [{:keys [branch storage tx-infos] :as arg}]
   (au/go
@@ -509,32 +505,15 @@
             (u/sym-map k path)))))
 
 (defn make-<get-state [{:keys [*branch->crdt-info root schema]}]
-  (fn [{:zeno/keys [branch path] :as gis-arg}]
+  (fn [{:zeno/keys [branch path] :as gs-arg}]
     (au/go
-      (let [{:keys [v]} (@*branch->crdt-info branch)]
-        (reduce (fn [{:keys [value] :as acc} k]
-                  (let [[k* value*] (cond
-                                      (or (keyword? k) (nat-int? k) (string? k))
-                                      [k (when value
-                                           (get value k))]
-
-                                      (and (int? k) (neg? k))
-                                      (let [arg {:array-len (count value)
-                                                 :i k}
-                                            i (u/get-normalized-array-index arg)]
-                                        [i (nth value i)])
-
-                                      (nil? k)
-                                      [nil nil]
-
-                                      :else
-                                      (throw-bad-path-key path k))]
-                    (-> acc
-                        (update :norm-path conj k*)
-                        (assoc :value value*))))
-                {:norm-path []
-                 :value v}
-                path)))))
+      (common/get-value-info (assoc gs-arg
+                                    :crdt (some-> @*branch->crdt-info
+                                                  (get branch)
+                                                  :crdt)
+                                    :path path
+                                    :norm-path []
+                                    :schema schema)))))
 
 (defn ->state-provider
   [{::crdt/keys [authorizer schema s3-snapshot-bucket root]}]
