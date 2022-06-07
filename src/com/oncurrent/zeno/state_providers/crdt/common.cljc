@@ -60,19 +60,20 @@
 (defn associative-get-value-info
   [{:keys [get-child-schema crdt norm-path path] :as arg}]
   (if (empty? path)
-    (let [value (reduce-kv
-                 (fn [acc k x]
-                   (let [v (-> (assoc arg :path [k])
-                               (get-value-info)
-                               (:value))]
-                     (if (or (nil? v)
-                             (and (coll? v)
-                                  (empty? v)
-                                  (empty? (:current-edge-add-ids x))))
-                       acc
-                       (assoc acc k v))))
-                 {}
-                 (:children crdt))]
+    (let [value (when crdt
+                  (reduce-kv
+                   (fn [acc k x]
+                     (let [v (-> (assoc arg :path [k])
+                                 (get-value-info)
+                                 (:value))]
+                       (if (or (nil? v)
+                               (and (coll? v)
+                                    (empty? v)
+                                    (empty? (:current-edge-add-ids x))))
+                         acc
+                         (assoc acc k v))))
+                   {}
+                   (:children crdt)))]
       (u/sym-map value norm-path))
     (let [[k & ks] path]
       (if-not k
