@@ -73,8 +73,8 @@
     (when-not (int? union-branch)
       (let [union-edn-schema (l/edn schema)]
         (throw (ex-info
-                (str "Operating on a op-path that includes a union requires an "
-                     "integer union-branch value in the op-path. Got `"
+                (str "Operating on ao op-path that includes a union requires "
+                     "an integer union-branch value in the op-path. Got `"
                      (or union-branch "nil") "`.")
                 (u/sym-map add-id op-type op-path union-edn-schema value)))))))
 

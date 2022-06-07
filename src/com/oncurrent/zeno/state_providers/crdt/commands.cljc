@@ -23,7 +23,7 @@
                       (c/schema->dispatch-type schema)))
 
 (defmulti get-delete-info (fn [{:keys [schema]}]
-                                (c/schema->dispatch-type schema)))
+                            (c/schema->dispatch-type schema)))
 
 (defmulti get-add-info (fn [{:keys [schema]}]
                              (c/schema->dispatch-type schema)))
@@ -636,11 +636,11 @@
                       (assoc :path (u/chop-root cmd-path root))))))
 
 (defn process-cmds [{:keys [cmds crdt make-id root] :as arg}]
-  (let [make-id (or make-id u/compact-random-uuid)]
+  (let [make-id* (or make-id u/compact-random-uuid)]
     (reduce (fn [acc cmd]
               (let [ret (process-cmd (assoc acc
                                             :cmd cmd
-                                            :make-id make-id))]
+                                            :make-id make-id*))]
                 (-> acc
                     (assoc :crdt (:crdt ret))
                     (update :crdt-ops set/union (:crdt-ops ret)))))
