@@ -74,15 +74,20 @@
     (is (= nil (crdt/get-value (update get-arg :path conj "a"))))
     (is (= nil (crdt/get-value (update get-arg :path conj nil))))))
 
-(comment
- (krun #'test-set-empty-record-with-map-of-records))
+(comment (krun #'test-set-empty-record-with-map-of-records))
 (deftest test-set-empty-record-with-map-of-records
   (let [arg {:cmds [{:zeno/arg {}
                      :zeno/op :zeno/set
                      :zeno/path []}]
              :schema pet-school-schema}
-        {:keys [crdt]} (commands/process-cmds arg)
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        applied-crdt (apply-ops/apply-ops {:crdt {}
+                                           :crdt-ops crdt-ops
+                                           :schema (:schema arg)})
+        repaired-crdt (:crdt (repair/repair
+                              (assoc arg :crdt applied-crdt)))
         get-arg {:crdt crdt :path [:pet-owners] :schema (:schema arg)}]
+    (is (= crdt repaired-crdt))
     (is (= nil (crdt/get-value get-arg)))
     (is (= {} (crdt/get-value (update get-arg :path conj "a"))))
     (is (= nil (crdt/get-value (update get-arg :path conj nil))))))

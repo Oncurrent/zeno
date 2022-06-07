@@ -296,13 +296,12 @@
                 (let [v (get cmd-arg k)
                       child-schema (l/child-schema schema k)
                       child-crdt (get-in (:crdt acc) [:children k])
-                      add-info (when v
-                                 (get-add-info
-                                  (assoc arg
-                                         :cmd-arg v
-                                         :crdt child-crdt
-                                         :path []
-                                         :schema child-schema)))
+                      add-info (get-add-info
+                                (assoc arg
+                                       :cmd-arg v
+                                       :crdt child-crdt
+                                       :path []
+                                       :schema child-schema))
                       crdt-ops (when add-info
                                  (set/union (:crdt-ops acc)
                                             (xf-op-paths
