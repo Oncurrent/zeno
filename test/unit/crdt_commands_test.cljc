@@ -158,7 +158,11 @@
              :schema l/string-schema
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        applied-crdt (apply-ops/apply-ops {:crdt {} :crdt-ops crdt-ops
+                                           :schema (:schema arg)})
+        repaired-crdt (:crdt (repair/repair (assoc arg :crdt applied-crdt)))
         expected-value "Hi"]
+    (is (= crdt repaired-crdt))
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:schema arg)})))))
@@ -175,7 +179,11 @@
              :schema l/string-schema
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        applied-crdt (apply-ops/apply-ops {:crdt {} :crdt-ops crdt-ops
+                                           :schema (:schema arg)})
+        repaired-crdt (:crdt (repair/repair (assoc arg :crdt applied-crdt)))
         expected-value nil]
+    (is (= crdt repaired-crdt))
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:schema arg)})))))
@@ -193,7 +201,11 @@
              :schema l/string-schema
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        applied-crdt (apply-ops/apply-ops {:crdt {} :crdt-ops crdt-ops
+                                           :schema (:schema arg)})
+        repaired-crdt (:crdt (repair/repair (assoc arg :crdt applied-crdt)))
         expected-value "Goodbye"]
+    (is (= crdt repaired-crdt))
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:schema arg)})))))
@@ -214,8 +226,12 @@
              :schema (l/map-schema l/int-schema)
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        applied-crdt (apply-ops/apply-ops {:crdt {} :crdt-ops crdt-ops
+                                           :schema (:schema arg)})
+        repaired-crdt (:crdt (repair/repair (assoc arg :crdt applied-crdt)))
         expected-value {"Alice" 31
                         "Bob" 12}]
+    (is (= crdt repaired-crdt))
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:schema arg)})))))
@@ -236,8 +252,12 @@
              :schema pet-schema
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        applied-crdt (apply-ops/apply-ops {:crdt {} :crdt-ops crdt-ops
+                                           :schema (:schema arg)})
+        repaired-crdt (:crdt (repair/repair (assoc arg :crdt applied-crdt)))
         expected-value {:name "Sheepy"
                         :species "Ovis aries"}]
+    (is (= crdt repaired-crdt))
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:schema arg)})))))
@@ -1193,8 +1213,10 @@
         expected-value {:a [value]}
         applied-crdt (apply-ops/apply-ops {:crdt {}
                                            :crdt-ops crdt-ops
-                                           :schema (:schema arg)})]
-    (is (= crdt applied-crdt))
+                                           :schema (:schema arg)})
+        repaired-crdt (:crdt (repair/repair
+                              (assoc arg :crdt applied-crdt)))]
+    (is (= crdt repaired-crdt))
     (is (= value (crdt/get-value {:crdt crdt
                                   :path [:a -1]
                                   :schema (:schema arg)})))
@@ -1214,8 +1236,10 @@
         expected-value [value]
         applied-crdt (apply-ops/apply-ops {:crdt {}
                                            :crdt-ops crdt-ops
-                                           :schema (:schema arg)})]
-    (is (= crdt applied-crdt))
+                                           :schema (:schema arg)})
+        repaired-crdt (:crdt (repair/repair
+                              (assoc arg :crdt applied-crdt)))]
+    (is (= crdt repaired-crdt))
     (is (= value (crdt/get-value {:crdt crdt
                                   :path [-1]
                                   :schema (:schema arg)})))
