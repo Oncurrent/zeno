@@ -80,11 +80,13 @@
          :value nil}
         (do
           (check-key (assoc arg :key k))
-          (get-value-info (assoc arg
-                                 :crdt (get-in crdt [:children k])
-                                 :norm-path (conj (or norm-path []) k)
-                                 :path (or ks [])
-                                 :schema (get-child-schema k))))))))
+          (let [child-crdt (get-in crdt [:children k])
+                child-schema (get-child-schema k)]
+            (get-value-info (assoc arg
+                                   :crdt child-crdt
+                                   :norm-path (conj (or norm-path []) k)
+                                   :path (or ks [])
+                                   :schema child-schema))))))))
 
 (defn get-single-value [arg]
   (some-> arg :crdt :current-add-id-to-value-info first val :value))

@@ -212,7 +212,7 @@
                                         :splitting-node node)))))))))))
 
 (defn get-array-info
-  [{:keys [crdt path]}]
+  [{:keys [crdt get-child-schema path] :as arg}]
   (let [edges (get-edges {:crdt crdt
                           :edge-type :current})]
     (if (empty? edges)
@@ -244,7 +244,15 @@
                :ordered-node-ids ordered-node-ids}
 
               :else
-              (recur child (conj ordered-node-ids child)))))))))
+              (let [v (:value (c/get-value-info
+                               (assoc arg
+                                      :crdt (get-in crdt [:children child])
+                                      :path []
+                                      :schema (get-child-schema child))))
+                    new-ids (if v
+                              (conj ordered-node-ids child)
+                              ordered-node-ids)]
+                (recur child new-ids)))))))))
 
 (defn get-live-nodes [{:keys [crdt schema] :as arg}]
   (let [child-schema (l/child-schema schema)]

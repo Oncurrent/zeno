@@ -35,8 +35,10 @@
     (u/sym-map crdt crdt-ops)))
 
 (defmethod repair :array
-  [{:keys [crdt] :as arg}]
-  (let [info (array/get-array-info arg)]
+  [{:keys [crdt schema] :as arg}]
+  (let [items-schema (l/child-schema schema)
+        arg* (assoc arg :get-child-schema (constantly items-schema))
+        info (array/get-array-info arg*)]
     (cond
       (not (:linear? info))
       (array/repair-array arg)

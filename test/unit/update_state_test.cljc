@@ -1012,6 +1012,7 @@
              ret2 (zc/subscribe-to-state! zc "test" sub-map update-fn
                                           (u/sym-map resolution-map))
              _ (is (= {'my-nums [2 3 4]} ret2))
+
              ret3 (au/<? (zc/<update-state!
                           zc [{:zeno/path [:zeno/crdt "2" 1]
                                :zeno/op :zeno/remove}]))
