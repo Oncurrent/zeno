@@ -272,7 +272,11 @@
              :schema pet-schema
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        applied-crdt (apply-ops/apply-ops {:crdt {} :crdt-ops crdt-ops
+                                           :schema (:schema arg)})
+        repaired-crdt (:crdt (repair/repair (assoc arg :crdt applied-crdt)))
         expected-value {:name "Sheepy"}]
+    (is (= crdt repaired-crdt))
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:schema arg)})))))
@@ -291,8 +295,12 @@
              :schema (l/array-schema pet-trainer-schema)
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        applied-crdt (apply-ops/apply-ops {:crdt {} :crdt-ops crdt-ops
+                                           :schema (:schema arg)})
+        repaired-crdt (:crdt (repair/repair (assoc arg :crdt applied-crdt)))
         expected-value [{:name "Bill"
                          :specialties {:aggression true}}]]
+    (is (= crdt repaired-crdt))
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:schema arg)})))))
@@ -310,11 +318,16 @@
              :schema (l/union-schema [l/string-schema l/float-schema])
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        applied-crdt (apply-ops/apply-ops {:crdt {} :crdt-ops crdt-ops
+                                           :schema (:schema arg)})
+        repaired-crdt (:crdt (repair/repair (assoc arg :crdt applied-crdt)))
         expected-value "pi"]
+    (is (= crdt repaired-crdt))
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:schema arg)})))))
 
+(comment (krun #'test-crdt-array-set))
 (deftest test-crdt-array-set
   (let [sys-time-ms (u/str->long "1643061294999")
         arg {:cmds [{:zeno/arg ["Hi" "There"]
@@ -324,7 +337,11 @@
              :schema (l/array-schema l/string-schema)
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        applied-crdt (apply-ops/apply-ops {:crdt {} :crdt-ops crdt-ops
+                                           :schema (:schema arg)})
+        repaired-crdt (:crdt (repair/repair (assoc arg :crdt applied-crdt)))
         expected-value ["Hi" "There"]]
+    (is (= crdt repaired-crdt))
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:schema arg)})))))
@@ -340,7 +357,11 @@
              :schema (l/array-schema l/string-schema)
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        applied-crdt (apply-ops/apply-ops {:crdt {} :crdt-ops crdt-ops
+                                           :schema (:schema arg)})
+        repaired-crdt (:crdt (repair/repair (assoc arg :crdt applied-crdt)))
         expected-value []]
+    (is (= crdt repaired-crdt))
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:schema arg)})))))
@@ -358,7 +379,11 @@
              :schema (l/array-schema l/string-schema)
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        applied-crdt (apply-ops/apply-ops {:crdt {} :crdt-ops crdt-ops
+                                           :schema (:schema arg)})
+        repaired-crdt (:crdt (repair/repair (assoc arg :crdt applied-crdt)))
         expected-value ["Hi" "Bob"]]
+    (is (= crdt repaired-crdt))
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:schema arg)})))))
@@ -376,7 +401,11 @@
              :schema (l/array-schema l/string-schema)
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        applied-crdt (apply-ops/apply-ops {:crdt {} :crdt-ops crdt-ops
+                                           :schema (:schema arg)})
+        repaired-crdt (:crdt (repair/repair (assoc arg :crdt applied-crdt)))
         expected-value ["Bob" "there"]]
+    (is (= crdt repaired-crdt))
     (is (= expected-value (crdt/get-value {:crdt crdt
                                            :path []
                                            :schema (:schema arg)})))))
