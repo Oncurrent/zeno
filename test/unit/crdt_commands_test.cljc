@@ -595,95 +595,108 @@
 (comment (krun #'test-crdt-array-insert-range-after-into-empty))
 (deftest test-crdt-array-insert-range-after-into-empty
   (let [sys-time-ms (u/str->long "1643061294999")
+        schema (l/array-schema l/string-schema)
         arg {:cmds [{:zeno/arg ["1" "2" "3"]
                      :zeno/op :zeno/insert-range-after
                      :zeno/path [:zeno/crdt -1]}]
              :root :zeno/crdt
-             :schema (l/array-schema l/string-schema)
+             :schema schema
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)
         expected-value ["1" "2" "3"]]
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (deftest test-crdt-array-insert-range-before-into-empty
   (let [sys-time-ms (u/str->long "1643061294999")
+        schema (l/array-schema l/string-schema)
         arg {:cmds [{:zeno/arg ["1" "2" "3"]
                      :zeno/op :zeno/insert-range-before
                      :zeno/path [:zeno/crdt 0]}]
              :root :zeno/crdt
-             :schema (l/array-schema l/string-schema)
+             :schema schema
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)
         expected-value ["1" "2" "3"]]
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (comment (krun #'test-crdt-array-insert-range-before-into-front))
 (deftest test-crdt-array-insert-range-before-into-front
-  (let [arg {:cmds [{:zeno/arg ["4" "5"]
+  (let [schema (l/array-schema l/string-schema)
+        arg {:cmds [{:zeno/arg ["4" "5"]
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
                     {:zeno/arg ["1" "2" "3"]
                      :zeno/op :zeno/insert-range-before
                      :zeno/path [:zeno/crdt 0]}]
              :root :zeno/crdt
-             :schema (l/array-schema l/string-schema)}
+             :schema schema}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)
         expected-value ["1" "2" "3" "4" "5"]]
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (deftest test-crdt-array-insert-range-after-end
-  (let [arg {:cmds [{:zeno/arg ["4" "5"]
+  (let [schema (l/array-schema l/string-schema)
+        arg {:cmds [{:zeno/arg ["4" "5"]
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
                     {:zeno/arg ["1" "2" "3"]
                      :zeno/op :zeno/insert-range-after
                      :zeno/path [:zeno/crdt -1]}]
              :root :zeno/crdt
-             :schema (l/array-schema l/string-schema)}
+             :schema schema}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)
         expected-value ["4" "5" "1" "2" "3"]]
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (deftest test-crdt-array-insert-range-before-into-middle
-  (let [arg {:cmds [{:zeno/arg ["1" "2" "3"]
+  (let [schema (l/array-schema l/string-schema)
+        arg {:cmds [{:zeno/arg ["1" "2" "3"]
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
                     {:zeno/arg ["A" "B"]
                      :zeno/op :zeno/insert-range-before
                      :zeno/path [:zeno/crdt -2]}]
              :root :zeno/crdt
-             :schema (l/array-schema l/string-schema)}
+             :schema schema}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)
         expected-value ["1" "A" "B" "2" "3"]]
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (deftest test-crdt-array-insert-range-after-into-middle
-  (let [arg {:cmds [{:zeno/arg ["1" "2" "3"]
+  (let [schema (l/array-schema l/string-schema)
+        arg {:cmds [{:zeno/arg ["1" "2" "3"]
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
                     {:zeno/arg ["A" "B"]
                      :zeno/op :zeno/insert-range-after
                      :zeno/path [:zeno/crdt -2]}]
              :root :zeno/crdt
-             :schema (l/array-schema l/string-schema)}
-        {:keys [crdt]} (commands/process-cmds arg)
+             :schema schema}
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)
         expected-value ["1" "2" "A" "B" "3"]]
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (deftest test-nested-set
-  (let [arg {:cmds [{:zeno/arg {:name "Bill"
+  (let [schema pet-owner-schema
+        arg {:cmds [{:zeno/arg {:name "Bill"
                                 :pets [{:name "Pinky"
                                         :species "Felis catus"}
                                        {:name "Fishy"
@@ -694,24 +707,25 @@
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt :pets -1 :name]}]
              :root :zeno/crdt
-             :schema pet-owner-schema}
-        {:keys [crdt]} (commands/process-cmds arg)
+             :schema schema}
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)
         expected-value {:name "Bill"
                         :pets [{:name "Pinky"
                                 :species "Felis catus"}
                                {:name "Goldy"
                                 :species "Carassius auratus"}]}]
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))
     (is (= {:name "Pinky"
             :species "Felis catus"}
-           (crdt/get-value {:crdt crdt
-                            :path [:pets -2]
-                            :schema (:schema arg)})))))
+           (->value crdt [:pets -2] schema)
+           (->value acrdt [:pets -2] schema)))))
 
 (deftest test-nested-set-and-remove
   (let [*next-id-num (atom 0)
+        schema pet-owner-schema
         arg {:cmds [{:zeno/arg {:name "Bill"
                                 :pets [{:name "Pinky"
                                         :species "Felis catus"}
@@ -722,40 +736,43 @@
                     {:zeno/op :zeno/remove
                      :zeno/path [:zeno/crdt :pets 0]}]
              :root :zeno/crdt
-             :schema pet-owner-schema
+             :schema schema
              :make-id #(let [n (swap! *next-id-num inc)]
                          (str "I" n))}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)
         expected-value {:name "Bill"
                         :pets [{:name "Fishy"
                                 :species "Carassius auratus"}]}]
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (deftest test-subsequent-txns
-  (let [arg1 {:cmds [{:zeno/arg {:name "Bill"
+  (let [schema pet-owner-schema
+        arg1 {:cmds [{:zeno/arg {:name "Bill"
                                  :pets [{:name "Pinky"
                                          :species "Felis catus"}
                                         {:name "Fishy"
                                          :species "Carassius auratus"}]}
                       :zeno/op :zeno/set
                       :zeno/path [:zeno/crdt]}]
-             :root :zeno/crdt
-              :schema pet-owner-schema}
-        ret1 (commands/process-cmds arg1)
+              :root :zeno/crdt
+              :schema schema}
+        {crdt1 :crdt crdt1-ops :crdt-ops} (commands/process-cmds arg1)
         arg2 {:cmds [{:zeno/op :zeno/remove
                       :zeno/path [:zeno/crdt :pets 0]}]
               :root :zeno/crdt
               :crdt (:crdt ret1)
-              :schema pet-owner-schema}
-        ret2 (commands/process-cmds arg2)
+              :schema schema}
+        {crdt2 :crdt crdt2-ops :crdt-ops} (commands/process-cmds arg2)
+        acrdt (ops->crdt (set/union crdt1-ops crdt2-ops) schema)
         expected-value {:name "Bill"
                         :pets [{:name "Fishy"
                                 :species "Carassius auratus"}]}]
-    (is (= expected-value (crdt/get-value {:crdt (:crdt ret2)
-                                           :path []
-                                           :schema (:schema arg1)})))))
+    (is (= expected-value
+           (->value crdt2 [] schema)
+           (->value acrdt [] schema)))))
 
 (comment (krun #'test-nested-merge-array-no-conflict))
 (deftest test-nested-merge-array-no-conflict
