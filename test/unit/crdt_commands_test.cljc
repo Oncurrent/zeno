@@ -763,7 +763,7 @@
         arg2 {:cmds [{:zeno/op :zeno/remove
                       :zeno/path [:zeno/crdt :pets 0]}]
               :root :zeno/crdt
-              :crdt (:crdt ret1)
+              :crdt crdt1
               :schema schema}
         {crdt2 :crdt crdt2-ops :crdt-ops} (commands/process-cmds arg2)
         acrdt (ops->crdt (set/union crdt1-ops crdt2-ops) schema)
@@ -785,7 +785,7 @@
                       :zeno/path [:zeno/crdt]}]
               :root :zeno/crdt
               :schema pet-owner-schema}
-        ret0 (commands/process-cmds arg0)
+        {crdt0 :crdt crdt0-ops :crdt-ops} (commands/process-cmds arg0)
         arg1 {:cmds [{:zeno/arg {:name "Chris"
                                  :species "Canis familiaris"}
                       :zeno/op :zeno/insert-before
@@ -800,7 +800,7 @@
               :root :zeno/crdt
               :crdt (:crdt ret0)
               :schema pet-owner-schema}
-        ret1 (commands/process-cmds arg1)
+        {crdt1} (commands/process-cmds arg1)
         ret2 (commands/process-cmds arg2)
         new-crdt-ops (set/union (:crdt-ops ret1) (:crdt-ops ret2))
         merged-crdt (apply-ops/apply-ops {:crdt (:crdt ret0)
@@ -1075,6 +1075,8 @@
          #?(:clj ExceptionInfo :cljs js/Error)
          #"arg is not sequential"
          (commands/process-cmds arg)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (comment (krun #'test-set-map-of-two-arrays))
 (deftest test-set-map-of-two-arrays
