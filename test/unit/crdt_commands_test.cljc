@@ -48,149 +48,174 @@
   [:right-child ::tree]
   [:left-child ::tree])
 
+(defn ops->crdt [ops schema]
+  (apply-ops/apply-ops {:crdt {} :crdt-ops ops :schema schema}))
+
+(defn ->value [crdt path schema]
+  (crdt/get-value (u/sym-map crdt path schema)))
+
 (comment (krun #'test-empty-map-of-records))
 (deftest test-empty-map-of-records
-  (let [get-arg {:crdt {} :path [] :schema pet-owners-schema}]
-    (is (= {} (crdt/get-value get-arg)))
-    (is (= {} (crdt/get-value (update get-arg :path conj "a"))))
-    (is (= nil (crdt/get-value (update get-arg :path conj nil))))))
+  (is (= {} (->value {} [] pet-owners-schema)))
+  (is (= nil (->value {} ["a"] pet-owners-schema)))
+  (is (= nil (->value {} [nil] pet-owners-schema))))
 
 (comment (krun #'test-set-empty-map-of-records))
 (deftest test-set-empty-map-of-records
-  (let [arg {:cmds [{:zeno/arg {}
+  (let [schema pet-owners-schema
+        arg {:cmds [{:zeno/arg {}
                      :zeno/op :zeno/set
                      :zeno/path []}]
-             :schema pet-owners-schema}
+             :schema schema}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
-        applied-crdt (apply-ops/apply-ops {:crdt {}
-                                           :crdt-ops crdt-ops
-                                           :schema (:schema arg)})
-        repaired-crdt (:crdt (repair/repair (assoc arg :crdt applied-crdt)))
-        get-arg {:crdt crdt :path [] :schema (:schema arg)}]
-    (is (= crdt repaired-crdt))
-    (is (= {} (crdt/get-value get-arg)))
-    (is (= {} (crdt/get-value (update get-arg :path conj "a"))))
-    (is (= nil (crdt/get-value (update get-arg :path conj nil))))))
+        acrdt (ops->crdt crdt-ops schema)]
+    (is (= {}
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))
+    (is (= nil
+           (->value crdt ["a"] schema)
+           (->value acrdt ["a"] schema)))
+    (is (= nil
+           (->value crdt [nil] schema)
+           (->value acrdt [nil] schema)))))
 
 (comment (krun #'test-empty-record-with-map-of-records))
 (deftest test-empty-record-with-map-of-records
-  (let [get-arg {:crdt {} :path [:pet-owners] :schema pet-school-schema}]
-    (is (= nil (crdt/get-value get-arg)))
-    (is (= nil (crdt/get-value (update get-arg :path conj "a"))))
-    (is (= nil (crdt/get-value (update get-arg :path conj nil))))))
+  (is (= nil (->value {} [:pet-owners] pet-school-schema)))
+  (is (= nil (->value {} [:pet-owners "a"] pet-school-schema)))
+  (is (= nil (->value {} [:pet-owners nil] pet-school-schema))))
 
 (comment (krun #'test-set-empty-record-with-map-of-records))
 (deftest test-set-empty-record-with-map-of-records
-  (let [arg {:cmds [{:zeno/arg {}
+  (let [schema pet-school-schema
+        arg {:cmds [{:zeno/arg {}
                      :zeno/op :zeno/set
                      :zeno/path []}]
-             :schema pet-school-schema}
+             :schema schema}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
-        applied-crdt (apply-ops/apply-ops {:crdt {}
-                                           :crdt-ops crdt-ops
-                                           :schema (:schema arg)})
-        repaired-crdt (:crdt (repair/repair
-                              (assoc arg :crdt applied-crdt)))
-        get-arg {:crdt crdt :path [:pet-owners] :schema (:schema arg)}]
-    (is (= crdt repaired-crdt))
-    (is (= nil (crdt/get-value get-arg)))
-    (is (= {} (crdt/get-value (update get-arg :path conj "a"))))
-    (is (= nil (crdt/get-value (update get-arg :path conj nil))))))
+        acrdt (ops->crdt crdt-ops schema)]
+    (is (= nil
+           (->value crdt [:pet-owners] schema)
+           (->value acrdt [:pet-owners] schema)))
+    (is (= nil
+           (->value crdt [:pet-owners "a"] schema)
+           (->value acrdt [:pet-owners "a"] schema)))
+    (is (= nil
+           (->value crdt [:pet-owners nil] schema)
+           (->value acrdt [:pet-owners nil] schema)))))
 
 (comment
  (krun #'test-set-then-reset-empty-record-with-empty-map-of-records))
 (deftest test-set-then-reset-empty-record-with-empty-map-of-records
-  (let [arg1 {:cmds [{:zeno/arg {}
+  (let [schema pet-school-schema
+        arg1 {:cmds [{:zeno/arg {}
                       :zeno/op :zeno/set
                       :zeno/path []}]
-              :schema pet-school-schema}
-        {crdt1 :crdt} (commands/process-cmds arg1)
+              :schema schema}
+        {crdt1 :crdt crdt1-ops :crdt-ops} (commands/process-cmds arg1)
         arg2 (assoc arg1
                     :cmds [{:zeno/arg {:pet-owners {}}
                             :zeno/op :zeno/set
                             :zeno-path []}]
                     :crdt crdt1)
-        {crdt2 :crdt} (commands/process-cmds arg2)
-        get-arg {:crdt crdt2 :path [:pet-owners] :schema (:schema arg1)}]
-    (is (= nil (crdt/get-value get-arg)))
-    (is (= {} (crdt/get-value (update get-arg :path conj "a"))))
-    (is (= nil (crdt/get-value (update get-arg :path conj nil))))))
+        {crdt2 :crdt crdt2-ops :crdt-ops} (commands/process-cmds arg2)
+        acrdt (ops->crdt (set/union crdt1-ops crdt2-ops) schema)]
+    (is (= {}
+           (->value crdt2 [:pet-owners] schema)
+           (->value acrdt [:pet-owners] schema)))
+    (is (= nil
+           (->value crdt2 [:pet-owners "a"] schema)
+           (->value acrdt [:pet-owners "a"] schema)))
+    (is (= nil
+           (->value crdt2 [:pet-owners nil] schema)
+           (->value acrdt [:pet-owners nil] schema)))))
 
 (comment
  (krun #'test-set-empty-record-then-path-set-with-empty-map-of-records))
 (deftest test-set-empty-record-then-path-set-with-empty-map-of-records
-  (let [arg1 {:cmds [{:zeno/arg {}
+  (let [schema pet-school-schema
+        arg1 {:cmds [{:zeno/arg {}
                       :zeno/op :zeno/set
                       :zeno/path []}]
-              :schema pet-school-schema}
-        {crdt1 :crdt} (commands/process-cmds arg1)
+              :schema schema}
+        {crdt1 :crdt crdt1-ops :crdt-ops} (commands/process-cmds arg1)
         arg2 (assoc arg1
                     :cmds [{:zeno/arg {}
                             :zeno/op :zeno/set
                             :zeno-path [:pet-owners]}]
                     :crdt crdt1)
-        {crdt2 :crdt} (commands/process-cmds arg2)
-        get-arg {:crdt crdt2 :path [:pet-owners] :schema (:schema arg1)}]
-    (is (= nil (crdt/get-value get-arg)))
-    (is (= {} (crdt/get-value (update get-arg :path conj "a"))))
-    (is (= nil (crdt/get-value (update get-arg :path conj nil))))))
+        {crdt2 :crdt crdt2-ops :crdt-ops} (commands/process-cmds arg2)
+        acrdt (ops->crdt (set/union crdt1-ops crdt2-ops) schema)]
+    (is (= {}
+           (->value crdt2 [:pet-owners] schema)
+           (->value acrdt [:pet-owners] schema)))
+    (is (= nil
+           (->value crdt2 [:pet-owners "a"] schema)
+           (->value acrdt [:pet-owners "a"] schema)))
+    (is (= nil
+           (->value crdt2 [:pet-owners nil] schema)
+           (->value acrdt [:pet-owners nil] schema)))))
 
 (comment
  (krun #'test-set-record-with-empty-map-of-records))
 (deftest test-set-record-with-empty-map-of-records
-  (let [arg {:cmds [{:zeno/arg {:pet-owners {}}
+  (let [schema pet-school-schema
+        arg {:cmds [{:zeno/arg {:pet-owners {}}
                      :zeno/op :zeno/set
                      :zeno/path []}]
-             :schema pet-school-schema}
-        {:keys [crdt]} (commands/process-cmds arg)
-        get-arg {:crdt crdt :path [:pet-owners] :schema (:schema arg)}]
-    (is (= nil (crdt/get-value get-arg)))
-    (is (= nil (crdt/get-value (update get-arg :path conj "a"))))
-    (is (= nil (crdt/get-value (update get-arg :path conj nil))))))
+             :schema schema}
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)]
+    (is (= {}
+           (->value crdt [:pet-owners] schema)
+           (->value acrdt [:pet-owners] schema)))
+    (is (= nil
+           (->value crdt [:pet-owners "a"] schema)
+           (->value acrdt [:pet-owners "a"] schema)))
+    (is (= nil
+           (->value crdt [:pet-owners nil] schema)
+           (->value acrdt [:pet-owners nil] schema)))))
 
 (comment (krun #'test-crdt-set))
 (deftest test-crdt-set
   (let [sys-time-ms (u/str->long "1643061294782")
+        schema l/string-schema
         arg {:cmds [{:zeno/arg "Hi"
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}]
              :root :zeno/crdt
-             :schema l/string-schema
+             :schema schema
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
-        applied-crdt (apply-ops/apply-ops {:crdt {} :crdt-ops crdt-ops
-                                           :schema (:schema arg)})
-        repaired-crdt (:crdt (repair/repair (assoc arg :crdt applied-crdt)))
+        acrdt (ops->crdt crdt-ops schema)
         expected-value "Hi"]
-    (is (= crdt repaired-crdt))
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (comment (krun #'test-crdt-set-and-remove))
 (deftest test-crdt-set-and-remove
   (let [sys-time-ms (u/str->long "1643061294782")
+        schema l/string-schema
         arg {:cmds [{:zeno/arg "Hello"
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
                     {:zeno/op :zeno/remove
                      :zeno/path [:zeno/crdt]}]
              :root :zeno/crdt
-             :schema l/string-schema
+             :schema schema
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
-        applied-crdt (apply-ops/apply-ops {:crdt {} :crdt-ops crdt-ops
-                                           :schema (:schema arg)})
-        repaired-crdt (:crdt (repair/repair (assoc arg :crdt applied-crdt)))
+        acrdt (ops->crdt crdt-ops schema)
         expected-value nil]
-    (is (= crdt repaired-crdt))
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (comment (krun #'test-crdt-set-and-reset))
 (deftest test-crdt-set-and-reset
   (let [sys-time-ms (u/str->long "1643061294782")
+        schema l/string-schema
         arg {:cmds [{:zeno/arg "Hello"
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
@@ -198,21 +223,19 @@
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}]
              :root :zeno/crdt
-             :schema l/string-schema
+             :schema schema
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
-        applied-crdt (apply-ops/apply-ops {:crdt {} :crdt-ops crdt-ops
-                                           :schema (:schema arg)})
-        repaired-crdt (:crdt (repair/repair (assoc arg :crdt applied-crdt)))
+        acrdt (ops->crdt crdt-ops schema)
         expected-value "Goodbye"]
-    (is (= crdt repaired-crdt))
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (comment (krun #'test-crdt-map-set-and-reset))
 (deftest test-crdt-map-set-and-reset
   (let [sys-time-ms (u/str->long "1643061294782")
+        schema (l/map-schema l/int-schema)
         arg {:cmds [{:zeno/arg 31
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt "Alice"]}
@@ -223,22 +246,19 @@
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt "Bob"]}]
              :root :zeno/crdt
-             :schema (l/map-schema l/int-schema)
+             :schema schema
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
-        applied-crdt (apply-ops/apply-ops {:crdt {} :crdt-ops crdt-ops
-                                           :schema (:schema arg)})
-        repaired-crdt (:crdt (repair/repair (assoc arg :crdt applied-crdt)))
-        expected-value {"Alice" 31
-                        "Bob" 12}]
-    (is (= crdt repaired-crdt))
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
+        acrdt (ops->crdt crdt-ops schema)
+        expected-value {"Alice" 31 "Bob" 12}]
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (comment (krun #'test-crdt-record-set-and-reset))
 (deftest test-crdt-record-set-and-reset
   (let [sys-time-ms (u/str->long "1643061294782")
+        schema pet-schema
         arg {:cmds [{:zeno/arg "Lamby"
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt :name]}
@@ -249,41 +269,36 @@
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt :name]}]
              :root :zeno/crdt
-             :schema pet-schema
+             :schema schema
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
-        applied-crdt (apply-ops/apply-ops {:crdt {} :crdt-ops crdt-ops
-                                           :schema (:schema arg)})
-        repaired-crdt (:crdt (repair/repair (assoc arg :crdt applied-crdt)))
-        expected-value {:name "Sheepy"
-                        :species "Ovis aries"}]
-    (is (= crdt repaired-crdt))
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
+        acrdt (ops->crdt crdt-ops schema)
+        expected-value {:name "Sheepy" :species "Ovis aries"}]
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (comment (krun #'test-crdt-record-set-optional))
 (deftest test-crdt-record-set-optional
   (let [sys-time-ms (u/str->long "1643061294782")
+        schema pet-schema
         arg {:cmds [{:zeno/arg "Sheepy"
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt :name]}]
              :root :zeno/crdt
-             :schema pet-schema
+             :schema schema
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
-        applied-crdt (apply-ops/apply-ops {:crdt {} :crdt-ops crdt-ops
-                                           :schema (:schema arg)})
-        repaired-crdt (:crdt (repair/repair (assoc arg :crdt applied-crdt)))
+        acrdt (ops->crdt crdt-ops schema)
         expected-value {:name "Sheepy"}]
-    (is (= crdt repaired-crdt))
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (comment (krun #'test-crdt-nested-record-set-and-remove))
 (deftest test-crdt-nested-record-set-and-remove
   (let [sys-time-ms (u/str->long "1643061294782")
+        schema (l/array-schema pet-trainer-schema)
         arg {:cmds [{:zeno/arg [{:name "Bill"
                                  :specialties {:aggression true
                                                :barking false}}]
@@ -292,22 +307,19 @@
                     {:zeno/op :zeno/remove
                      :zeno/path [:zeno/crdt 0 :specialties :barking]}]
              :root :zeno/crdt
-             :schema (l/array-schema pet-trainer-schema)
+             :schema schema
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
-        applied-crdt (apply-ops/apply-ops {:crdt {} :crdt-ops crdt-ops
-                                           :schema (:schema arg)})
-        repaired-crdt (:crdt (repair/repair (assoc arg :crdt applied-crdt)))
-        expected-value [{:name "Bill"
-                         :specialties {:aggression true}}]]
-    (is (= crdt repaired-crdt))
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
+        acrdt (ops->crdt crdt-ops schema)
+        expected-value [{:name "Bill" :specialties {:aggression true}}]]
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (comment (krun #'test-crdt-union-set-and-reset))
 (deftest test-crdt-union-set-and-reset
   (let [sys-time-ms (u/str->long "1643061294782")
+        schema (l/union-schema [l/string-schema l/float-schema])
         arg {:cmds [{:zeno/arg 3.14
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
@@ -315,60 +327,53 @@
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}]
              :root :zeno/crdt
-             :schema (l/union-schema [l/string-schema l/float-schema])
+             :schema schema
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
-        applied-crdt (apply-ops/apply-ops {:crdt {} :crdt-ops crdt-ops
-                                           :schema (:schema arg)})
-        repaired-crdt (:crdt (repair/repair (assoc arg :crdt applied-crdt)))
+        acrdt (ops->crdt crdt-ops schema)
         expected-value "pi"]
-    (is (= crdt repaired-crdt))
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (comment (krun #'test-crdt-array-set))
 (deftest test-crdt-array-set
   (let [sys-time-ms (u/str->long "1643061294999")
+        schema (l/array-schema l/string-schema)
         arg {:cmds [{:zeno/arg ["Hi" "There"]
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}]
              :root :zeno/crdt
-             :schema (l/array-schema l/string-schema)
+             :schema schema
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
-        applied-crdt (apply-ops/apply-ops {:crdt {} :crdt-ops crdt-ops
-                                           :schema (:schema arg)})
-        repaired-crdt (:crdt (repair/repair (assoc arg :crdt applied-crdt)))
+        acrdt (ops->crdt crdt-ops schema)
         expected-value ["Hi" "There"]]
-    (is (= crdt repaired-crdt))
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
-
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (comment (krun #'test-crdt-array-set-empty))
 (deftest test-crdt-array-set-empty
   (let [sys-time-ms (u/str->long "1643061294999")
+        schema (l/array-schema l/string-schema)
         arg {:cmds [{:zeno/arg []
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}]
              :root :zeno/crdt
-             :schema (l/array-schema l/string-schema)
+             :schema schema
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
-        applied-crdt (apply-ops/apply-ops {:crdt {} :crdt-ops crdt-ops
-                                           :schema (:schema arg)})
-        repaired-crdt (:crdt (repair/repair (assoc arg :crdt applied-crdt)))
+        acrdt (ops->crdt crdt-ops schema)
         expected-value []]
-    (is (= crdt repaired-crdt))
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (comment (krun #'test-crdt-array-set-index-pos))
 (deftest test-crdt-array-set-index-pos
   (let [sys-time-ms (u/str->long "1643061294999")
+        schema (l/array-schema l/string-schema)
         arg {:cmds [{:zeno/arg ["Hi" "there"]
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
@@ -376,21 +381,19 @@
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt 1]}]
              :root :zeno/crdt
-             :schema (l/array-schema l/string-schema)
+             :schema schema
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
-        applied-crdt (apply-ops/apply-ops {:crdt {} :crdt-ops crdt-ops
-                                           :schema (:schema arg)})
-        repaired-crdt (:crdt (repair/repair (assoc arg :crdt applied-crdt)))
+        acrdt (ops->crdt crdt-ops schema)
         expected-value ["Hi" "Bob"]]
-    (is (= crdt repaired-crdt))
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (comment (krun #'test-crdt-array-set-index-neg))
 (deftest test-crdt-array-set-index-neg
   (let [sys-time-ms (u/str->long "1643061294999")
+        schema (l/array-schema l/string-schema)
         arg {:cmds [{:zeno/arg ["Hi" "there"]
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
@@ -398,17 +401,14 @@
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt -2]}]
              :root :zeno/crdt
-             :schema (l/array-schema l/string-schema)
+             :schema schema
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
-        applied-crdt (apply-ops/apply-ops {:crdt {} :crdt-ops crdt-ops
-                                           :schema (:schema arg)})
-        repaired-crdt (:crdt (repair/repair (assoc arg :crdt applied-crdt)))
+        acrdt (ops->crdt crdt-ops schema)
         expected-value ["Bob" "there"]]
-    (is (= crdt repaired-crdt))
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (comment (krun #'test-crdt-array-set-index-out-of-bounds-pos))
 (deftest test-crdt-array-set-index-out-of-bounds-pos
@@ -460,23 +460,26 @@
 
 (deftest test-crdt-array-set-and-remove
   (let [sys-time-ms (u/str->long "1643061294999")
+        schema (l/array-schema l/string-schema)
         arg {:cmds [{:zeno/arg ["Hi" "There"]
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
                     {:zeno/op :zeno/remove
                      :zeno/path [:zeno/crdt 0]}]
              :root :zeno/crdt
-             :schema (l/array-schema l/string-schema)
+             :schema schema
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)
         expected-value ["There"]]
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (comment (krun #'test-crdt-nested-maps-set-and-remove))
 (deftest test-crdt-nested-maps-set-and-remove
   (let [sys-time-ms (u/str->long "1643061294999")
+        schema (l/map-schema (l/map-schema l/int-schema))
         arg {:cmds [{:zeno/arg {"j" {"a" 1 "b" 2}
                                 "k" {"y" 10 "z" 20}
                                 "l" {"c" 3}}
@@ -485,19 +488,21 @@
                     {:zeno/op :zeno/remove
                      :zeno/path [:zeno/crdt "k" "y"]}]
              :root :zeno/crdt
-             :schema (l/map-schema (l/map-schema l/int-schema))
+             :schema schema
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)
         expected-value {"j" {"a" 1 "b" 2}
                         "k" {"z" 20}
                         "l" {"c" 3}}]
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (comment (krun #'test-crdt-array-of-maps-set-and-remove))
 (deftest test-crdt-array-of-maps-set-and-remove
   (let [sys-time-ms (u/str->long "1643061294999")
+        schema (l/array-schema (l/map-schema l/int-schema))
         arg {:cmds [{:zeno/arg [{"a" 1 "b" 2}
                                 {"y" 10 "z" 20}
                                 {"c" 3}]
@@ -506,33 +511,37 @@
                     {:zeno/op :zeno/remove
                      :zeno/path [:zeno/crdt 1 "y"]}]
              :root :zeno/crdt
-             :schema (l/array-schema (l/map-schema l/int-schema))
+             :schema schema
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)
         expected-value [{"a" 1 "b" 2}
                         {"z" 20}
                         {"c" 3}]]
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (deftest test-crdt-array-set-and-reset
-  (let [arg {:cmds [{:zeno/arg ["Hi" "There"]
+  (let [schema (l/array-schema l/string-schema)
+        arg {:cmds [{:zeno/arg ["Hi" "There"]
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
                     {:zeno/arg "Go"
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt 0]}]
              :root :zeno/crdt
-             :schema (l/array-schema l/string-schema)}
+             :schema schema}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)
         expected-value ["Go" "There"]]
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (deftest test-crdt-array-simple-inserts
-  (let [arg {:cmds [{:zeno/arg ["Hi" "There"]
+  (let [schema (l/array-schema l/string-schema)
+        arg {:cmds [{:zeno/arg ["Hi" "There"]
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
                     {:zeno/arg "Hello!"
@@ -542,45 +551,46 @@
                      :zeno/op :zeno/insert-after
                      :zeno/path [:zeno/crdt -1]}]
              :root :zeno/crdt
-             :schema (l/array-schema l/string-schema)}
+             :schema schema}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)
         expected-value ["Hello!" "Hi" "There" "Bob"]]
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (deftest test-crdt-array-insert-before-into-empty
-  (let [arg {:cmds [{:zeno/arg "Hello!"
+  (let [schema (l/array-schema l/string-schema)
+        arg {:cmds [{:zeno/arg "Hello!"
                      :zeno/op :zeno/insert-before
                      :zeno/path [:zeno/crdt 0]}]
              :root :zeno/crdt
-             :schema (l/array-schema l/string-schema)}
+             :schema schema}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)
         expected-value ["Hello!"]]
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (deftest test-crdt-array-insert-after-into-empty
   (let [sys-time-ms (u/str->long "1643061294999")
+        schema (l/array-schema l/string-schema)
         arg {:cmds [{:zeno/arg "Hello!"
                      :zeno/op :zeno/insert-after
                      :zeno/path [:zeno/crdt -1]}]
              :root :zeno/crdt
-             :schema (l/array-schema l/string-schema)
+             :schema schema
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
-        ret (crdt/get-value-info {:crdt crdt
-                                  :path [-1]
-                                  :schema (:schema arg)})
-        _ (is (= {:norm-path [0]
-                  :value "Hello!"}
-                 ret))
-        expected-value ["Hello!"]
-        value (crdt/get-value {:crdt crdt
-                               :path []
-                               :schema (:schema arg)})]
-    (is (= expected-value value))))
+        acrdt (ops->crdt crdt-ops schema)
+        _ (is (= {:norm-path [0] :value "Hello!"}
+                 (crdt/get-value-info {:crdt crdt :path [-1] :schema schema})
+                 (crdt/get-value-info {:crdt acrdt :path [-1] :schema schema})))
+        expected-value ["Hello!"]]
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (comment (krun #'test-crdt-array-insert-range-after-into-empty))
 (deftest test-crdt-array-insert-range-after-into-empty
