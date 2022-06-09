@@ -1076,62 +1076,63 @@
          #"arg is not sequential"
          (commands/process-cmds arg)))))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
 (comment (krun #'test-set-map-of-two-arrays))
 (deftest test-set-map-of-two-arrays
   (let [sys-time-ms (u/str->long "1643061294782")
-        value {"a" [1]
-               "b" [2]}
-        path [:zeno/crdt]
+        value {"a" [1] "b" [2]}
+        schema (l/map-schema (l/array-schema l/int-schema))
         arg {:cmds [{:zeno/arg value
                      :zeno/op :zeno/set
-                     :zeno/path path}]
+                     :zeno/path [:zeno/crdt]}]
              :root :zeno/crdt
-             :schema (l/map-schema (l/array-schema l/int-schema))
+             :schema schema
              :sys-time-ms sys-time-ms}
-        {:keys [crdt]} (commands/process-cmds arg)]
-    (is (= value (crdt/get-value {:crdt crdt
-                                  :path []
-                                  :schema (:schema arg)})))))
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)]
+    (is (= value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (comment (krun #'test-set-nested-map-of-two-arrays))
 (deftest test-set-nested-map-of-two-arrays
   (let [sys-time-ms (u/str->long "1643061294782")
         value {"a" {"aa" [1]}
                "b" {"bb" [2]}}
-        path [:zeno/crdt]
+        schema (l/map-schema (l/map-schema (l/array-schema l/int-schema)))
         arg {:cmds [{:zeno/arg value
                      :zeno/op :zeno/set
-                     :zeno/path path}]
+                     :zeno/path [:zeno/crdt]}]
              :root :zeno/crdt
-             :schema (l/map-schema (l/map-schema (l/array-schema l/int-schema)))
+             :schema schema
              :sys-time-ms sys-time-ms}
-        {:keys [crdt]} (commands/process-cmds arg)]
-    (is (= value (crdt/get-value {:crdt crdt
-                                  :path []
-                                  :schema (:schema arg)})))))
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)]
+    (is (= value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (comment (krun #'test-crdt-nested-arrays-set {:capture-output? true}))
 (deftest test-crdt-nested-arrays-set
   (let [sys-time-ms (u/str->long "1643061294782")
         value [[[[[1 2]]]] [[[[3]] [[4]]]] [[[[5]]] [[[6 7]]]]]
-        path [:zeno/crdt]
+        schema (-> l/int-schema l/array-schema l/array-schema
+                   l/array-schema l/array-schema l/array-schema)
         arg {:cmds [{:zeno/arg value
                      :zeno/op :zeno/set
-                     :zeno/path path}]
+                     :zeno/path [:zeno/crdt]}]
              :root :zeno/crdt
-             :schema (-> l/int-schema l/array-schema l/array-schema
-                         l/array-schema l/array-schema l/array-schema)
+             :schema schema
              :sys-time-ms sys-time-ms}
-        {:keys [crdt crdt-ops]} (commands/process-cmds arg)]
-    (is (= value (crdt/get-value {:crdt crdt
-                                  :path []
-                                  :schema (:schema arg)})))))
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)]
+    (is (= value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (comment (krun #'test-crdt-nested-arrays-set-index))
 (deftest test-crdt-nested-arrays-set-index
   (let [sys-time-ms (u/str->long "1643061294782")
+        schema (l/array-schema (l/array-schema l/int-schema))
         arg {:cmds [{:zeno/arg [[1 2] [2]]
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
@@ -1139,13 +1140,14 @@
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt 1]}]
              :root :zeno/crdt
-             :schema (l/array-schema (l/array-schema l/int-schema))
+             :schema schema
              :sys-time-ms sys-time-ms}
         expected-value [[1 2] [3]]
-        {:keys [crdt crdt-ops]} (commands/process-cmds arg)]
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)]
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (comment (krun #'test-crdt-nested-arrays-set-index-out-of-bounds))
 (deftest test-crdt-nested-arrays-set-index-out-of-bounds
@@ -1169,25 +1171,25 @@
   (let [sys-time-ms (u/str->long "1643061294782")
         value {"a" {"aa" [[1 2] [3]]}
                "b" {"bb" [[4 5] [6]]}}
-        path [:zeno/crdt]
+        schema (-> l/int-schema l/array-schema l/array-schema
+                   l/map-schema l/map-schema)
         arg {:cmds [{:zeno/arg value
                      :zeno/op :zeno/set
-                     :zeno/path path}]
+                     :zeno/path [:zeno/crdt]}]
              :root :zeno/crdt
-             :schema (l/map-schema
-                      (l/map-schema
-                       (l/array-schema
-                        (l/array-schema l/int-schema))))
+             :schema schema
              :sys-time-ms sys-time-ms}
-        {:keys [crdt crdt-ops]} (commands/process-cmds arg)]
-    (is (= value (crdt/get-value {:crdt crdt
-                                  :path []
-                                  :schema (:schema arg)})))))
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)]
+    (is (= value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (comment (krun #'test-set-remove-nested-arrays))
 (deftest test-set-remove-nested-arrays
   (let [sys-time-ms (u/str->long "1643061294782")
         value [[1 2] [3]]
+        schema (l/array-schema (l/array-schema l/int-schema))
         arg {:cmds [{:zeno/arg value
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}
@@ -1196,66 +1198,78 @@
                     {:zeno/op :zeno/remove
                      :zeno/path [:zeno/crdt 1]}]
              :root :zeno/crdt
-             :schema (l/array-schema (l/array-schema l/int-schema))
+             :schema schema
              :sys-time-ms sys-time-ms}
-        expected-value [[1]]
-        {:keys [crdt]} (commands/process-cmds arg)]
-    (is (= expected-value (crdt/get-value {:crdt crdt
-                                           :path []
-                                           :schema (:schema arg)})))))
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)
+        expected-value [[1]]]
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (comment (krun #'test-empty-array))
 (deftest test-empty-array
   (let [value []
+        schema (l/array-schema l/string-schema)
         arg {:cmds [{:zeno/arg value
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}]
              :root :zeno/crdt
-             :schema (l/array-schema l/string-schema)}
-        {:keys [crdt]} (commands/process-cmds arg)]
-    (is (= value (crdt/get-value {:crdt crdt
-                                  :path []
-                                  :schema (:schema arg)})))))
+             :schema schema}
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)]
+    (is (= value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (comment (krun #'test-empty-array-as-value))
 (deftest test-empty-array-as-value
   (let [value {"a" []}
+        schema (l/map-schema (l/array-schema l/string-schema))
         arg {:cmds [{:zeno/arg value
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt]}]
              :root :zeno/crdt
-             :schema (l/map-schema (l/array-schema l/string-schema))}
-        {:keys [crdt crdt-ops]} (commands/process-cmds arg)]
-    (is (= value (crdt/get-value {:crdt crdt
-                                  :path []
-                                  :schema (:schema arg)})))))
+             :schema schema}
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)]
+    (is (= value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
 
 (comment (krun #'test-empty-array-in-record))
 (deftest test-empty-array-in-record
   (let [value []
+        schema (l/record-schema
+                :r1 [[:a (l/array-schema l/string-schema)]])
         arg {:cmds [{:zeno/arg value
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt :a]}]
              :root :zeno/crdt
-             :schema (l/record-schema
-                      :r1 [[:a (l/array-schema l/string-schema)]])}
-        {:keys [crdt]} (commands/process-cmds arg)]
-    (is (= value (crdt/get-value {:crdt crdt
-                                  :path [:a]
-                                  :schema (:schema arg)})))))
+             :schema schema}
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)]
+    (is (= value
+           (->value crdt [:a] schema)
+           (->value acrdt [:a] schema)))))
 
 (comment (krun #'test-empty-array-in-map))
 (deftest test-empty-array-in-map
   (let [value []
+        schema (l/map-schema (l/array-schema l/string-schema))
         arg {:cmds [{:zeno/arg value
                      :zeno/op :zeno/set
                      :zeno/path [:zeno/crdt "a"]}]
              :root :zeno/crdt
-             :schema (l/map-schema (l/array-schema l/string-schema))}
-        {:keys [crdt]} (commands/process-cmds arg)]
-    (is (= value (crdt/get-value {:crdt crdt
-                                  :path ["a"]
-                                  :schema (:schema arg)})))))
+             :schema schema}
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)]
+    (is (= value
+           (->value crdt ["a"] schema)
+           (->value acrdt ["a"] schema)))))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
 (comment
  (krun #'test-record-nested-negative-insert-after))
 (deftest test-record-nested-negative-insert-after
