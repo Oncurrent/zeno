@@ -14,6 +14,7 @@
 
 (def container-types #{:array :map :record :union})
 (def tx-info-prefix "_TX-INFO-FOR-TX-ID-")
+(def not-present "__NOT_PRESENT__")
 
 (defn tx-id->tx-info-k [tx-id]
   (str tx-info-prefix tx-id))
@@ -64,13 +65,15 @@
   [{:keys [get-child-schema crdt norm-path path] :as arg}]
   (if (empty? path)
     (let [{:keys [children container-add-ids]} crdt
-          value (when (seq container-add-ids)
+          value (if-not (seq container-add-ids)
+                  not-present
                   (reduce-kv
-                   (fn [acc k info]
-                     (let [v (-> (assoc arg :path [k])
+                   (fn [acc k child-crdt]
+                     (let [v (-> (assoc arg
+                                        :path [k])
                                  (get-value-info)
                                  (:value))]
-                       (if (= ::not-present v)
+                       (if (= not-present v)
                          acc
                          (assoc acc k v))))
                    {}
@@ -93,7 +96,7 @@
 (defn get-single-value [arg]
   (let [vi (some-> arg :crdt :current-add-id-to-value-info)]
     (if (empty? vi)
-      ::not-present
+      not-present
       (some-> vi first val :value))))
 
 (defmethod get-value-info :single-value

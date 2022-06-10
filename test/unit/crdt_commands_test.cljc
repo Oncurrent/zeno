@@ -819,10 +819,6 @@
                          :species "Carassius auratus"}
                         {:name "Pat"
                          :species "Canis familiaris"}]]
-
-    (log/info (str "####:\n"
-                   (u/pprint-str
-                    (u/sym-map merged-crdt #_ new-crdt-ops))))
     (is (= expected-value (crdt/get-value {:crdt merged-crdt
                                            :path [:pets]
                                            :schema pet-owner-schema})))))

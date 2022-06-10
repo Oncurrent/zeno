@@ -3,7 +3,7 @@
    [clojure.math.combinatorics :as combo]
    [clojure.test :as t :refer [deftest is]]
    [deercreeklabs.lancaster :as l]
-   [com.oncurrent.zeno.state-providers.crdt.apply-ops-impl :as aoi]
+   [com.oncurrent.zeno.state-providers.crdt.apply-ops :as apply-ops]
    [com.oncurrent.zeno.state-providers.crdt.array :as array]
    [com.oncurrent.zeno.state-providers.crdt.commands :as commands]
    [com.oncurrent.zeno.state-providers.crdt.common :as crdt]
@@ -44,13 +44,13 @@
                    :op-type :add-value
                    :op-path path
                    :value "XYZ"}]
-        crdt (aoi/apply-ops-without-repair
-              (u/sym-map crdt-ops schema sys-time-ms))
+        {:keys [crdt]} (apply-ops/apply-ops
+                        (u/sym-map crdt-ops schema sys-time-ms))
         expected-v "XYZ"]
     (doseq [crdt-ops (combo/permutations crdt-ops)]
-      (let [crdt (aoi/apply-ops-without-repair (u/sym-map crdt-ops
-                                                          schema
-                                                          sys-time-ms))
+      (let [{:keys [crdt]} (apply-ops/apply-ops (u/sym-map crdt-ops
+                                                           schema
+                                                           sys-time-ms))
             v (crdt/get-value (u/sym-map crdt path schema))]
         (is (= expected-v v))))))
 
@@ -70,9 +70,9 @@
                    :value 42}]
         expected-v 42]
     (doseq [crdt-ops (combo/permutations crdt-ops)]
-      (let [crdt (aoi/apply-ops-without-repair (u/sym-map crdt-ops
-                                                          schema
-                                                          sys-time-ms))
+      (let [{:keys [crdt]} (apply-ops/apply-ops (u/sym-map crdt-ops
+                                                           schema
+                                                           sys-time-ms))
             path [] ; Union branch not used for get-value
             v (crdt/get-value (u/sym-map crdt path schema))]
         (is (= expected-v v))))))
@@ -102,19 +102,28 @@
         expected-v {"a" 42}]
     ;; Too many permutations to test them all, so we take a random sample
     (doseq [crdt-ops (repeatedly 500 #(shuffle crdt-ops))]
-      (let [crdt (aoi/apply-ops-without-repair (u/sym-map crdt-ops
-                                                          schema
-                                                          sys-time-ms))
+      (let [{:keys [crdt]} (apply-ops/apply-ops (u/sym-map crdt-ops
+                                                           schema
+                                                           sys-time-ms))
             v (crdt/get-value (u/sym-map crdt path schema))]
         (is (= expected-v v))))))
 
 (deftest test-nested-map-crdts
   (let [schema (l/map-schema (l/map-schema l/int-schema))
         sys-time-ms (u/str->long "1640205282858")
-        crdt-ops [{:add-id "a0"
+        crdt-ops [{:add-id "a100"
+                   :op-path []
+                   :op-type :add-container}
+                  {:add-id "a200"
+                   :op-path ["d"]
+                   :op-type :add-container}
+                  {:add-id "a0"
                    :op-type :add-value
                    :op-path ["d" "w"]
                    :value 999}
+                  {:add-id "a300"
+                   :op-path ["a"]
+                   :op-type :add-container}
                   {:add-id "a1"
                    :op-type :add-value
                    :op-path ["a" "x"]
@@ -123,6 +132,9 @@
                    :op-type :add-value
                    :op-path ["a" "z"]
                    :value 84}
+                  {:add-id "a400"
+                   :op-path ["b"]
+                   :op-type :add-container}
                   {:add-id "a2"
                    :op-type :add-value
                    :op-path ["b" "y"]
@@ -134,6 +146,9 @@
                    :op-type :add-value
                    :op-path ["a" "x"]
                    :value 42}
+                  {:op-path ["b"]
+                   :op-type :delete-container
+                   :value #{"a400"}}
                   {:add-id "a2"
                    :op-type :delete-value
                    :op-path ["b" "y"]}]
@@ -143,9 +158,9 @@
                     "d" {"w" 999}}]
     ;; Too many permutations to test them all, so we take a random sample
     (doseq [crdt-ops (repeatedly 500 #(shuffle crdt-ops))]
-      (let [crdt (aoi/apply-ops-without-repair (u/sym-map crdt-ops
-                                                          schema
-                                                          sys-time-ms))
+      (let [{:keys [crdt]} (apply-ops/apply-ops (u/sym-map crdt-ops
+                                                           schema
+                                                           sys-time-ms))
             v (crdt/get-value (u/sym-map crdt path schema))]
         (is (= expected-v v))))))
 
@@ -179,31 +194,31 @@
                     :bar/b "Yo"}]
     ;; Too many permutations to test them all, so we take a random sample
     (doseq [crdt-ops (repeatedly 500 #(shuffle crdt-ops))]
-      (let [crdt (aoi/apply-ops-without-repair (u/sym-map crdt-ops
-                                                          schema
-                                                          sys-time-ms))
+      (let [{:keys [crdt]} (apply-ops/apply-ops (u/sym-map crdt-ops
+                                                           schema
+                                                           sys-time-ms))
             v (crdt/get-value (u/sym-map crdt path schema))]
         (is (= expected-v v))))))
 
 (deftest test-record-crdt-conflict
   (let [schema the-rec-schema
-        crdt-1 (aoi/apply-ops-without-repair
-                {:crdt-ops [{:add-id "a1"
-                             :op-type :add-value
-                             :op-path [:foo/a 1]
-                             :schema schema
-                             :value 1}]
-                 :schema schema
-                 :sys-time-ms (u/str->long "1640205282858")})
-        crdt-2 (aoi/apply-ops-without-repair
-                {:crdt crdt-1
-                 :crdt-ops [{:add-id "a2"
-                             :op-type :add-value
-                             :op-path [:foo/a 1]
-                             :schema schema
-                             :value 42}]
-                 :schema schema
-                 :sys-time-ms (u/str->long "1640205282862")})
+        crdt-1 (:crdt (apply-ops/apply-ops
+                       {:crdt-ops [{:add-id "a1"
+                                    :op-type :add-value
+                                    :op-path [:foo/a 1]
+                                    :schema schema
+                                    :value 1}]
+                        :schema schema
+                        :sys-time-ms (u/str->long "1640205282858")}))
+        crdt-2 (:crdt (apply-ops/apply-ops
+                       {:crdt crdt-1
+                        :crdt-ops [{:add-id "a2"
+                                    :op-type :add-value
+                                    :op-path [:foo/a 1]
+                                    :schema schema
+                                    :value 42}]
+                        :schema schema
+                        :sys-time-ms (u/str->long "1640205282862")}))
         v (crdt/get-value {:crdt crdt-2
                            :path []
                            :schema schema})
@@ -243,9 +258,9 @@
                          :c false}}]
     ;; Too many permutations to test them all, so we take a random sample
     (doseq [crdt-ops (repeatedly 1 #(shuffle crdt-ops))]
-      (let [crdt (aoi/apply-ops-without-repair (u/sym-map crdt-ops
-                                                          schema
-                                                          sys-time-ms))
+      (let [{:keys [crdt]} (apply-ops/apply-ops (u/sym-map crdt-ops
+                                                           schema
+                                                           sys-time-ms))
             v (crdt/get-value (u/sym-map crdt path schema))
             nested-v (crdt/get-value {:crdt crdt
                                       :path ["b" :bar/b]
@@ -367,8 +382,8 @@
         expected-v ["A" "X" "Y" "C"]]
     ;; Too many permutations to test them all, so we take a random sample
     (doseq [crdt-ops (repeatedly 500 #(shuffle crdt-ops))]
-      (let [crdt (aoi/apply-ops-without-repair
-                  (u/sym-map crdt-ops schema sys-time-ms))
+      (let [{:keys [crdt]} (apply-ops/apply-ops
+                            (u/sym-map crdt-ops schema sys-time-ms))
             v (crdt/get-value (u/sym-map crdt make-id path schema))]
         (is (= expected-v v))))))
 
@@ -410,8 +425,8 @@
                            :tail-node-id array/array-end-node-id}}]
         path []]
     (doseq [crdt-ops (repeatedly 500 #(shuffle crdt-ops))]
-      (let [crdt (aoi/apply-ops-without-repair
-                  (u/sym-map crdt-ops schema sys-time-ms))
+      (let [{:keys [crdt]} (apply-ops/apply-ops
+                            (u/sym-map crdt-ops schema sys-time-ms))
             arg (u/sym-map crdt path schema)
             v (crdt/get-value arg)
             _ (is (= ["A" "B" "C"] v))
@@ -452,14 +467,14 @@
         path []
         apply-ops-arg (u/sym-map crdt-ops schema sys-time-ms)]
     (doseq [crdt-ops (combo/permutations crdt-ops)]
-      (let [crdt (aoi/apply-ops-without-repair apply-ops-arg)
+      (let [{:keys [crdt]} (apply-ops/apply-ops apply-ops-arg)
             get-value-arg (u/sym-map crdt path schema)
             v (crdt/get-value get-value-arg)
             _ (is (= ["A" "B"] v))
-            crdt* (aoi/apply-ops-without-repair
-                   (assoc apply-ops-arg
-                          :crdt crdt
-                          :crdt-ops change-crdt-ops))
+            crdt* (:crdt (apply-ops/apply-ops
+                          (assoc apply-ops-arg
+                                 :crdt crdt
+                                 :crdt-ops change-crdt-ops)))
             new-v (crdt/get-value (assoc get-value-arg :crdt crdt*))]
         (is (= ["A" "X"] new-v))))))
 
@@ -507,9 +522,9 @@
                    :species "Felis catus"}]]
     ;; Too many permutations to test them all, so we take a random sample
     (doseq [crdt-ops (repeatedly 500 #(shuffle crdt-ops))]
-      (let [crdt (aoi/apply-ops-without-repair (u/sym-map crdt-ops
-                                                          schema
-                                                          sys-time-ms))
+      (let [{:keys [crdt]} (apply-ops/apply-ops (u/sym-map crdt-ops
+                                                           schema
+                                                           sys-time-ms))
             v (crdt/get-value (u/sym-map crdt path schema))]
         (is (= expected v))))))
 
@@ -558,9 +573,9 @@
                                      {:name "Sam"
                                       :species "Felis catus"}]}}]
     (doseq [crdt-ops (repeatedly 500 #(shuffle crdt-ops))]
-      (let [crdt (aoi/apply-ops-without-repair (u/sym-map crdt-ops
-                                                          schema
-                                                          sys-time-ms))
+      (let [{:keys [crdt]} (apply-ops/apply-ops (u/sym-map crdt-ops
+                                                           schema
+                                                           sys-time-ms))
             v (crdt/get-value (u/sym-map crdt path schema))]
         (is (= expected v))))))
 
@@ -569,8 +584,8 @@
         sys-time-ms (u/str->long "1640205282858")
         crdt-ops []
         path []
-        crdt (aoi/apply-ops-without-repair (u/sym-map crdt-ops
-                                                      schema
-                                                      sys-time-ms))
+        {:keys [crdt]} (apply-ops/apply-ops (u/sym-map crdt-ops
+                                                       schema
+                                                       sys-time-ms))
         v (crdt/get-value (u/sym-map crdt path schema))
         _ (is (= nil v))]))

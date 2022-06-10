@@ -389,7 +389,7 @@
                    (let [v (-> (assoc arg :path [k])
                                (c/get-value-info)
                                (:value))]
-                     (if (= ::not-present v)
+                     (if (= c/not-present v)
                        acc
                        (assoc acc k v))))
                  {}
@@ -416,8 +416,9 @@
     (if (empty? path)
       (let [id->v (when exists?
                     (:value (get-sub-value-info arg*)))
-            v (when exists?
-                (mapv id->v ordered-node-ids))]
+            v (if exists?
+                (mapv id->v ordered-node-ids)
+                c/not-present)]
         {:norm-path norm-path
          :value v})
       (let [[raw-k & sub-path] path
