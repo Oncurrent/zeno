@@ -405,24 +405,29 @@
                      []
                      (range array-len)))]
         (u/sym-map exists? norm-path value))
-      (let [[raw-i & sub-path] path
-            _ (c/check-key (assoc arg :key raw-i))
-            i (u/get-normalized-array-index {:array-len array-len
-                                             :i raw-i})
-            _ (when (or (not i) (empty? ordered-node-ids))
-                (throw
-                 (ex-info
-                  (str "Index `" i "` into array `" ordered-node-ids
-                       "` is out of bounds.")
-                  (u/sym-map i norm-path path ordered-node-ids
-                             raw-i sub-path))))
-            node-id (nth ordered-node-ids i)
-            child-crdt (get-in crdt [:children node-id])]
-        (c/get-value-info (assoc arg
-                                 :crdt child-crdt
-                                 :norm-path (conj (or norm-path []) i)
-                                 :path (or sub-path [])
-                                 :schema child-schema))))))
+      (let [[raw-i & sub-path] path]
+        ;; raw-i can be nil sometimes in subscription paths
+        (if-not raw-i
+          {:exists? true
+           :norm-path norm-path
+           :value nil}
+          (let [_ (c/check-key (assoc arg :key raw-i))
+                i (u/get-normalized-array-index {:array-len array-len
+                                                 :i raw-i})
+                _ (when (or (not i) (empty? ordered-node-ids))
+                    (throw
+                     (ex-info
+                      (str "Index `" i "` into array `" ordered-node-ids
+                           "` is out of bounds.")
+                      (u/sym-map i norm-path path ordered-node-ids
+                                 raw-i sub-path))))
+                node-id (nth ordered-node-ids i)
+                child-crdt (get-in crdt [:children node-id])]
+            (c/get-value-info (assoc arg
+                                     :crdt child-crdt
+                                     :norm-path (conj (or norm-path []) i)
+                                     :path (or sub-path [])
+                                     :schema child-schema))))))))
 
 (defmulti get-edge-insert-info :cmd-type)
 

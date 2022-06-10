@@ -77,14 +77,19 @@
                    children))]
       (u/sym-map exists? value norm-path))
     (let [[k & ks] path]
-      (check-key (assoc arg :key k))
-      (let [child-crdt (get-in crdt [:children k])
-            child-schema (get-child-schema k)]
-        (get-value-info (assoc arg
-                               :crdt child-crdt
-                               :norm-path (conj (or norm-path []) k)
-                               :path (or ks [])
-                               :schema child-schema))))))
+      ;; k can be nil sometimes in subscription paths
+      (if-not k
+        {:exists? true
+         :norm-path norm-path
+         :value nil}
+        (let [_ (check-key (assoc arg :key k))
+              child-crdt (get-in crdt [:children k])
+              child-schema (get-child-schema k)]
+          (get-value-info (assoc arg
+                                 :crdt child-crdt
+                                 :norm-path (conj (or norm-path []) k)
+                                 :path (or ks [])
+                                 :schema child-schema)))))))
 
 (defmethod get-value-info :single-value
   [{:keys [norm-path path] :as arg}]
