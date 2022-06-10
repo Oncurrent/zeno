@@ -363,7 +363,8 @@
                              :serialized-value serialized-value)
             ser-snap (au/<? (common/<serialized-value->value sv->v-arg))
             crdt (edn/read-string (:edn-crdt ser-snap))]
-        (u/sym-map crdt)))))
+        #_(u/sym-map crdt)
+        crdt))))
 
 (defn <get-snapshot-from-url [{:keys [url] :as arg}]
   (au/go
