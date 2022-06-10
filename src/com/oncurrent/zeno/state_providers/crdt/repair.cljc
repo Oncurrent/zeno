@@ -24,7 +24,8 @@
            (-> acc
                (assoc-in [:crdt :children k] (:crdt ret))
                (update :repair-crdt-ops set/union ops))))
-       arg
+       {:crdt crdt
+        :repair-crdt-ops #{}}
        children))))
 
 (defmethod c/repair :map
@@ -48,7 +49,8 @@
   (let [{:keys [union-branch]} crdt]
     (cond
       (not crdt)
-      arg
+      {:crdt nil
+       :repair-crdt-ops #{}}
 
       (not union-branch)
       (throw (ex-info (str "Schema indicates a union, but no "
@@ -58,11 +60,10 @@
       :else
       (let [member-schema (l/member-schema-at-branch schema union-branch)
             ret (c/repair (assoc arg :schema member-schema))]
-        (assoc arg
-               :crdt (assoc (:crdt ret) :union-branch union-branch)
-               :repair-crdt-ops (c/xf-op-paths
-                                 {:prefix union-branch
-                                  :crdt-ops (:repair-crdt-ops ret)}))))))
+        {:crdt (assoc (:crdt ret) :union-branch union-branch)
+         :repair-crdt-ops (c/xf-op-paths
+                           {:prefix union-branch
+                            :crdt-ops (:repair-crdt-ops ret)})}))))
 
 (defn resolve-conflict-by-sys-time-ms
   [{:keys [crdt make-id schema] :as arg}]

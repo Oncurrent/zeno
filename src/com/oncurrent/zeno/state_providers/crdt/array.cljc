@@ -347,7 +347,7 @@
       (delete-dangling-edges)
       (connect-nodes-to-terminals)
       (serialize-parallel-paths)
-      (update-ordered-node-ids)))
+      (select-keys [:crdt :repair-crdt-ops])))
 
 (defmethod c/repair :array
   [{:keys [crdt schema] :as arg}]
@@ -358,16 +358,19 @@
                    (repair-array* arg)
 
                    (empty? (:ordered-node-ids crdt))
-                   (-> arg
+                   (-> {:crdt crdt
+                        :repair-crdt-ops #{}}
                        (assoc-in [:crdt :ordered-node-ids]
                                  (:ordered-node-ids info)))
 
                    :else
-                   arg)]
+                   {:crdt crdt
+                    :repair-crdt-ops #{}})
+        updated (update-ordered-node-ids repaired)]
     (reduce
      (fn [acc node-id]
        (let [ret (c/repair (assoc arg
-                                  :crdt (get-in repaired
+                                  :crdt (get-in updated
                                                 [:crdt :children node-id])
                                   :schema items-schema))
              ops (c/xf-op-paths {:prefix node-id
@@ -375,8 +378,8 @@
          (-> acc
              (assoc-in [:crdt :children node-id] (:crdt ret))
              (update :repair-crdt-ops set/union ops))))
-     repaired
-     (-> repaired :crdt :ordered-node-ids))))
+     updated
+     (-> updated :crdt :ordered-node-ids))))
 
 (defn get-sub-value-info
   [{:keys [get-child-schema crdt norm-path path] :as arg}]
@@ -386,8 +389,7 @@
                    (let [v (-> (assoc arg :path [k])
                                (c/get-value-info)
                                (:value))]
-                     (if (or (nil? v)
-                             (and (coll? v) (empty? v)))
+                     (if (= ::not-present v)
                        acc
                        (assoc acc k v))))
                  {}

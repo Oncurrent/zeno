@@ -70,7 +70,9 @@
                      (let [v (-> (assoc arg :path [k])
                                  (get-value-info)
                                  (:value))]
-                       (assoc acc k v)))
+                       (if (= ::not-present v)
+                         acc
+                         (assoc acc k v))))
                    {}
                    children))]
       (u/sym-map value norm-path))
@@ -89,7 +91,10 @@
                                    :schema child-schema))))))))
 
 (defn get-single-value [arg]
-  (some-> arg :crdt :current-add-id-to-value-info first val :value))
+  (let [vi (some-> arg :crdt :current-add-id-to-value-info)]
+    (if (empty? vi)
+      ::not-present
+      (some-> vi first val :value))))
 
 (defmethod get-value-info :single-value
   [{:keys [norm-path path] :as arg}]
