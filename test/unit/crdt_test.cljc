@@ -322,8 +322,10 @@
                        "NodeA"
                        {:current-add-id-to-value-info
                         {"a1" {:sys-time-ms 1640205282858 :value "A"}}}})
+                :container-add-ids #{"a100"}
                 :current-edge-add-ids #{"a10" "a4" "a7" "a12" "a9" "a13"}
-                :deleted-edge-add-ids #{"a5" "a6"}}]
+                :deleted-edge-add-ids #{"a5" "a6"}
+                :ordered-node-ids ["NodeA" "NodeX" "NodeY" "NodeC"]}]
       (is (= expected-v (crdt/get-value
                          (u/sym-map crdt make-id path schema)))))))
 
