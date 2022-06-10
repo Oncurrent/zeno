@@ -381,74 +381,48 @@
      updated
      (-> updated :crdt :ordered-node-ids))))
 
-(defn get-sub-value-info
-  [{:keys [get-child-schema crdt norm-path path] :as arg}]
-  (if (empty? path)
-    (let [value (reduce-kv
-                 (fn [acc k _]
-                   (let [v (-> (assoc arg :path [k])
-                               (c/get-value-info)
-                               (:value))]
-                     (if (= c/not-present v)
-                       acc
-                       (assoc acc k v))))
-                 {}
-                 (:children crdt))]
-      (u/sym-map value norm-path))
-    (let [[k & ks] path]
-      (if-not k
-        {:norm-path norm-path
-         :value nil}
-        (do
-          (c/check-key (assoc arg :key k))
-          (c/get-value-info (assoc arg
-                                   :crdt (get-in crdt [:children k])
-                                   :path ks
-                                   :schema (get-child-schema k))))))))
-
 (defmethod c/get-value-info :array
   [{:keys [crdt norm-path path schema] :as arg}]
   (let [{:keys [container-add-ids]} crdt
         ordered-node-ids (or (:ordered-node-ids crdt) [])
-        arg* (assoc arg :get-child-schema (fn [_]
-                                            (l/child-schema schema)))
-        exists? (seq container-add-ids)]
+        array-len (count ordered-node-ids)
+        exists? (boolean (seq container-add-ids))
+        child-schema (l/child-schema schema)]
     (if (empty? path)
-      (let [id->v (when exists?
-                    (:value (get-sub-value-info arg*)))
-            v (if exists?
-                (mapv id->v ordered-node-ids)
-                c/not-present)]
-        {:norm-path norm-path
-         :value v})
-      (let [[raw-k & sub-path] path
-            [k i] (cond
-                    (string? raw-k)
-                    [raw-k nil]
-
-                    (integer? raw-k)
-                    (let [array-len (count ordered-node-ids)
-                          ni (u/get-normalized-array-index {:array-len array-len
-                                                            :i raw-k})]
-                      (when (or (not ni) (empty? ordered-node-ids))
-                        (throw
-                         (ex-info
-                          (str "Index `" ni "` into array `" ordered-node-ids
-                               "` is out of bounds.")
-                          (u/sym-map norm-path path ordered-node-ids
-                                     raw-k sub-path))))
-                      [(nth ordered-node-ids ni) ni])
-
-                    :else
-                    (throw (ex-info (str "Unknown key type in :array path `"
-                                         raw-k "`.")
-                                    {:k raw-k
-                                     :path path})))
-            new-path (vec (cons k (rest path)))]
-        (get-sub-value-info (assoc arg*
-                                   :path new-path
-                                   :norm-path (conj (or norm-path []) i)
-                                   :string-array-keys? true))))))
+      (let [value (when exists?
+                    (reduce
+                     (fn [acc i]
+                       (let [node-id (nth ordered-node-ids i)
+                             child-crdt (get-in crdt [:children node-id])
+                             vi (c/get-value-info
+                                 (assoc arg
+                                        :crdt child-crdt
+                                        :norm-path (conj (or norm-path []) i)
+                                        :schema child-schema))]
+                         (if (:exists? vi)
+                           (conj acc (:value vi))
+                           acc)))
+                     []
+                     (range array-len)))]
+        (u/sym-map exists? norm-path value))
+      (let [[raw-i & sub-path] path
+            _ (c/check-key (assoc arg :key raw-i))
+            i (u/get-normalized-array-index {:array-len array-len
+                                             :i raw-i})
+            _ (when (or (not i) (empty? ordered-node-ids))
+                (throw
+                 (ex-info
+                  (str "Index `" i "` into array `" ordered-node-ids
+                       "` is out of bounds.")
+                  (u/sym-map i norm-path path ordered-node-ids
+                             raw-i sub-path))))
+            node-id (nth ordered-node-ids i)
+            child-crdt (get-in crdt [:children node-id])]
+        (c/get-value-info (assoc arg
+                                 :crdt child-crdt
+                                 :norm-path (conj (or norm-path []) i)
+                                 :path (or sub-path [])
+                                 :schema child-schema))))))
 
 (defmulti get-edge-insert-info :cmd-type)
 

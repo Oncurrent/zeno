@@ -14,7 +14,6 @@
 
 (def container-types #{:array :map :record :union})
 (def tx-info-prefix "_TX-INFO-FOR-TX-ID-")
-(def not-present "__NOT_PRESENT__")
 
 (defn tx-id->tx-info-k [tx-id]
   (str tx-info-prefix tx-id))
@@ -65,46 +64,37 @@
   [{:keys [get-child-schema crdt norm-path path] :as arg}]
   (if (empty? path)
     (let [{:keys [children container-add-ids]} crdt
-          value (if-not (seq container-add-ids)
-                  not-present
+          exists? (seq container-add-ids)
+          value (when exists?
                   (reduce-kv
                    (fn [acc k child-crdt]
-                     (let [v (-> (assoc arg
-                                        :path [k])
-                                 (get-value-info)
-                                 (:value))]
-                       (if (= not-present v)
-                         acc
-                         (assoc acc k v))))
+                     (let [vi (get-value-info
+                               (assoc arg :path [k]))]
+                       (if (:exists? vi)
+                         (assoc acc k (:value vi))
+                         acc)))
                    {}
                    children))]
-      (u/sym-map value norm-path))
+      (u/sym-map exists? value norm-path))
     (let [[k & ks] path]
-      (if-not k
-        {:norm-path norm-path
-         :value nil}
-        (do
-          (check-key (assoc arg :key k))
-          (let [child-crdt (get-in crdt [:children k])
-                child-schema (get-child-schema k)]
-            (get-value-info (assoc arg
-                                   :crdt child-crdt
-                                   :norm-path (conj (or norm-path []) k)
-                                   :path (or ks [])
-                                   :schema child-schema))))))))
-
-(defn get-single-value [arg]
-  (let [vi (some-> arg :crdt :current-add-id-to-value-info)]
-    (if (empty? vi)
-      not-present
-      (some-> vi first val :value))))
+      (check-key (assoc arg :key k))
+      (let [child-crdt (get-in crdt [:children k])
+            child-schema (get-child-schema k)]
+        (get-value-info (assoc arg
+                               :crdt child-crdt
+                               :norm-path (conj (or norm-path []) k)
+                               :path (or ks [])
+                               :schema child-schema))))))
 
 (defmethod get-value-info :single-value
   [{:keys [norm-path path] :as arg}]
   (if (seq path)
-    (throw (ex-info "Can't index into a single-value CRDT." arg))
-    {:value (get-single-value arg)
-     :norm-path norm-path}))
+    (throw (ex-info "Can't index into a single-value CRDT."
+                    (u/sym-map path norm-path)))
+    (let [vi (some-> arg :crdt :current-add-id-to-value-info first val)]
+      {:value (:value vi)
+       :exists? (boolean vi)
+       :norm-path norm-path})))
 
 (defmethod get-value-info :map
   [{:keys [schema] :as arg}]
@@ -199,13 +189,14 @@
 (defmethod get-value-info :union
   [{:keys [crdt norm-path path schema] :as arg}]
   (if (empty? crdt)
-    {:norm-path norm-path
+    {:exists? false
+     :norm-path norm-path
      :value nil}
-    (let [member-schema (get-member-schema arg)]
-      (if member-schema
-        (get-value-info (assoc arg :schema member-schema))
-        {:norm-path norm-path
-         :value nil}))))
+    (if-let [member-schema (get-member-schema arg)]
+      (get-value-info (assoc arg :schema member-schema))
+      {:exists? false
+       :norm-path norm-path
+       :value nil})))
 
 (defn get-op-value-info [{:keys [op-type schema op-path]}]
   (case op-type
