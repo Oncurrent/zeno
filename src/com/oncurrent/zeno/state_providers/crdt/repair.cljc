@@ -71,7 +71,8 @@
         make-id* (or make-id u/compact-random-uuid)
         winner (->> current-add-id-to-value-info
                     (sort-by #(-> % second :sys-time-ms))
-                    (last))
+                    (last)
+                    (second))
         del-ops (reduce-kv (fn [acc add-id value-info]
                              (conj acc {:add-id add-id
                                         :op-path '()

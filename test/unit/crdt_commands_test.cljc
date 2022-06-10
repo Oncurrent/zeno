@@ -1068,10 +1068,11 @@
               :sys-time-ms (u/str->long "1640205282999")}
         ret1 (commands/process-cmds arg1)
         ret2 (commands/process-cmds arg2)
+        all-ops (set/union (:crdt-ops ret1)
+                           (:crdt-ops ret2))
         merged-crdt (:crdt (apply-ops/apply-ops
                             {:crdt (:crdt ret0)
-                             :crdt-ops (set/union (:crdt-ops ret1)
-                                                  (:crdt-ops ret2))
+                             :crdt-ops all-ops
                              :schema pet-owner-schema}))]
     ;; We expect "Herman" because its sys-time-ms is later
     (is (= "Herman" (crdt/get-value {:crdt merged-crdt
