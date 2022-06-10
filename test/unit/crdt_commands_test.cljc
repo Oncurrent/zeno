@@ -3,7 +3,7 @@
    [clojure.set :as set]
    [clojure.test :as t :refer [deftest is]]
    [deercreeklabs.lancaster :as l]
-   [com.oncurrent.zeno.state-providers.crdt.apply-ops-impl :as apply-ops]
+   [com.oncurrent.zeno.state-providers.crdt.apply-ops :as apply-ops]
    [com.oncurrent.zeno.state-providers.crdt.commands :as commands]
    [com.oncurrent.zeno.state-providers.crdt.common :as crdt]
    [com.oncurrent.zeno.state-providers.crdt.repair :as repair]
@@ -20,7 +20,8 @@
    (defn krun
      ([sym] (krun sym nil))
      ([sym opts]
-      (kaocha.repl/run sym (merge {:color? false :capture-output? false} opts)))))
+      (kaocha.repl/run sym (merge {:color? false
+                                   :capture-output? false} opts)))))
 
 (l/def-record-schema pet-schema
   [:name l/string-schema]
@@ -48,8 +49,9 @@
   [:right-child ::tree]
   [:left-child ::tree])
 
-(defn ops->crdt [ops schema]
-  (apply-ops/apply-ops {:crdt {} :crdt-ops ops :schema schema}))
+(defn ops->crdt [crdt-ops schema]
+  (-> (apply-ops/apply-ops (u/sym-map crdt-ops schema))
+      (:crdt)))
 
 (defn ->value [crdt path schema]
   (crdt/get-value (u/sym-map crdt path schema)))
@@ -116,7 +118,7 @@
         arg2 (assoc arg1
                     :cmds [{:zeno/arg {:pet-owners {}}
                             :zeno/op :zeno/set
-                            :zeno-path []}]
+                            :zeno/path []}]
                     :crdt crdt1)
         {crdt2 :crdt crdt2-ops :crdt-ops} (commands/process-cmds arg2)
         acrdt (ops->crdt (set/union crdt1-ops crdt2-ops) schema)]
@@ -142,7 +144,7 @@
         arg2 (assoc arg1
                     :cmds [{:zeno/arg {}
                             :zeno/op :zeno/set
-                            :zeno-path [:pet-owners]}]
+                            :zeno/path [:pet-owners]}]
                     :crdt crdt1)
         {crdt2 :crdt crdt2-ops :crdt-ops} (commands/process-cmds arg2)
         acrdt (ops->crdt (set/union crdt1-ops crdt2-ops) schema)]
@@ -785,25 +787,26 @@
                       :zeno/path [:zeno/crdt]}]
               :root :zeno/crdt
               :schema pet-owner-schema}
-        {crdt0 :crdt crdt0-ops :crdt-ops} (commands/process-cmds arg0)
+        {crdt0 :crdt
+         crdt0-ops :crdt-ops} (commands/process-cmds arg0)
         arg1 {:cmds [{:zeno/arg {:name "Chris"
                                  :species "Canis familiaris"}
                       :zeno/op :zeno/insert-before
                       :zeno/path [:zeno/crdt :pets 0]}]
               :root :zeno/crdt
-              :crdt (:crdt ret0)
+              :crdt crdt0
               :schema pet-owner-schema}
         arg2 {:cmds [{:zeno/arg {:name "Pat"
                                  :species "Canis familiaris"}
                       :zeno/op :zeno/insert-after
                       :zeno/path [:zeno/crdt :pets -1]}]
               :root :zeno/crdt
-              :crdt (:crdt ret0)
+              :crdt crdt0
               :schema pet-owner-schema}
-        {crdt1} (commands/process-cmds arg1)
+        ret1 (commands/process-cmds arg1)
         ret2 (commands/process-cmds arg2)
         new-crdt-ops (set/union (:crdt-ops ret1) (:crdt-ops ret2))
-        merged-crdt (apply-ops/apply-ops {:crdt (:crdt ret0)
+        merged-crdt (apply-ops/apply-ops {:crdt crdt0
                                           :crdt-ops new-crdt-ops
                                           :schema pet-owner-schema})
         expected-value [{:name "Chris"
@@ -903,7 +906,9 @@
         ret1 (commands/process-cmds arg1)
         ret2 (commands/process-cmds arg2)
         ret3 (commands/process-cmds arg3)
-        new-crdt-ops (set/union (:crdt-ops ret1) (:crdt-ops ret2) (:crdt-ops ret3))
+        new-crdt-ops (set/union (:crdt-ops ret1)
+                                (:crdt-ops ret2)
+                                (:crdt-ops ret3))
         merged-crdt (apply-ops/apply-ops {:crdt (:crdt ret0)
                                           :crdt-ops new-crdt-ops
                                           :schema schema})
@@ -961,7 +966,9 @@
         ret1 (commands/process-cmds arg1)
         ret2 (commands/process-cmds arg2)
         ret3 (commands/process-cmds arg3)
-        new-crdt-ops (set/union (:crdt-ops ret1) (:crdt-ops ret2) (:crdt-ops ret3))
+        new-crdt-ops (set/union (:crdt-ops ret1)
+                                (:crdt-ops ret2)
+                                (:crdt-ops ret3))
         merged-crdt (apply-ops/apply-ops {:crdt (:crdt ret0)
                                           :crdt-ops new-crdt-ops
                                           :schema schema})
@@ -1019,7 +1026,9 @@
         ret1 (commands/process-cmds arg1)
         ret2 (commands/process-cmds arg2)
         ret3 (commands/process-cmds arg3)
-        new-crdt-ops (set/union (:crdt-ops ret1) (:crdt-ops ret2) (:crdt-ops ret3))
+        new-crdt-ops (set/union (:crdt-ops ret1)
+                                (:crdt-ops ret2)
+                                (:crdt-ops ret3))
         merged-crdt (apply-ops/apply-ops {:crdt (:crdt ret0)
                                           :crdt-ops new-crdt-ops
                                           :schema schema})
@@ -1310,7 +1319,7 @@
            (->value acrdt [] schema)))))
 
 (comment (krun #'test-array-nested-insert-after))
-(deftest ^:this test-array-nested-insert-after
+(deftest test-array-nested-insert-after
   (let [value "id"
         schema (l/array-schema (l/array-schema l/string-schema))
         arg {:cmds [{:zeno/arg value
@@ -1381,4 +1390,3 @@
     (is (= data
            (->value crdt [] schema)
            (->value acrdt [] schema)))))
-

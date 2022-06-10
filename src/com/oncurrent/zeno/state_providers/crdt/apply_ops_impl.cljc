@@ -79,22 +79,20 @@
                      (or union-branch "nil") "`.")
                 (u/sym-map add-id op-type op-path union-edn-schema value)))))))
 
-(defmethod apply-op [:union :add-value]
-  [{:keys [crdt op-path schema] :as arg}]
-  (check-path-union-branch arg)
-  (let [[union-branch & ks] op-path]
-    (apply-op (assoc arg
-                     :crdt (assoc crdt :union-branch union-branch)
-                     :op-path ks
-                     :schema (l/member-schema-at-branch schema union-branch)))))
-
-(defn apply-union-op [{:keys [op-path schema] :as arg}]
+(defn apply-union-op [{:keys [op-path schema write-branch?] :as arg}]
   (check-path-union-branch arg)
   (let [[union-branch & ks] op-path
-        member-schema (l/member-schema-at-branch schema union-branch)]
-    (apply-op (assoc arg
-                     :op-path ks
-                     :schema member-schema))))
+        member-schema (l/member-schema-at-branch schema union-branch)
+        arg* (cond-> (assoc arg
+                            :op-path ks
+                            :schema member-schema)
+               true (dissoc :write-branch?)
+               write-branch? (assoc-in [:crdt :union-branch] union-branch))]
+    (apply-op arg*)))
+
+(defmethod apply-op [:union :add-value]
+  [arg]
+  (apply-union-op (assoc arg :write-branch? true)))
 
 (defmethod apply-op [:union :delete-value]
   [arg]
@@ -108,24 +106,50 @@
   [arg]
   (apply-union-op arg))
 
-(defn delete-container [{:keys [crdt] :as arg}]
-  (let [{add-ids-to-delete :value} arg]
-    (-> crdt
-        (update :container-add-ids set/difference add-ids-to-delete)
-        (update :deleted-container-add-ids
-                (fn [add-ids]
-                  (if (seq add-ids)
-                    (set/union add-ids add-ids-to-delete)
-                    add-ids-to-delete))))))
+(defmethod apply-op [:union :add-container]
+  [arg]
+  (apply-union-op (assoc arg :write-branch? true)))
 
-(defn add-container [{:keys [add-id crdt]}]
-  (let [{:keys [deleted-container-add-ids]} crdt]
-    (if (contains? deleted-container-add-ids add-id)
-      crdt
-      (update crdt :container-add-ids (fn [add-ids]
-                                        (if (seq add-ids)
-                                          (conj add-ids add-id)
-                                          #{add-id}))))))
+(defmethod apply-op [:union :delete-container]
+  [arg]
+  (apply-union-op arg))
+
+(defn delete-container [{:keys [crdt get-child-schema op-path] :as arg}]
+  (if (seq op-path)
+    (let [[k & ks] op-path]
+      (c/check-key (assoc arg :key k :string-array-keys? true))
+      (update-in crdt [:children k]
+                 (fn [child-crdt]
+                   (apply-op (assoc arg
+                                    :crdt child-crdt
+                                    :op-path ks
+                                    :schema (get-child-schema k))))))
+    (let [{add-ids-to-delete :value} arg]
+      (-> crdt
+          (update :container-add-ids set/difference add-ids-to-delete)
+          (update :deleted-container-add-ids
+                  (fn [add-ids]
+                    (if (seq add-ids)
+                      (set/union add-ids add-ids-to-delete)
+                      add-ids-to-delete)))))))
+
+(defn add-container [{:keys [add-id crdt get-child-schema op-path] :as arg}]
+  (if (seq op-path)
+    (let [[k & ks] op-path]
+      (c/check-key (assoc arg :key k :string-array-keys? true))
+      (update-in crdt [:children k]
+                 (fn [child-crdt]
+                   (apply-op (assoc arg
+                                    :crdt child-crdt
+                                    :op-path ks
+                                    :schema (get-child-schema k))))))
+    (let [{:keys [deleted-container-add-ids]} crdt]
+      (if (contains? deleted-container-add-ids add-id)
+        crdt
+        (update crdt :container-add-ids (fn [add-ids]
+                                          (if (seq add-ids)
+                                            (conj add-ids add-id)
+                                            #{add-id})))))))
 
 (defmethod apply-op [:map :add-value]
   [{:keys [add-id op-path schema value] :as arg}]
@@ -137,8 +161,9 @@
                                (fn [_] (l/child-schema schema)))))
 
 (defmethod apply-op [:map :add-container]
-  [arg]
-  (add-container arg))
+  [{:keys [schema] :as arg}]
+  (add-container (assoc arg :get-child-schema
+                        (constantly (l/child-schema schema)))))
 
 (defn associative-delete-value
   [{:keys [add-id get-child-schema crdt op-path] :as arg}]
@@ -150,8 +175,9 @@
                                    (fn [_] (l/child-schema schema)))))
 
 (defmethod apply-op [:map :delete-container]
-  [arg]
-  (delete-container arg))
+  [{:keys [schema] :as arg}]
+  (delete-container (assoc arg :get-child-schema
+                           (constantly (l/child-schema schema)))))
 
 (defmethod apply-op [:map :add-array-edge]
   [{:keys [add-id crdt op-path schema value] :as arg}]
@@ -173,8 +199,9 @@
                                #(l/child-schema schema %))))
 
 (defmethod apply-op [:record :add-container]
-  [arg]
-  (add-container arg))
+  [{:keys [schema] :as arg}]
+  (add-container
+   (assoc arg :get-child-schema #(l/child-schema schema %))))
 
 (defmethod apply-op [:record :delete-value]
   [{:keys [schema] :as arg}]
@@ -182,8 +209,8 @@
                                    #(l/child-schema schema %))))
 
 (defmethod apply-op [:record :delete-container]
-  [arg]
-  (delete-container arg))
+  [{:keys [schema] :as arg}]
+  (delete-container (assoc arg :get-child-schema #(l/child-schema schema %))))
 
 (defmethod apply-op [:record :add-array-edge]
   [{:keys [add-id crdt op-path schema value] :as arg}]
@@ -205,8 +232,9 @@
                                (fn [_] (l/child-schema schema)))))
 
 (defmethod apply-op [:array :add-container]
-  [arg]
-  (add-container arg))
+  [{:keys [schema] :as arg}]
+  (add-container
+   (assoc arg :get-child-schema (constantly (l/child-schema schema)))))
 
 (defmethod apply-op [:array :delete-value]
   [{:keys [schema] :as arg}]
@@ -232,7 +260,9 @@
     ;; We use a slightly different CRDT implementation here because we
     ;; need to be able to resurrect deleted edges. The `:single-value`
     ;; CRDT does not keep info for deleted items.
-    (let [{:keys [add-id-to-edge current-edge-add-ids deleted-edge-add-ids]} crdt
+    (let [{:keys [add-id-to-edge
+                  current-edge-add-ids
+                  deleted-edge-add-ids]} crdt
           deleted? (get deleted-edge-add-ids add-id)
           current? (get current-edge-add-ids add-id)
           edge (get add-id-to-edge add-id)
@@ -266,18 +296,18 @@
                                           #{add-id}))))))
 
 (defmethod apply-op [:array :delete-container]
-  [arg]
-  (delete-container arg))
+  [{:keys [schema] :as arg}]
+  (delete-container
+   (assoc arg :get-child-schema (constantly (l/child-schema schema)))))
 
 (defn apply-ops-without-repair
   [{:keys [crdt crdt-ops schema] :as arg}]
-  (let [crdt* (reduce
-               (fn [acc {:keys [sys-time-ms] :as op}]
-                 (apply-op (assoc op
-                                  :crdt acc
-                                  :schema schema
-                                  :sys-time-ms (or sys-time-ms
-                                                   (:sys-time-ms arg)))))
-               crdt
-               crdt-ops)]
-    (assoc arg :crdt crdt*)))
+  (reduce
+   (fn [acc {:keys [sys-time-ms] :as op}]
+     (apply-op (assoc op
+                      :crdt acc
+                      :schema schema
+                      :sys-time-ms (or sys-time-ms
+                                       (:sys-time-ms arg)))))
+   crdt
+   crdt-ops))
