@@ -2,7 +2,7 @@
   (:require
    [clojure.set :as set]
    [deercreeklabs.lancaster :as l]
-   [com.oncurrent.zeno.state-providers.crdt.apply-ops-impl :as apply-ops]
+   [com.oncurrent.zeno.state-providers.crdt.apply-ops-impl :as aoi]
    [com.oncurrent.zeno.state-providers.crdt.array :as array]
    [com.oncurrent.zeno.state-providers.crdt.common :as c]
    [com.oncurrent.zeno.utils :as u]
@@ -26,13 +26,7 @@
                             (c/schema->dispatch-type schema)))
 
 (defmulti get-add-info (fn [{:keys [schema]}]
-                             (c/schema->dispatch-type schema)))
-
-(defn xf-op-paths [{:keys [prefix crdt-ops]}]
-  (reduce (fn [acc op]
-            (conj acc (update op :op-path #(cons prefix %))))
-          #{}
-          crdt-ops))
+                         (c/schema->dispatch-type schema)))
 
 (defmethod get-delete-info :single-value
   [arg]
@@ -43,7 +37,7 @@
                                          :op-type :delete-value}))
                             #{}
                             current-add-id-to-value-info)
-        crdt (apply-ops/apply-ops (assoc arg :crdt-ops crdt-ops))]
+        crdt (aoi/apply-ops-without-repair (assoc arg :crdt-ops crdt-ops))]
     (u/sym-map crdt crdt-ops)))
 
 (defn associative-get-delete-info
@@ -55,7 +49,7 @@
                                                 :crdt (:crdt gcdi-arg)
                                                 :path sub-path
                                                 :schema (get-child-schema k)))
-                                   crdt-ops (xf-op-paths
+                                   crdt-ops (c/xf-op-paths
                                              (cond-> {:prefix k
                                                       :crdt-ops (:crdt-ops info)}
                                                i (assoc :i i :array? true)))]
@@ -73,7 +67,7 @@
                          (assoc-in [:crdt :children k] new-crdt)
                          (update :crdt-ops set/union (:crdt-ops ret)))))
                  {:crdt crdt
-                  :crdt-ops (:crdt-ops arg)}
+                  :crdt-ops #{}}
                  (:children crdt))
       (let [path-info (get-child-path-info path)
             ret (get-child-del-info path-info)]
@@ -139,10 +133,49 @@
        :value {:head-node-id (:head-node-id (add-id-to-edge in-add-id))
                :tail-node-id (:tail-node-id (add-id-to-edge out-add-id))}}}))
 
+(defn make-edge-crdt-ops-for-delete
+  [{:keys [cmd crdt ordered-node-ids path] :as arg}]
+  (let [{:keys [add-id-to-edge current-edge-add-ids]} crdt
+        [i & sub-path] path]
+    (cond
+      (empty? path)
+      (reduce (fn [acc eaid]
+                (conj acc {:add-id eaid
+                           :op-path '()
+                           :op-type :delete-array-edge}))
+              #{}
+              current-edge-add-ids)
+
+      (and (empty? sub-path)
+           (= :zeno/remove (:zeno/op cmd)))
+      (do
+        (when (or (> i (count ordered-node-ids))
+                  (empty? ordered-node-ids))
+          (throw (ex-info
+                  (str "Index `" i "` into array `"
+                       ordered-node-ids "` is out of bounds.")
+                  (u/sym-map cmd path ordered-node-ids
+                             add-id-to-edge
+                             current-edge-add-ids
+                             i sub-path))))
+        (get-crdt-ops-del-single-node
+         (assoc arg :node-id (nth ordered-node-ids i))))
+
+      :else
+      #{})))
+
+(defn make-del-container-crdt-ops [{:keys [cmd crdt path]}]
+  (let [{:keys [container-add-ids]} crdt]
+    (when (and (empty? path)
+               (= :zeno/remove (:zeno/op cmd))
+               (seq container-add-ids))
+      #{{:op-path '()
+         :op-type :delete-container
+         :value container-add-ids}})))
+
 (defmethod get-delete-info :array
   [{:keys [make-id cmd crdt path schema sys-time-ms] :as arg}]
   (let [items-schema (l/child-schema schema)
-        {:keys [add-id-to-edge current-edge-add-ids]} crdt
         ordered-node-ids (or (:ordered-node-ids crdt) [])
         arg* (assoc arg :get-child-schema (constantly items-schema))
         del-info (associative-get-delete-info
@@ -170,38 +203,15 @@
                               :k (nth ordered-node-ids ni)
                               :i i
                               :sub-path sub-path}))))
-        [i & sub-path] path
-        edge-crdt-ops (cond
-                        (empty? path)
-                        (reduce (fn [acc eaid]
-                                  (conj acc {:add-id eaid
-                                             :op-path '()
-                                             :op-type :delete-array-edge}))
-                                #{}
-                                current-edge-add-ids)
-
-                        (and (empty? sub-path)
-                             (= :zeno/remove (:zeno/op cmd)))
-                        (do
-                          (when (or (> i (count ordered-node-ids))
-                                    (empty? ordered-node-ids))
-                            (throw (ex-info
-                                    (str "Index `" i "` into array `"
-                                         ordered-node-ids "` is out of bounds.")
-                                    (u/sym-map cmd path ordered-node-ids
-                                               add-id-to-edge
-                                               current-edge-add-ids
-                                               i sub-path))))
-                          (get-crdt-ops-del-single-node
-                           (assoc (u/sym-map crdt make-id sys-time-ms)
-                                  :node-id (nth ordered-node-ids i))))
-
-                        :else
-                        #{})
-        crdt-ops (set/union (:crdt-ops arg)
-                            (:crdt-ops del-info)
-                            edge-crdt-ops)
-        crdt* (:crdt del-info)
+        edge-crdt-ops (make-edge-crdt-ops-for-delete
+                       (assoc arg :ordered-node-ids ordered-node-ids))
+        del-container-crdt-ops (make-del-container-crdt-ops arg)
+        crdt-ops (set/union (:crdt-ops del-info)
+                            edge-crdt-ops
+                            del-container-crdt-ops)
+        crdt* (aoi/apply-ops-without-repair (assoc arg
+                                                   :crdt (:crdt del-info)
+                                                   :crdt-ops crdt-ops))
         array-info (array/get-array-info (assoc arg* :crdt crdt*))]
     {:crdt (assoc crdt* :ordered-node-ids (:ordered-node-ids array-info))
      :crdt-ops crdt-ops}))
@@ -217,10 +227,9 @@
                                              :path path
                                              :schema member-schema))]
         (update del-info :crdt-ops
-                #(set/union (:crdt-ops arg)
-                            (xf-op-paths {:prefix union-branch
-                                          :crdt-ops %
-                                          :union? true})))))))
+                #(c/xf-op-paths {:prefix union-branch
+                               :crdt-ops %
+                               :union? true}))))))
 
 (defmethod get-add-info :single-value
   [{:keys [cmd-arg make-id sys-time-ms] :as arg}]
@@ -229,11 +238,19 @@
                     :op-type :add-value
                     :sys-time-ms (or sys-time-ms (u/current-time-ms))
                     :value cmd-arg}}
-        crdt (apply-ops/apply-ops (assoc arg :crdt-ops crdt-ops))]
+        crdt (aoi/apply-ops-without-repair (assoc arg :crdt-ops crdt-ops))]
     (u/sym-map crdt crdt-ops)))
 
+(defn make-add-container-crdt-ops [{:keys [crdt cmd-arg make-id tx-ms]}]
+  (if (seq (:container-add-ids crdt))
+    #{}
+    #{{:add-id (make-id)
+       :op-path '()
+       :op-type :add-container
+       :sys-time-ms tx-ms}}))
+
 (defmethod get-add-info :map
-  [{:keys [cmd cmd-arg cmd-path cmd-type crdt path schema] :as arg}]
+  [{:keys [cmd cmd-arg cmd-path cmd-type crdt path schema sys-time-ms] :as arg}]
   (let [values-schema (l/child-schema schema)]
     (if (seq path)
       (let [[k & ks] path
@@ -241,13 +258,13 @@
                                           :crdt (get-in crdt [:children k])
                                           :path ks
                                           :schema values-schema))
-            crdt-ops (set/union (:crdt-ops arg)
-                                (xf-op-paths {:prefix k
-                                              :crdt-ops (:crdt-ops add-info)}))]
+            crdt-ops (c/xf-op-paths {:prefix k
+                                     :crdt-ops (:crdt-ops add-info)})]
         {:crdt (assoc-in crdt [:children k] (:crdt add-info))
          :crdt-ops crdt-ops})
       (let [edn-schema (l/edn schema)
             pred (c/edn-schema->pred edn-schema)
+            tx-ms (or sys-time-ms (u/current-time-ms))
             _ (when (and (= :zeno/set cmd-type) (not (pred cmd-arg)))
                 (throw (ex-info
                         (str ":arg (`" (or cmd-arg "nil") "`) is not the "
@@ -263,27 +280,27 @@
                                             :schema values-schema))
                            crdt-ops (set/union
                                      (:crdt-ops acc)
-                                     (xf-op-paths
+                                     (c/xf-op-paths
                                       {:prefix k
                                        :crdt-ops (:crdt-ops add-info)}))]
                        (-> acc
                            (assoc-in [:crdt :children k] (:crdt add-info))
                            (assoc :crdt-ops crdt-ops))))
                    {:crdt (or crdt {})
-                    :crdt-ops (:crdt-ops arg)}
+                    :crdt-ops (make-add-container-crdt-ops
+                               (assoc arg :tx-ms tx-ms))}
                    cmd-arg)))))
 
 (defmethod get-add-info :record
-  [{:keys [cmd cmd-arg cmd-path cmd-type crdt path schema] :as arg}]
+  [{:keys [cmd cmd-arg cmd-path cmd-type crdt path schema sys-time-ms] :as arg}]
   (if (seq path)
     (let [[k & ks] path
           add-info (get-add-info (assoc arg
                                         :crdt (get-in crdt [:children k])
                                         :path ks
                                         :schema (l/child-schema schema k)))
-          crdt-ops (set/union (:crdt-ops arg)
-                              (xf-op-paths {:prefix k
-                                            :crdt-ops (:crdt-ops add-info)}))]
+          crdt-ops (c/xf-op-paths {:prefix k
+                                   :crdt-ops (:crdt-ops add-info)})]
       {:crdt (assoc-in crdt [:children k] (:crdt add-info))
        :crdt-ops crdt-ops})
     (do
@@ -303,17 +320,20 @@
                                        :path []
                                        :schema child-schema))
                       crdt-ops (when add-info
-                                 (set/union (:crdt-ops acc)
-                                            (xf-op-paths
-                                             {:prefix k
-                                              :crdt-ops (:crdt-ops add-info)})))]
+                                 (set/union
+                                  (:crdt-ops acc)
+                                  (c/xf-op-paths
+                                   {:prefix k
+                                    :crdt-ops (:crdt-ops add-info)})))]
                   (if-not add-info
                     acc
                     (-> acc
                         (assoc-in [:crdt :children k] (:crdt add-info))
                         (assoc :crdt-ops crdt-ops)))))
               {:crdt crdt
-               :crdt-ops (:crdt-ops arg)}
+               :crdt-ops (make-add-container-crdt-ops
+                          (assoc arg
+                                 :tx-ms (or sys-time-ms (u/current-time-ms))))}
               (->> (l/edn schema)
                    (:fields)
                    (map :name))))))
@@ -329,12 +349,71 @@
         add-info (get-add-info (assoc arg
                                       :path path
                                       :schema member-schema))
-        crdt-ops (xf-op-paths {:prefix union-branch
-                               :crdt-ops (:crdt-ops add-info)
-                               :union? true})]
+        crdt-ops (c/xf-op-paths {:prefix union-branch
+                                 :crdt-ops (:crdt-ops add-info)
+                                 :union? true})]
     (-> add-info
         (assoc-in [:crdt :union-branch] union-branch)
         (assoc :crdt-ops crdt-ops))))
+
+(defn get-array-add-info [{:keys [cmd-arg crdt items-schema make-id] :as arg}]
+  (reduce (fn [acc v]
+            (let [node-id (make-id)
+                  add-info (get-add-info
+                            (assoc arg
+                                   :cmd-arg v
+                                   :crdt (get-in (:crdt acc)
+                                                 [:children node-id])
+                                   :path []
+                                   :schema items-schema))]
+              (-> acc
+                  (assoc-in [:crdt :children node-id] (:crdt add-info))
+                  (update :node-crdt-ops
+                          (fn [node-crdt-ops]
+                            (set/union
+                             node-crdt-ops
+                             (c/xf-op-paths {:array? true
+                                             :prefix node-id
+                                             :i (count (:node-ids acc))
+                                             :crdt-ops (:crdt-ops
+                                                        add-info)}))))
+                  (update :node-ids conj node-id))))
+          {:crdt crdt
+           :node-ids []
+           :node-crdt-ops #{}}
+          (if (sequential? cmd-arg) cmd-arg [cmd-arg])))
+
+
+(defn make-edge-crdt-ops-for-add [{:keys [node-ids make-id tx-ms]}]
+  (let [initial-eops (if (empty? node-ids)
+                       #{{:add-id (make-id)
+                          :op-path '()
+                          :op-type :add-array-edge
+                          :sys-time-ms tx-ms
+                          :value {:head-node-id array/array-start-node-id
+                                  :tail-node-id array/array-end-node-id}}}
+                       #{{:add-id (make-id)
+                          :op-path '()
+                          :op-type :add-array-edge
+                          :sys-time-ms tx-ms
+                          :value {:head-node-id array/array-start-node-id
+                                  :tail-node-id (first node-ids)}}
+                         {:add-id (make-id)
+                          :op-path '()
+                          :op-type :add-array-edge
+                          :sys-time-ms tx-ms
+                          :value {:head-node-id (last node-ids)
+                                  :tail-node-id array/array-end-node-id}}})]
+    (reduce (fn [acc [head-node-id tail-node-id]]
+              (conj acc
+                    {:add-id (make-id)
+                     :op-path '()
+                     :op-type :add-array-edge
+                     :sys-time-ms tx-ms
+                     :value (u/sym-map head-node-id
+                                       tail-node-id)}))
+            initial-eops
+            (partition 2 1 node-ids))))
 
 (defmethod get-add-info :array
   [{:keys [cmd cmd-arg cmd-path cmd-type crdt make-id path schema sys-time-ms]
@@ -358,11 +437,10 @@
                                           :crdt (get-in crdt [:children k])
                                           :path sub-path
                                           :schema items-schema))
-            crdt-ops (set/union (:crdt-ops arg)
-                                (xf-op-paths {:array? true
-                                              :prefix k
-                                              :i ni
-                                              :crdt-ops (:crdt-ops add-info)}))
+            crdt-ops (c/xf-op-paths {:array? true
+                                     :prefix k
+                                     :i ni
+                                     :crdt-ops (:crdt-ops add-info)})
             crdt* (assoc-in crdt [:children k] (:crdt add-info))
             array-info (array/get-array-info (assoc arg* :crdt crdt*))]
         {:crdt (assoc crdt* :ordered-node-ids (:ordered-node-ids array-info))
@@ -372,70 +450,22 @@
                         (str "Command path indicates an array, but arg is "
                              "not sequential. Got `" (or cmd-arg "nil") "`.")
                         (u/sym-map cmd path))))
-            info (reduce
-                  (fn [acc v]
-                    (let [node-id (make-id)
-                          add-info (get-add-info
-                                    (assoc arg
-                                           :cmd-arg v
-                                           :crdt (get-in (:crdt acc)
-                                                         [:children node-id])
-                                           :path []
-                                           :schema items-schema))]
-                      (-> acc
-                          (assoc-in [:crdt :children node-id] (:crdt add-info))
-                          (update :node-crdt-ops
-                                  (fn [node-crdt-ops]
-                                    (set/union
-                                     node-crdt-ops
-                                     (xf-op-paths {:array? true
-                                                   :prefix node-id
-                                                   :i (count (:node-ids acc))
-                                                   :crdt-ops (:crdt-ops
-                                                              add-info)}))))
-                          (update :node-ids conj node-id))))
-                  {:crdt crdt
-                   :node-ids []
-                   :node-crdt-ops #{}}
-                  (if (sequential? cmd-arg) cmd-arg [cmd-arg]))
-            {:keys [node-ids node-crdt-ops]} info
-            initial-eops (if (empty? node-ids)
-                           #{{:add-id (make-id)
-                              :op-path '()
-                              :op-type :add-array-edge
-                              :sys-time-ms (or sys-time-ms (u/current-time-ms))
-                              :value {:head-node-id array/array-start-node-id
-                                      :tail-node-id array/array-end-node-id}}}
-                           #{{:add-id (make-id)
-                              :op-path '()
-                              :op-type :add-array-edge
-                              :sys-time-ms (or sys-time-ms (u/current-time-ms))
-                              :value {:head-node-id array/array-start-node-id
-                                      :tail-node-id (first node-ids)}}
-                             {:add-id (make-id)
-                              :op-path '()
-                              :op-type :add-array-edge
-                              :sys-time-ms (or sys-time-ms (u/current-time-ms))
-                              :value {:head-node-id (last node-ids)
-                                      :tail-node-id array/array-end-node-id}}})
-            edge-crdt-ops (reduce (fn [acc [head-node-id tail-node-id]]
-                                    (conj acc
-                                          {:add-id (make-id)
-                                           :op-path '()
-                                           :op-type :add-array-edge
-                                           :sys-time-ms (or sys-time-ms
-                                                            (u/current-time-ms))
-                                           :value (u/sym-map head-node-id
-                                                             tail-node-id)}))
-                                  initial-eops
-                                  (partition 2 1 node-ids))
-            crdt-ops (set/union (:crdt-ops arg)
+            array-add-info (get-array-add-info
+                            (assoc arg :items-schema items-schema))
+            {:keys [node-ids node-crdt-ops]} array-add-info
+            tx-ms (or sys-time-ms (u/current-time-ms))
+            edge-crdt-ops (make-edge-crdt-ops-for-add (assoc arg
+                                                             :node-ids node-ids
+                                                             :tx-ms tx-ms))
+            add-container-crdt-ops (make-add-container-crdt-ops
+                                    (assoc arg :tx-ms tx-ms))
+            crdt-ops (set/union add-container-crdt-ops
                                 node-crdt-ops
                                 edge-crdt-ops)
-            crdt* (apply-ops/apply-ops (assoc arg
-                                              :crdt (:crdt info)
-                                              :schema schema
-                                              :crdt-ops crdt-ops))
+            crdt* (aoi/apply-ops-without-repair
+                   (assoc arg
+                          :crdt (:crdt array-add-info)
+                          :crdt-ops crdt-ops))
             array-info (array/get-array-info (assoc arg* :crdt crdt*))]
         {:crdt (assoc crdt* :ordered-node-ids (:ordered-node-ids array-info))
          :crdt-ops crdt-ops}))))
@@ -479,16 +509,15 @@
                                       :path sub-path
                                       :schema items-schema))
         edge-ops (:crdt-ops edge-info)
-        crdt-ops (set/union (:crdt-ops arg)
-                            edge-ops
-                            (xf-op-paths {:array? true
-                                          :prefix node-id
-                                          :i (inc clamped-i)
-                                          :crdt-ops (:crdt-ops add-info)}))
+        crdt-ops (set/union edge-ops
+                            (c/xf-op-paths {:array? true
+                                            :prefix node-id
+                                            :i (inc clamped-i)
+                                            :crdt-ops (:crdt-ops add-info)}))
         crdt* (assoc-in crdt [:children node-id] (:crdt add-info))
-        final-crdt (-> (apply-ops/apply-ops (assoc arg
-                                                   :crdt crdt*
-                                                   :crdt-ops edge-ops))
+        final-crdt (-> (aoi/apply-ops-without-repair (assoc arg
+                                                            :crdt crdt*
+                                                            :crdt-ops edge-ops))
                        (assoc :ordered-node-ids (:ordered-node-ids edge-info)))]
     {:crdt final-crdt
      :crdt-ops crdt-ops}))
@@ -518,7 +547,7 @@
                       (update :node-crdt-ops (fn [node-crdt-ops]
                                                (set/union
                                                 node-crdt-ops
-                                                (xf-op-paths
+                                                (c/xf-op-paths
                                                  {:array? true
                                                   :prefix node-id
                                                   :i (count (:new-node-ids acc))
@@ -539,13 +568,10 @@
                           :new-node-ids new-node-ids
                           :ordered-node-ids ordered-node-ids))
         edge-ops (:crdt-ops edge-info)
-        crdt-ops (set/union (:crdt-ops arg)
-                            node-crdt-ops
-                            edge-ops)
-        final-crdt (-> (apply-ops/apply-ops (assoc arg
-                                                   :crdt (:crdt info)
-                                                   :schema schema
-                                                   :crdt-ops edge-ops))
+        crdt-ops (set/union node-crdt-ops edge-ops)
+        final-crdt (-> (aoi/apply-ops-without-repair (assoc arg
+                                                            :crdt (:crdt info)
+                                                            :crdt-ops edge-ops))
                        (assoc :ordered-node-ids (:ordered-node-ids edge-info)))]
     {:crdt final-crdt
      :crdt-ops crdt-ops}))
@@ -577,8 +603,8 @@
                               :schema child-schema))
         new-crdt (assoc-in crdt [:children k] (:crdt ret))]
     {:crdt new-crdt
-     :crdt-ops (xf-op-paths {:prefix k
-                        :crdt-ops (:crdt-ops ret)})}))
+     :crdt-ops (c/xf-op-paths {:prefix k
+                               :crdt-ops (:crdt-ops ret)})}))
 
 (defmethod do-insert :map
   [{:keys [schema] :as arg}]
@@ -596,9 +622,9 @@
     (-> (assoc arg :schema member-schema)
         (do-insert)
         (update :crdt-ops (fn [crdt-ops]
-                       (xf-op-paths {:prefix union-branch
-                                     :crdt-ops crdt-ops
-                                     :union? true})))
+                            (c/xf-op-paths {:prefix union-branch
+                                            :crdt-ops crdt-ops
+                                            :union? true})))
         (assoc-in [:crdt :union-branch] union-branch))))
 
 (defmethod do-insert :single-value
@@ -612,12 +638,9 @@
 (defmethod process-cmd* :zeno/set
   [arg]
   (let [del-info (get-delete-info arg)
-        arg1 (assoc arg :crdt (:crdt del-info))
-        add-info (get-add-info arg1)]
+        add-info (get-add-info (assoc arg :crdt (:crdt del-info)))]
     {:crdt (:crdt add-info)
-     :crdt-ops (set/union (:crdt-ops arg)
-                          (:crdt-ops del-info)
-                          (:crdt-ops add-info))}))
+     :crdt-ops (set/union (:crdt-ops del-info) (:crdt-ops add-info))}))
 
 (defmethod process-cmd* :zeno/remove
   [arg]

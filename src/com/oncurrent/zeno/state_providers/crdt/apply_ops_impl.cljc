@@ -1,5 +1,6 @@
 (ns com.oncurrent.zeno.state-providers.crdt.apply-ops-impl
   (:require
+   [clojure.set :as set]
    [deercreeklabs.lancaster :as l]
    [com.oncurrent.zeno.state-providers.crdt.common :as c]
    [com.oncurrent.zeno.utils :as u]
@@ -107,6 +108,25 @@
   [arg]
   (apply-union-op arg))
 
+(defn delete-container [{:keys [crdt] :as arg}]
+  (let [{add-ids-to-delete :value} arg]
+    (-> crdt
+        (update :container-add-ids set/difference add-ids-to-delete)
+        (update :deleted-container-add-ids
+                (fn [add-ids]
+                  (if (seq add-ids)
+                    (set/union add-ids add-ids-to-delete)
+                    add-ids-to-delete))))))
+
+(defn add-container [{:keys [add-id crdt]}]
+  (let [{:keys [deleted-container-add-ids]} crdt]
+    (if (contains? deleted-container-add-ids add-id)
+      crdt
+      (update crdt :container-add-ids (fn [add-ids]
+                                        (if (seq add-ids)
+                                          (conj add-ids add-id)
+                                          #{add-id}))))))
+
 (defmethod apply-op [:map :add-value]
   [{:keys [add-id op-path schema value] :as arg}]
   (when (empty? op-path)
@@ -116,6 +136,10 @@
   (associative-apply-op (assoc arg :get-child-schema
                                (fn [_] (l/child-schema schema)))))
 
+(defmethod apply-op [:map :add-container]
+  [arg]
+  (add-container arg))
+
 (defn associative-delete-value
   [{:keys [add-id get-child-schema crdt op-path] :as arg}]
   (associative-apply-op arg))
@@ -124,6 +148,10 @@
   [{:keys [schema] :as arg}]
   (associative-delete-value (assoc arg :get-child-schema
                                    (fn [_] (l/child-schema schema)))))
+
+(defmethod apply-op [:map :delete-container]
+  [arg]
+  (delete-container arg))
 
 (defmethod apply-op [:map :add-array-edge]
   [{:keys [add-id crdt op-path schema value] :as arg}]
@@ -144,10 +172,18 @@
   (associative-apply-op (assoc arg :get-child-schema
                                #(l/child-schema schema %))))
 
+(defmethod apply-op [:record :add-container]
+  [arg]
+  (add-container arg))
+
 (defmethod apply-op [:record :delete-value]
   [{:keys [schema] :as arg}]
   (associative-delete-value (assoc arg :get-child-schema
                                    #(l/child-schema schema %))))
+
+(defmethod apply-op [:record :delete-container]
+  [arg]
+  (delete-container arg))
 
 (defmethod apply-op [:record :add-array-edge]
   [{:keys [add-id crdt op-path schema value] :as arg}]
@@ -167,6 +203,10 @@
                     (u/sym-map add-id op-path value))))
   (associative-apply-op (assoc arg :get-child-schema
                                (fn [_] (l/child-schema schema)))))
+
+(defmethod apply-op [:array :add-container]
+  [arg]
+  (add-container arg))
 
 (defmethod apply-op [:array :delete-value]
   [{:keys [schema] :as arg}]
@@ -225,12 +265,19 @@
                                           (conj ids add-id)
                                           #{add-id}))))))
 
-(defn apply-ops
+(defmethod apply-op [:array :delete-container]
+  [arg]
+  (delete-container arg))
+
+(defn apply-ops-without-repair
   [{:keys [crdt crdt-ops schema] :as arg}]
-  (reduce (fn [crdt* {:keys [sys-time-ms] :as op}]
-            (apply-op (assoc op
-                             :crdt crdt*
-                             :schema schema
-                             :sys-time-ms (or sys-time-ms (:sys-time-ms arg)))))
-          crdt
-          crdt-ops))
+  (let [crdt* (reduce
+               (fn [acc {:keys [sys-time-ms] :as op}]
+                 (apply-op (assoc op
+                                  :crdt acc
+                                  :schema schema
+                                  :sys-time-ms (or sys-time-ms
+                                                   (:sys-time-ms arg)))))
+               crdt
+               crdt-ops)]
+    (assoc arg :crdt crdt*)))

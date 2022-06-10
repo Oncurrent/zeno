@@ -3,7 +3,7 @@
    [clojure.set :as set]
    [clojure.string :as str]
    [deercreeklabs.lancaster :as l]
-   [com.oncurrent.zeno.state-providers.crdt.apply-ops-impl :as apply-ops]
+   [com.oncurrent.zeno.state-providers.crdt.apply-ops-impl :as aoi]
    [com.oncurrent.zeno.state-providers.crdt.common :as c]
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
@@ -212,7 +212,7 @@
                                         :splitting-node node)))))))))))
 
 (defn get-array-info
-  [{:keys [crdt get-child-schema path] :as arg}]
+  [{:keys [crdt path] :as arg}]
   (let [edges (get-edges {:crdt crdt
                           :edge-type :current})]
     (if (empty? edges)
@@ -244,15 +244,7 @@
                :ordered-node-ids ordered-node-ids}
 
               :else
-              (let [v (:value (c/get-value-info
-                               (assoc arg
-                                      :crdt (get-in crdt [:children child])
-                                      :path []
-                                      :schema (get-child-schema child))))
-                    new-ids (if v
-                              (conj ordered-node-ids child)
-                              ordered-node-ids)]
-                (recur child new-ids)))))))))
+              (recur child (conj ordered-node-ids child)))))))))
 
 (defn get-live-nodes [{:keys [crdt schema] :as arg}]
   (let [child-schema (l/child-schema schema)]
@@ -285,10 +277,11 @@
                                    :op-path '()
                                    :op-type :delete-array-edge}))))
                   #{}
-                  (get-edges arg))]
-    (assoc arg
-           :crdt (apply-ops/apply-ops (assoc arg :crdt-ops crdt-ops))
-           :crdt-ops (set/union (:crdt-ops arg) crdt-ops))))
+                  (get-edges arg))
+        crdt* (aoi/apply-ops-without-repair (assoc arg :crdt-ops crdt-ops))]
+    (-> arg
+        (assoc :crdt crdt*)
+        (update :repair-crdt-ops set/union crdt-ops))))
 
 (defn get-nodes-connected-to-terminals [edges]
   (reduce (fn [acc {:keys [head-node-id tail-node-id]}]
@@ -321,31 +314,33 @@
                          :op-path '()
                          :op-type :add-array-edge
                          :sys-time-ms (or sys-time-ms (u/current-time-ms))
-                         :value (select-keys edge [:head-node-id :tail-node-id])})
-                      new-edges)]
-    (assoc arg
-           :crdt (apply-ops/apply-ops (assoc arg :crdt-ops crdt-ops))
-           :crdt-ops (set/union (:crdt-ops arg) crdt-ops))))
+                         :value (select-keys edge
+                                             [:head-node-id :tail-node-id])})
+                      new-edges)
+        crdt* (aoi/apply-ops-without-repair (assoc arg :crdt-ops crdt-ops))]
+    (-> arg
+        (assoc :crdt crdt*)
+        (update :repair-crdt-ops set/union crdt-ops))))
 
 (defn serialize-parallel-paths [{:keys [crdt] :as arg}]
   (let [edges (get-edges {:crdt crdt
                           :edge-type :current})]
     (if (empty? edges)
       arg
-      (let [crdt-ops (get-serializing-crdt-ops (assoc arg :edges edges))]
-        (assoc arg
-               :crdt (apply-ops/apply-ops (assoc arg :crdt-ops crdt-ops))
-               :crdt-ops (set/union (:crdt-ops arg) crdt-ops))))))
+      (let [crdt-ops (get-serializing-crdt-ops (assoc arg :edges edges))
+            crdt* (aoi/apply-ops-without-repair (assoc arg :crdt-ops crdt-ops))]
+        (-> arg
+            (assoc :crdt crdt*)
+            (update :repair-crdt-ops set/union crdt-ops))))))
 
 (defn update-ordered-node-ids [{:keys [crdt] :as arg}]
-  (let [info (get-array-info arg)
-        {:keys [linear? ordered-node-ids]} info
-        _ (when-not linear?
-            (throw (ex-info "Array is not linear after repair."
-                            (u/sym-map crdt))))]
+  (let [{:keys [linear? ordered-node-ids]} (get-array-info arg)]
+    (when-not linear?
+      (throw (ex-info "Array is not linear after repair."
+                      (u/sym-map crdt))))
     (assoc-in arg [:crdt :ordered-node-ids] ordered-node-ids)))
 
-(defn repair-array [{:keys [schema] :as arg}]
+(defn repair-array* [{:keys [schema] :as arg}]
   (-> (assoc arg
              :live-nodes (get-live-nodes arg)
              :sys-time-ms (u/current-time-ms))
@@ -353,6 +348,35 @@
       (connect-nodes-to-terminals)
       (serialize-parallel-paths)
       (update-ordered-node-ids)))
+
+(defmethod c/repair :array
+  [{:keys [crdt schema] :as arg}]
+  (let [items-schema (l/child-schema schema)
+        info (get-array-info arg)
+        repaired (cond
+                   (not (:linear? info))
+                   (repair-array* arg)
+
+                   (empty? (:ordered-node-ids crdt))
+                   (-> arg
+                       (assoc-in [:crdt :ordered-node-ids]
+                                 (:ordered-node-ids info)))
+
+                   :else
+                   arg)]
+    (reduce
+     (fn [acc node-id]
+       (let [ret (c/repair (assoc arg
+                                  :crdt (get-in repaired
+                                                [:crdt :children node-id])
+                                  :schema items-schema))
+             ops (c/xf-op-paths {:prefix node-id
+                                 :crdt-ops (:repair-crdt-ops ret)})]
+         (-> acc
+             (assoc-in [:crdt :children node-id] (:crdt ret))
+             (update :repair-crdt-ops set/union ops))))
+     repaired
+     (-> repaired :crdt :ordered-node-ids))))
 
 (defn get-sub-value-info
   [{:keys [get-child-schema crdt norm-path path] :as arg}]
@@ -382,12 +406,16 @@
 
 (defmethod c/get-value-info :array
   [{:keys [crdt norm-path path schema] :as arg}]
-  (let [ordered-node-ids (or (:ordered-node-ids crdt) [])
+  (let [{:keys [container-add-ids]} crdt
+        ordered-node-ids (or (:ordered-node-ids crdt) [])
         arg* (assoc arg :get-child-schema (fn [_]
-                                            (l/child-schema schema)))]
+                                            (l/child-schema schema)))
+        exists? (seq container-add-ids)]
     (if (empty? path)
-      (let [id->v (:value (get-sub-value-info arg*))
-            v (mapv id->v ordered-node-ids)]
+      (let [id->v (when exists?
+                    (:value (get-sub-value-info arg*)))
+            v (when exists?
+                (mapv id->v ordered-node-ids))]
         {:norm-path norm-path
          :value v})
       (let [[raw-k & sub-path] path

@@ -2,18 +2,70 @@
   (:require
    [clojure.set :as set]
    [deercreeklabs.lancaster :as l]
-   [com.oncurrent.zeno.state-providers.crdt.apply-ops-impl :as apply-ops]
+   [com.oncurrent.zeno.state-providers.crdt.apply-ops-impl :as aoi]
    [com.oncurrent.zeno.state-providers.crdt.array :as array]
    [com.oncurrent.zeno.state-providers.crdt.common :as c]
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
+(defn associative-repair
+  [{:keys [crdt get-child-schema] :as arg}]
+  (let [{:keys [children container-add-ids]} crdt]
+    (if (empty? container-add-ids)
+      arg
+      (reduce-kv
+       (fn [acc k child-crdt]
+         (let [child-schema (get-child-schema k)
+               ret (c/repair (assoc arg
+                                    :crdt child-crdt
+                                    :schema child-schema))
+               ops (c/xf-op-paths {:prefix k
+                                   :crdt-ops (:repair-crdt-ops ret)})]
+           (-> acc
+               (assoc-in [:crdt :children k] (:crdt ret))
+               (update :repair-crdt-ops set/union ops))))
+       arg
+       children))))
 
-(defmulti repair (fn [{:keys [schema]}]
-                   (c/schema->dispatch-type schema)))
+(defmethod c/repair :map
+  [{:keys [schema] :as arg}]
+  (let [values-schema (l/child-schema schema)]
+    (associative-repair (assoc arg
+                               :get-child-schema (constantly values-schema)))))
+
+(defmethod c/repair :record
+  [{:keys [path schema] :as arg}]
+  (associative-repair (assoc arg :get-child-schema
+                             (fn [k]
+                               (or (l/child-schema schema k)
+                                   (throw (ex-info (str "Bad record key `" k
+                                                        "` in path `"
+                                                        path "`.")
+                                                   (u/sym-map path k))))))))
+
+(defmethod c/repair :union
+  [{:keys [crdt schema] :as arg}]
+  (let [{:keys [union-branch]} crdt]
+    (cond
+      (not crdt)
+      arg
+
+      (not union-branch)
+      (throw (ex-info (str "Schema indicates a union, but no "
+                           "`:union-branch` value is present.")
+                      {:crdt-ks (keys crdt)}))
+
+      :else
+      (let [member-schema (l/member-schema-at-branch schema union-branch)
+            ret (c/repair (assoc arg :schema member-schema))]
+        (assoc arg
+               :crdt (assoc (:crdt ret) :union-branch union-branch)
+               :repair-crdt-ops (c/xf-op-paths
+                                 {:prefix union-branch
+                                  :crdt-ops (:repair-crdt-ops ret)}))))))
 
 (defn resolve-conflict-by-sys-time-ms
-  [{:keys [crdt make-id] :as arg}]
+  [{:keys [crdt make-id schema] :as arg}]
   (let [{:keys [current-add-id-to-value-info]} crdt
         make-id* (or make-id u/compact-random-uuid)
         winner (->> current-add-id-to-value-info
@@ -30,102 +82,16 @@
                 :op-type :add-value
                 :sys-time-ms (:sys-time-ms winner)
                 :value (:value winner)}
-        crdt-ops (conj del-ops add-op)
-        crdt (apply-ops/apply-ops (assoc arg :crdt-ops crdt-ops))]
-    (u/sym-map crdt crdt-ops)))
+        ops (conj del-ops add-op)
+        crdt* (aoi/apply-ops-without-repair (assoc arg :crdt-ops ops))]
+    {:crdt crdt*
+     :repair-crdt-ops ops}))
 
-(defmethod repair :array
-  [{:keys [crdt schema] :as arg}]
-  (let [items-schema (l/child-schema schema)
-        arg* (assoc arg :get-child-schema (constantly items-schema))
-        info (array/get-array-info arg*)]
-    (cond
-      (not (:linear? info))
-      (array/repair-array arg)
-
-      (empty? (:ordered-node-ids crdt))
-      (-> arg
-          (assoc-in [:crdt :ordered-node-ids] (:ordered-node-ids info))
-          (assoc :crdt-ops #{}))
-
-      :else
-      (assoc arg :crdt-ops #{}))))
-
-(defn xf-op-paths [{:keys [prefix crdt-ops]}]
-  (reduce (fn [acc op]
-            (conj acc (update op :op-path #(cons prefix %))))
-          #{}
-          crdt-ops))
-
-(defn associative-repair
-  [{:keys [crdt get-child-path-info get-child-schema path schema array?]
-    :as arg}]
-  (let [repair-child (fn [{:keys [k sub-path]}]
-                       (let [ret (repair (assoc arg
-                                                :crdt (get-in crdt [:children k])
-                                                :path sub-path
-                                                :schema (get-child-schema k)))]
-                         (update ret :crdt-ops
-                                 #(xf-op-paths {:prefix k
-                                                :crdt-ops %}))))]
-    (if (empty? path)
-      (reduce-kv (fn [acc k _]
-                   (let [ret (repair (assoc arg :schema (get-child-schema k)))]
-                     (-> acc
-                         (assoc :crdt (:crdt ret))
-                         (update :crdt-ops set/union (:crdt-ops ret)))))
-                 {:crdt crdt
-                  :crdt-ops #{}}
-                 (:children crdt))
-      (-> path
-          (get-child-path-info)
-          (repair-child)))))
-
-(defmethod repair :map
-  [{:keys [schema] :as arg}]
-  (let [values-schema (l/child-schema schema)]
-    (associative-repair
-     (assoc arg
-            :get-child-path-info (fn [[k & sub-path]]
-                                   (u/sym-map k sub-path))
-            :get-child-schema (constantly values-schema)))))
-
-(defmethod repair :record
-  [{:keys [path schema] :as arg}]
-  (associative-repair
-   (assoc arg
-          :get-child-path-info (fn [[k & sub-path]]
-                                 (u/sym-map k sub-path))
-          :get-child-schema (fn [k]
-                              (or (l/child-schema schema k)
-                                  (throw (ex-info (str "Bad record key `" k
-                                                       "` in path `"
-                                                       path "`.")
-                                                  (u/sym-map path k))))))))
-
-(defmethod repair :union
-  [{:keys [crdt path schema] :as arg}]
-  (let [{:keys [union-branch]} crdt
-        member-schema (when union-branch
-                        (l/member-schema-at-branch schema union-branch))]
-    (if-not member-schema
-      {:crdt crdt
-       :crdt-ops #{}}
-      (let [ret (repair (assoc arg
-                               :path path
-                               :schema member-schema))]
-        (update ret :crdt-ops
-                #(xf-op-paths {:prefix union-branch
-                               :crdt-ops %}))))))
-
-(defmethod repair :single-value
+(defmethod c/repair :single-value
   [{:keys [crdt resolve-conflict schema] :as arg}]
   (let [{:keys [current-add-id-to-value-info]} crdt
         num-vals (count current-add-id-to-value-info)]
-    (case num-vals
-      0 {:crdt crdt
-         :crdt-ops #{}}
-      1 {:crdt crdt
-         :crdt-ops #{}}
+    (if (< num-vals 2)
+      arg
       (let [resolve* (or resolve-conflict resolve-conflict-by-sys-time-ms)]
         (resolve* arg)))))

@@ -8,10 +8,9 @@
    [com.oncurrent.zeno.client.authorizer-impl :as authz-impl]
    [com.oncurrent.zeno.client.state-provider-impl :as sp-impl]
    [com.oncurrent.zeno.state-providers.crdt :as crdt]
-   [com.oncurrent.zeno.state-providers.crdt.apply-ops-impl :as apply-ops]
+   [com.oncurrent.zeno.state-providers.crdt.apply-ops :as apply-ops]
    [com.oncurrent.zeno.state-providers.crdt.commands :as commands]
    [com.oncurrent.zeno.state-providers.crdt.common :as common]
-   [com.oncurrent.zeno.state-providers.crdt.repair :as repair]
    [com.oncurrent.zeno.state-providers.crdt.shared :as shared]
    [com.oncurrent.zeno.storage :as storage]
    [com.oncurrent.zeno.utils :as u]
@@ -235,17 +234,16 @@
                (fn [state-info]
                  ;; TODO: Handle case where this retries due to a concurrent
                  ;; update-state call and there was a snapshot.
-                 (let [crdt (apply-ops/apply-ops
-                             (assoc arg
-                                    :crdt (:crdt (or snapshot state-info))
-                                    :crdt-ops crdt-ops))
-                       repair-info (repair/repair (assoc arg :crdt crdt))]
+                 (let [ret (apply-ops/apply-ops
+                            (assoc arg
+                                   :crdt (:crdt (or snapshot state-info))
+                                   :crdt-ops crdt-ops))]
                    (-> state-info
-                       (assoc :crdt (:crdt repair-info))
+                       (assoc :crdt (:crdt ret))
                        (assoc :last-tx-index (or last-tx-index
                                                  (:last-tx-index state-info)))
                        (update :repair-crdt-ops
-                               set/union (:crdt-ops repair-info))))))
+                               set/union (:repair-crdt-ops ret))))))
 
         (cond
           snapshot

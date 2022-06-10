@@ -14,8 +14,10 @@
 
 (l/def-enum-schema crdt-op-type-schema
   :add-array-edge
+  :add-container
   :add-value
   :delete-array-edge
+  :delete-container
   :delete-value)
 
 (l/def-record-schema crdt-array-edge-schema
