@@ -336,7 +336,8 @@
                 (u/sym-map crdt crdt-ops)
                 (->> (l/edn schema)
                      (:fields)
-                     (map :name)))))))
+                     (map :name)
+                     (filter (into #{} (keys cmd-arg)))))))))
 
 (defmethod get-add-info :union
   [{:keys [cmd-arg path schema] :as arg}]

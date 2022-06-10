@@ -516,7 +516,7 @@
              resolution-map {'my-book-ids my-book-ids}
              update-fn #(ca/put! ch %)
              expected {'my-books (vals (select-keys books my-book-ids))}]
-         (is (= {'my-books [nil nil]}
+         (is (= {'my-books [#_nil #_nil]}
                 (zc/subscribe-to-state! zc "test" sub-map update-fn
                                         (u/sym-map resolution-map))))
          (is (= true (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/crdt :books]
@@ -879,7 +879,7 @@
                     "789" {:title "Dr Jekyll and Mr Hyde"}}
              sub-map '{my-titles [:zeno/crdt :books ["999"] :title]}
              update-fn (constantly nil)
-             expected {'my-titles [nil]}]
+             expected {'my-titles [#_nil]}]
          (au/<? (zc/<set-state! zc [:zeno/crdt :books] books))
          (is (= expected (zc/subscribe-to-state! zc "test" sub-map update-fn)))
          (zc/stop! zc))
