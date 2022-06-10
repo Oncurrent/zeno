@@ -309,14 +309,16 @@
                                                     make-id
                                                     nodes-connected-to-start
                                                     nodes-connected-to-end))
-        crdt-ops (map (fn [edge]
-                        {:add-id (:add-id edge)
-                         :op-path '()
-                         :op-type :add-array-edge
-                         :sys-time-ms (or sys-time-ms (u/current-time-ms))
-                         :value (select-keys edge
-                                             [:head-node-id :tail-node-id])})
-                      new-edges)
+        crdt-ops (->> new-edges
+                      (map (fn [edge]
+                             {:add-id (:add-id edge)
+                              :op-path '()
+                              :op-type :add-array-edge
+                              :sys-time-ms (or sys-time-ms
+                                               (u/current-time-ms))
+                              :value (select-keys
+                                      edge [:head-node-id :tail-node-id])}))
+                      (into #{}))
         crdt* (aoi/apply-ops-without-repair (assoc arg :crdt-ops crdt-ops))]
     (-> arg
         (assoc :crdt crdt*)
