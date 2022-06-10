@@ -588,15 +588,16 @@
     :zeno/insert-range-before (do-range-insert arg)))
 
 (defn associative-do-insert
-  [{:keys [cmd cmd-arg cmd-type path crdt schema]
+  [{:keys [cmd cmd-arg cmd-type path schema]
     :as arg}]
-  (when (empty? path)
-    (let [schema-type (l/schema-type schema)]
-      (throw (ex-info (str "Can only process `" cmd-type "` cmd on "
-                           "an array. Path points to schema type `"
-                           schema-type "`.")
-                      (u/sym-map cmd path)))))
-  (let [[k & ks] path
+  (let [{:keys [crdt crdt-ops]} (ensure-container-add-id arg)
+        _ (when (empty? path)
+            (let [schema-type (l/schema-type schema)]
+              (throw (ex-info (str "Can only process `" cmd-type "` cmd on "
+                                   "an array. Path points to schema type `"
+                                   schema-type "`.")
+                              (u/sym-map cmd path)))))
+        [k & ks] path
         _ (c/check-key (assoc arg :key k))
         child-schema (l/schema-at-path schema [k])
         child-crdt (get-in crdt [:children k])
@@ -606,8 +607,9 @@
                               :schema child-schema))
         new-crdt (assoc-in crdt [:children k] (:crdt ret))]
     {:crdt new-crdt
-     :crdt-ops (c/xf-op-paths {:prefix k
-                               :crdt-ops (:crdt-ops ret)})}))
+     :crdt-ops (set/union crdt-ops
+                          (c/xf-op-paths {:prefix k
+                                          :crdt-ops (:crdt-ops ret)}))}))
 
 (defmethod do-insert :map
   [{:keys [schema] :as arg}]
@@ -664,11 +666,13 @@
 (defn process-cmds [{:keys [cmds crdt make-id root] :as arg}]
   (let [make-id* (or make-id u/compact-random-uuid)]
     (reduce (fn [acc cmd]
-              (let [ret (process-cmd (assoc acc
+              (let [ret (process-cmd (assoc arg
+                                            :crdt (:crdt acc)
                                             :cmd cmd
                                             :make-id make-id*))]
                 (-> acc
                     (assoc :crdt (:crdt ret))
                     (update :crdt-ops set/union (:crdt-ops ret)))))
-            arg
+            {:crdt crdt
+             :crdt-ops #{}}
             cmds)))

@@ -1337,6 +1337,24 @@
            (->value crdt [] schema)
            (->value acrdt [] schema)))))
 
+(deftest test-nested-negative-insert-after
+  (let [value 42
+        schema  (l/map-schema (l/map-schema (l/array-schema l/int-schema)))
+        arg {:cmds [{:zeno/arg value
+                     :zeno/op :zeno/insert-after
+                     :zeno/path [:zeno/crdt "a" "b" 0]}]
+             :root :zeno/crdt
+             :schema schema}
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)
+        expected-value {"a" {"b" [value]}}]
+    (is (= value
+           (->value crdt ["a" "b" 0] schema)
+           (->value acrdt ["a" "b" 0] schema)))
+    (is (= expected-value
+           (->value crdt [] schema)
+           (->value acrdt [] schema)))))
+
 (comment (krun #'test-deep-nested-negative-insert-after))
 (deftest test-deep-nested-negative-insert-after
   (let [value "id"
