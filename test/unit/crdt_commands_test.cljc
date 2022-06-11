@@ -586,7 +586,7 @@
              :sys-time-ms sys-time-ms}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
         acrdt (ops->crdt crdt-ops schema)
-        _ (is (= {:norm-path [0] :value "Hello!"}
+        _ (is (= {:norm-path [0] :value "Hello!" :exists? true}
                  (crdt/get-value-info {:crdt crdt :path [-1] :schema schema})
                  (crdt/get-value-info {:crdt acrdt :path [-1] :schema schema})))
         expected-value ["Hello!"]]

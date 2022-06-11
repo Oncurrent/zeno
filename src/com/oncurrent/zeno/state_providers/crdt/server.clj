@@ -432,11 +432,7 @@
                            tx-infos)
           crdt (apply-ops/apply-ops (assoc (u/sym-map crdt-ops schema)
                                            :crdt (:crdt snapshot)))
-          {:keys [value]} (common/get-value-info {:crdt crdt
-                                                  :path []
-                                                  :schema schema})
-          crdt-info {:crdt crdt
-                     :v value}]
+          crdt-info {:crdt crdt}]
       (swap! *branch->crdt-info
              (fn [m]
                (assoc m branch crdt-info))))))
