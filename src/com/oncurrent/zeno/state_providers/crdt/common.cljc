@@ -362,8 +362,8 @@
                              :reader-schema shared/serializable-snapshot-schema
                              :serialized-value serialized-value)
             ser-snap (au/<? (common/<serialized-value->value sv->v-arg))
-            crdt (edn/read-string (:edn-crdt ser-snap))]
-        crdt))))
+            crdt-info (edn/read-string (:edn-crdt-info ser-snap))]
+        crdt-info))))
 
 (defn <get-snapshot-from-url [{:keys [url] :as arg}]
   (au/go

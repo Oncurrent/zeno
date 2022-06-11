@@ -120,12 +120,12 @@
             snapshot-txs-hash (add-tx-ids-to-hash (u/sym-map old-hash tx-ids))
             old-snapshot (au/<? (<get-snapshot arg))
             info (au/<? (<get-crdt-ops-and-updated-paths-for-tx-ids arg))
-            crdt (apply-ops/apply-ops {:crdt (:crdt old-snapshot)
-                                       :crdt-ops (:crdt-ops info)
-                                       :schema schema})
-            edn-crdt (pr-str crdt)
+            crdt-info (apply-ops/apply-ops {:crdt (:crdt old-snapshot)
+                                            :crdt-ops (:crdt-ops info)
+                                            :schema schema})
+            edn-crdt-info (pr-str crdt-info)
             sv {:bytes (l/serialize shared/serializable-snapshot-schema
-                                    (u/sym-map edn-crdt))
+                                    (u/sym-map edn-crdt-info))
                 :fp (au/<? (storage/<schema->fp
                             storage shared/serializable-snapshot-schema))}
             ba (l/serialize schemas/serialized-value-schema sv)
@@ -430,9 +430,8 @@
                              (set/union acc (:crdt-ops tx-info)))
                            #{}
                            tx-infos)
-          crdt (apply-ops/apply-ops (assoc (u/sym-map crdt-ops schema)
-                                           :crdt (:crdt snapshot)))
-          crdt-info {:crdt crdt}]
+          crdt-info (apply-ops/apply-ops (assoc (u/sym-map crdt-ops schema)
+                                           :crdt (:crdt snapshot)))]
       (swap! *branch->crdt-info
              (fn [m]
                (assoc m branch crdt-info))))))
