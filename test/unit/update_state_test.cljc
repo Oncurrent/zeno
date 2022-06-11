@@ -516,7 +516,7 @@
              resolution-map {'my-book-ids my-book-ids}
              update-fn #(ca/put! ch %)
              expected {'my-books (vals (select-keys books my-book-ids))}]
-         (is (= {'my-books [#_nil #_nil]}
+         (is (= {'my-books []}
                 (zc/subscribe-to-state! zc "test" sub-map update-fn
                                         (u/sym-map resolution-map))))
          (is (= true (au/<? (zc/<update-state! zc [{:zeno/path [:zeno/crdt :books]
