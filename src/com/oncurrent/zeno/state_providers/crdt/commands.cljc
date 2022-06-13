@@ -508,6 +508,7 @@
                           :new-node-id node-id
                           :ordered-node-ids ordered-node-ids))
         add-info (get-add-info (assoc arg
+                                      :crdt nil
                                       :path sub-path
                                       :schema items-schema))
         edge-ops (:crdt-ops edge-info)
