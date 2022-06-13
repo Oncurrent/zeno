@@ -76,7 +76,7 @@
                                    (let [aid (get-actor-id-str actor-id)]
                                      (update aid->tx-ids aid
                                              (fn [tx-ids]
-                                               (conj (or tx-ids #{})
+                                               (conj (or tx-ids [])
                                                      tx-id)))))))
           (swap! *state-info (fn [state-info]
                                (update state-info :tx-infos-to-log
@@ -116,14 +116,23 @@
                        (assoc state-info
                               :crdt crdt
                               :repair-crdt-ops #{}
-                              :tx-infos-to-log (conj (or tx-infos-to-log #{}
-                                                         tx-info))))))
+                              :tx-infos-to-log (conj (or tx-infos-to-log #{})
+                                                     tx-info)))))
             (au/<? (<log-tx-infos! mus-arg))
             (signal-producer-sync!)
             (select-keys tx-info-base [:updated-paths])))))))
 
+(defn remove-batch [{:keys [tx-ids batch]}]
+  (let [batch-set (set batch)]
+    (reduce (fn [acc tx-id]
+              (if (batch-set tx-id)
+                acc
+                (conj acc tx-id)))
+            []
+            tx-ids)))
+
 (defn <sync-producer-txs-for-actor-id!
-  [{:keys [*client-running? *connected? *host-fns
+  [{:keys [*client-running? *connected? *env-name *host-fns
            actor-id storage sync-whole-log? unsynced-log-k]}]
   (let [{:keys [<send-msg]} @*host-fns
         actor-id-str (get-actor-id-str actor-id)]
@@ -148,8 +157,8 @@
                                    (fn [aid->tx-ids]
                                      (update aid->tx-ids actor-id-str
                                              (fn [tx-ids]
-                                               (set/difference tx-ids
-                                                               batch)))))))
+                                               (remove-batch
+                                                (u/sym-map tx-ids batch))))))))
           (when (and @*client-running?
                      @*connected?
                      sync-whole-log?
