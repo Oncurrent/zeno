@@ -224,7 +224,7 @@
              w-schema :value-schema} (get-op-value-info
                                       (u/sym-map op-type op-path schema))
             v (cond-> value
-                v->ser-v-xf (v->ser-v-xf value))]
+                v->ser-v-xf (v->ser-v-xf))]
         (cond-> crdt-op
           true (dissoc :value)
           w-schema (assoc :serialized-value
