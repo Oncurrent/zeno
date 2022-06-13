@@ -14,8 +14,10 @@
 
 (l/def-enum-schema crdt-op-type-schema
   :add-array-edge
+  :add-container
   :add-value
   :delete-array-edge
+  :delete-container
   :delete-value)
 
 (l/def-record-schema crdt-array-edge-schema
@@ -49,8 +51,7 @@
    (l/array-schema tx-id-schema)))
 
 (l/def-record-schema serializable-snapshot-schema
-  [:edn-crdt l/string-schema]
-  [:serialized-value schemas/serialized-value-schema])
+  [:edn-crdt-info l/string-schema])
 
 (l/def-record-schema actor-log-info-schema
   [:branch-log-tx-indices-since-snapshot (l/array-schema tx-index-schema)]

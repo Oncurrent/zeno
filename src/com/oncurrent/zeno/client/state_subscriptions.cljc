@@ -185,9 +185,9 @@
       [@(:*actor-id zc) [path]]
 
       (and (not terminal-kw?) (not join?))
-      (let [{:keys [norm-path value]} (get-in-state
-                                       (u/sym-map path root zc))]
-        [value [norm-path]])
+      (let [{:keys [norm-path value exists?]} (get-in-state
+                                               (u/sym-map path root zc))]
+        [value [norm-path] exists?])
 
       (and terminal-kw? (not join?))
       (let [path* (butlast path)
@@ -222,9 +222,9 @@
           (loop [out []
                  i 0]
             (let [path* (nth xpaths i)
-                  ret (get-value-and-expanded-paths
-                       zc path* root)
-                  new-out (conj out (first ret))
+                  [value _ exists?] (get-value-and-expanded-paths
+                                     zc path* root)
+                  new-out (if (false? exists?) out (conj out value))
                   new-i (inc i)]
               (if (not= num-results new-i)
                 (recur new-out new-i)
@@ -241,9 +241,9 @@
           (let [results (loop [out [] ;; Use loop to stay in go block
                                i 0]
                           (let [path* (nth xpaths i)
-                                ret (get-value-and-expanded-paths
+                                [value _ exists?] (get-value-and-expanded-paths
                                      zc path* root)
-                                new-out (conj out (first ret))
+                                new-out (if (false? exists?) out (conj out value))
                                 new-i (inc i)]
                             (if (not= num-results new-i)
                               (recur new-out new-i)

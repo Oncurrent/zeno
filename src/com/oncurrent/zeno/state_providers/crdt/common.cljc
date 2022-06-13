@@ -30,6 +30,9 @@
 (defmulti get-value-info (fn [{:keys [schema]}]
                            (schema->dispatch-type schema)))
 
+(defmulti repair (fn [{:keys [schema]}]
+                   (schema->dispatch-type schema)))
+
 (defmethod check-key :array
   [{:keys [add-id key op-type string-array-keys? path]}]
   (if string-array-keys?
@@ -60,52 +63,43 @@
 (defn associative-get-value-info
   [{:keys [get-child-schema crdt norm-path path] :as arg}]
   (if (empty? path)
-    (let [value (reduce-kv
-                 (fn [acc k x]
-                   (let [v (-> (assoc arg :path [k])
-                               (get-value-info)
-                               (:value))]
-                     (if (or (nil? v)
-                             (and (coll? v)
-                                  (empty? v)
-                                  (empty? (:current-edge-add-ids x))))
-                       acc
-                       (assoc acc k v))))
-                 {}
-                 (:children crdt))]
-      (u/sym-map value norm-path))
+    (let [{:keys [children container-add-ids]} crdt
+          exists? (seq container-add-ids)
+          value (when exists?
+                  (reduce-kv
+                   (fn [acc k child-crdt]
+                     (let [vi (get-value-info
+                               (assoc arg :path [k]))]
+                       (if (:exists? vi)
+                         (assoc acc k (:value vi))
+                         acc)))
+                   {}
+                   children))]
+      (u/sym-map exists? value norm-path))
     (let [[k & ks] path]
+      ;; k can be nil sometimes in subscription paths
       (if-not k
-        {:norm-path norm-path
+        {:exists? true
+         :norm-path norm-path
          :value nil}
-        (do
-          (check-key (assoc arg :key k))
+        (let [_ (check-key (assoc arg :key k))
+              child-crdt (get-in crdt [:children k])
+              child-schema (get-child-schema k)]
           (get-value-info (assoc arg
-                                 :crdt (get-in crdt [:children k])
+                                 :crdt child-crdt
                                  :norm-path (conj (or norm-path []) k)
                                  :path (or ks [])
-                                 :schema (get-child-schema k))))))))
-
-;; TODO: Replace this with conflict resolution?
-(defn get-most-recent [current-add-id-to-value-info]
-  (->> (vals current-add-id-to-value-info)
-       (sort-by :sys-time-ms)
-       (last)))
-
-(defn get-single-value [{:keys [crdt schema] :as arg}]
-  (let [{:keys [current-add-id-to-value-info]} crdt
-        num-items (count current-add-id-to-value-info)]
-    (case num-items
-      0 nil
-      1 (-> current-add-id-to-value-info first val :value)
-      (:value (get-most-recent current-add-id-to-value-info)))))
+                                 :schema child-schema)))))))
 
 (defmethod get-value-info :single-value
   [{:keys [norm-path path] :as arg}]
   (if (seq path)
-    (throw (ex-info "Can't index into a single-value CRDT." arg))
-    {:value (get-single-value arg)
-     :norm-path norm-path}))
+    (throw (ex-info "Can't index into a single-value CRDT."
+                    (u/sym-map path norm-path)))
+    (let [vi (some-> arg :crdt :current-add-id-to-value-info first val)]
+      {:value (:value vi)
+       :exists? (boolean vi)
+       :norm-path norm-path})))
 
 (defmethod get-value-info :map
   [{:keys [schema] :as arg}]
@@ -200,19 +194,25 @@
 (defmethod get-value-info :union
   [{:keys [crdt norm-path path schema] :as arg}]
   (if (empty? crdt)
-    {:norm-path norm-path
+    {:exists? false
+     :norm-path norm-path
      :value nil}
-    (let [member-schema (get-member-schema arg)]
-      (if member-schema
-        (get-value-info (assoc arg :schema member-schema))
-        {:norm-path norm-path
-         :value nil}))))
+    (if-let [member-schema (get-member-schema arg)]
+      (get-value-info (assoc arg :schema member-schema))
+      {:exists? false
+       :norm-path norm-path
+       :value nil})))
 
-(defn get-op-value-schema [{:keys [op-type schema op-path]}]
+(defn get-op-value-info [{:keys [op-type schema op-path]}]
   (case op-type
-    :add-array-edge shared/crdt-array-edge-schema
-    :add-value (l/schema-at-path schema op-path {:branches? true})
+    :add-array-edge {:value-schema shared/crdt-array-edge-schema}
+    :add-container nil
+    :add-value {:value-schema (l/schema-at-path schema op-path
+                                                {:branches? true})}
     :delete-array-edge nil
+    :delete-container {:ser-v->v-xf set
+                       :v->ser-v-xf seq
+                       :value-schema (l/array-schema shared/add-id-schema)}
     :delete-value nil))
 
 (defn <crdt-op->serializable-crdt-op
@@ -220,21 +220,25 @@
   (au/go
     (when crdt-op
       (let [{:keys [op-path op-type value]} crdt-op
-            w-schema (get-op-value-schema
-                      (u/sym-map op-type op-path schema))]
+            {:keys [v->ser-v-xf]
+             w-schema :value-schema} (get-op-value-info
+                                      (u/sym-map op-type op-path schema))
+            v (cond-> value
+                v->ser-v-xf (v->ser-v-xf value))]
         (cond-> crdt-op
           true (dissoc :value)
           w-schema (assoc :serialized-value
                           (au/<? (storage/<value->serialized-value
-                                  storage w-schema value))))))))
+                                  storage w-schema v))))))))
 
 (defn <serializable-crdt-op->crdt-op
   [{:keys [storage schema crdt-op] :as arg}]
   (au/go
     (when crdt-op
       (let [{:keys [op-path op-type serialized-value]} crdt-op
-            r-schema (get-op-value-schema
-                      (u/sym-map op-type op-path schema))]
+            {:keys [ser-v->v-xf]
+             r-schema :value-schema} (get-op-value-info
+                                      (u/sym-map op-type op-path schema))]
         (cond-> crdt-op
           true (dissoc :serialized-value)
           r-schema (assoc :value
@@ -242,7 +246,8 @@
                            (common/<serialized-value->value
                             (assoc arg
                                    :reader-schema r-schema
-                                   :serialized-value serialized-value)))))))))
+                                   :serialized-value serialized-value))))
+          ser-v->v-xf (update :value ser-v->v-xf))))))
 
 (defn <crdt-ops->serializable-crdt-ops [arg]
   (au/go
@@ -357,16 +362,26 @@
                              :reader-schema shared/serializable-snapshot-schema
                              :serialized-value serialized-value)
             ser-snap (au/<? (common/<serialized-value->value sv->v-arg))
-            crdt (edn/read-string (:edn-crdt ser-snap))
-            {:keys [bytes fp]} (:serialized-value ser-snap)
-            writer-schema (or (au/<? (storage/<fp->schema storage fp))
-                              (au/<? (common/<get-schema-from-peer
-                                      (assoc arg :fp fp))))
-            v (l/deserialize schema writer-schema bytes)]
-        (u/sym-map crdt v)))))
+            crdt-info (edn/read-string (:edn-crdt-info ser-snap))]
+        crdt-info))))
 
 (defn <get-snapshot-from-url [{:keys [url] :as arg}]
   (au/go
     (when url
       (let [ba (au/<? (u/<http-get {:url url}))]
         (au/<? (<ba->snapshot (assoc arg :ba ba)))))))
+
+(defn make-update-state-tx-info-base
+  [{:keys [actor-id client-id cmds make-tx-id]}]
+  (let [tx-id (if make-tx-id
+                (make-tx-id)
+                (u/compact-random-uuid))
+        sys-time-ms (u/current-time-ms)
+        updated-paths (map :zeno/path cmds)]
+    (u/sym-map actor-id client-id sys-time-ms tx-id updated-paths)))
+
+(defn xf-op-paths [{:keys [prefix crdt-ops]}]
+  (reduce (fn [acc op]
+            (conj acc (update op :op-path #(cons prefix %))))
+          #{}
+          crdt-ops))

@@ -13,7 +13,7 @@
    [deercreeklabs.async-utils :as au]
    [deercreeklabs.baracus :as ba]
    [deercreeklabs.lancaster :as l]
-   #?(:clj [kaocha.repl])
+   [kaocha.repl]
    [taoensso.timbre :as log]
    [test-common :as tc])
   (:import
@@ -72,10 +72,6 @@
                         :zeno/op :zeno/set
                         :zeno/path [root :books book-id]}]
                _ (is (= true (au/<? (<log-tx! (assoc arg :cmds cmds-1)))))
-               _ (is (= book (-> (@*branch->crdt-info branch)
-                                 (:v)
-                                 (:books)
-                                 (get book-id))))
                _ (is (= {:actor-id-to-log-info
                          {"__BRANCH_MAIN__"
                           {:branch-log-tx-indices-since-snapshot [0]
@@ -99,9 +95,7 @@
                _ (is (= [] (:tx-ids-since-snapshot gcsi-ret-2)))
                snapshot (au/<? (common/<get-snapshot-from-url
                                 (assoc arg :url (:snapshot-url gcsi-ret-2))))
-               _ (is (= book (-> snapshot :v :books (get book-id))))
                _ (is (= [book-id] (-> snapshot :crdt :children :books
-                                      :children keys)))
-               _ (is (= the-id (-> snapshot :v :the-id)))])
+                                      :children keys)))])
          (finally
            (bulk-storage/<stop-server! bulk-storage)))))))
