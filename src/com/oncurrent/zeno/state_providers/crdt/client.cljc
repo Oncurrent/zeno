@@ -372,7 +372,9 @@
                :msg-protocol shared/msg-protocol
                :<on-actor-id-change <on-actor-id-change
                :on-connect (fn [url]
-                             (reset! *connected? true))
+                             (reset! *connected? true)
+                             (signal-producer-sync!)
+                             (signal-consumer-sync!))
                :on-disconnect (fn [code]
                                 (reset! *connected? false))
                :state-provider-name shared/state-provider-name
