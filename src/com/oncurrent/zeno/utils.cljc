@@ -469,7 +469,7 @@
         now-ch (ca/chan (ca/dropping-buffer 1))
         stop! #(ca/put! stop-ch true)
         now! (fn [& args]
-               #(ca/put! now-ch args))
+               (ca/put! now-ch (or args [])))
         delay-ms (or loop-delay-ms 1000)]
     (ca/go
       (loop [args []]
