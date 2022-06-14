@@ -265,7 +265,7 @@
                         (conj acc (first path)))
                       #{}
                       cmds)]
-    (when-not (= 1 (count roots))
+    (when-not (> 1 (count roots))
       (throw (ex-info
               (str "<update-state! cmds in a single call must all belong to "
                    "the same root. Got multiple roots: `" roots "`. Note that "
@@ -279,24 +279,23 @@
 (defn make-<update-state! [{:keys [env-name env-sp-root->info]}]
   (fn [{:zeno/keys [cmds] :as fn-arg}]
     (au/go
-      (when-not (empty? cmds)
-        (check-update-state-arg fn-arg)
-        (let [root->cmds (reduce
-                          (fn [acc {:zeno/keys [path] :as cmd}]
-                            (let [[root & tail] path]
-                              (update acc root conj (assoc cmd :zeno/path tail))))
-                          {}
-                          cmds)]
-          (doseq [[root cmds] root->cmds]
-            (let [sp-info (env-sp-root->info root)
-                  branch (or (:branch fn-arg)
-                             (:state-provider-branch sp-info)
-                             env-name)
-                  <us! (-> sp-info :state-provider ::sp-impl/<update-state!)]
-              (au/<? (<us! (assoc fn-arg
-                                  :zeno/branch branch
-                                  :zeno/cmds cmds)))))))
-     true)))
+      (check-update-state-arg fn-arg)
+      (let [root->cmds (reduce
+                        (fn [acc {:zeno/keys [path] :as cmd}]
+                          (let [[root & tail] path]
+                            (update acc root conj (assoc cmd :zeno/path tail))))
+                        {}
+                        cmds)]
+        (doseq [[root cmds] root->cmds]
+          (let [sp-info (env-sp-root->info root)
+                branch (or (:branch fn-arg)
+                           (:state-provider-branch sp-info)
+                           env-name)
+                <us! (-> sp-info :state-provider ::sp-impl/<update-state!)]
+            (au/<? (<us! (assoc fn-arg
+                                :zeno/branch branch
+                                :zeno/cmds cmds)))))
+        true))))
 
 (defn <ks-at-path [{:keys [full-path kw path root <get-state]}]
   (au/go
