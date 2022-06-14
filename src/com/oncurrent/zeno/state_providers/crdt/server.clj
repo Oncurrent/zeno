@@ -203,15 +203,16 @@
         tx-infos* (map-indexed (fn [i tx-info]
                                  (assoc tx-info :tx-index (+ num-txs i)))
                                tx-infos)
-        tx-ids (map :tx-id tx-infos)]
+        tx-ids (map :tx-id tx-infos)
+        branch-tx-ids* (vec (concat branch-tx-ids tx-ids))]
     (-> old-branch-log-info
+        (assoc :branch-tx-ids branch-tx-ids*)
         (update :actor-id-to-log-info
                 #(update-actor-id-to-log-info!
                   (assoc arg
                          :actor-id-to-log-info %
-                         :branch-tx-ids branch-tx-ids
-                         :tx-infos tx-infos*)))
-        (update :branch-tx-ids concat tx-ids))))
+                         :branch-tx-ids branch-tx-ids*
+                         :tx-infos tx-infos*))))))
 
 (defn <add-to-branch-log! [{:keys [branch storage tx-infos] :as arg}]
   (au/go
