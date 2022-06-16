@@ -493,13 +493,12 @@
                    (assoc info
                           :crdt crdt
                           :repair-crdt-ops #{}
-                          :tx-infos-to-log (conj (or tx-infos-to-log #{}
-                                                     tx-info))))))
+                          :tx-infos-to-log (conj (or tx-infos-to-log #{})
+                                                 tx-info)))))
         (au/<? (<log-tx-infos! (assoc mus-arg
                                       :actor-id actor-id
                                       :branch branch
                                       :storage @*storage)))
-
         true))))
 
 (defn throw-bad-path-key [path k]
