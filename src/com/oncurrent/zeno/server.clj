@@ -77,6 +77,7 @@
 (defn <handle-rpc! [{:keys [*conn-id->auth-info
                             *rpc-name-kw->handler
                             conn-id
+                            env-info
                             env-name
                             <get-state
                             <set-state!
@@ -114,6 +115,7 @@
                            :arg deser-arg
                            :authenticator-info auth-info
                            :conn-id conn-id
+                           :env-info env-info
                            :env-name env-name}
               ret (handler h-arg)
               val (if (au/channel? ret)
