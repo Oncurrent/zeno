@@ -70,7 +70,7 @@
   (let [{:keys [current-add-id-to-value-info]} crdt
         make-id* (or make-id u/compact-random-uuid)
         winner (->> current-add-id-to-value-info
-                    (sort-by #(-> % second :sys-time-ms))
+                    (sort-by #(-> % second :sys-time-ms u/num->long))
                     (last)
                     (second))
         del-ops (reduce-kv (fn [acc add-id value-info]

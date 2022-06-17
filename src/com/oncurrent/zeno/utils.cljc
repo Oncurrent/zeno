@@ -81,6 +81,10 @@
     #?(:clj (Long/parseLong s)
        :cljs (.fromString ^Long Long s))))
 
+(defn num->long [n]
+  #?(:clj (long n)
+     :cljs (.fromNumber ^Long Long n)))
+
 (defn ex-msg [e]
   #?(:clj (.toString ^Exception e)
      :cljs (.-message e)))

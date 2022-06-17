@@ -14,8 +14,11 @@
 (defn same-cv-info? [x y]
   (and x
        y
-       (= (select-keys x crdt-value-info-keys)
-          (select-keys y crdt-value-info-keys))))
+       ;; Manual comparison since snapshots are serde via edn which isn't
+       ;; converting to longs like avro/lancaster is, TODO: update snapshot
+       ;; to go through avro/lancaster.
+       (= (u/num->long (:sys-time-ms x)) (u/num->long (:sys-time-ms y)))
+       (= (:value x) (:value y))))
 
 (defn add-single-value
   [{:keys [add-id crdt op-type] :as arg}]
