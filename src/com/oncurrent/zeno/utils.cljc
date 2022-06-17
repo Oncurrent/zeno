@@ -100,12 +100,6 @@
   #?(:clj (System/currentTimeMillis)
      :cljs (.fromNumber ^Long Long (.getTime (js/Date.)))))
 
-(defn monotonic-time-ms []
-  #?(:clj (-> (System/nanoTime)
-              (/ 1000000)
-              (long))
-     :cljs (int (js/performance.now))))
-
 (defn long->str [l]
   #?(:clj (str l)
      :cljs (.toString ^Long l)))
