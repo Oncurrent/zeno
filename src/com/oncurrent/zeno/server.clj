@@ -267,7 +267,8 @@
                         (conj acc (first path)))
                       #{}
                       cmds)]
-    (when (> 1 (count roots))
+    (log/info roots)
+    (when (> (count roots) 1)
       (throw (ex-info
               (str "<update-state! cmds in a single call must all belong to "
                    "the same root. Got multiple roots: `" roots "`. Note that "
