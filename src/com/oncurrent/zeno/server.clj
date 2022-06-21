@@ -267,7 +267,6 @@
                         (conj acc (first path)))
                       #{}
                       cmds)]
-    (log/info roots)
     (when (> (count roots) 1)
       (throw (ex-info
               (str "<update-state! cmds in a single call must all belong to "
