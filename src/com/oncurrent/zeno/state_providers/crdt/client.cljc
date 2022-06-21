@@ -200,13 +200,16 @@
     :as arg}]
   ;; TODO: Don't re-apply own txns
   (au/go
+    (log/info "SCTxs!-top")
     (au/<? (<wait-for-init arg))
+    (log/info "SCTxs!-inited")
     (when @*connected?
+      (log/info "SCTxs!-connected")
       (let [actor-id @*actor-id
             storage @*storage
             {:keys [<request-schema <send-msg update-subscriptions!]} @*host-fns
             msg-arg {:msg-type :get-consumer-sync-info
-                     :arg @*state-info}
+                     :arg (select-keys @*state-info [:last-tx-index])}
             sync-info (when @*connected? (au/<? (<send-msg msg-arg)))
             {:keys [snapshot-url
                     snapshot-tx-index
@@ -253,6 +256,13 @@
                                                  (:last-tx-index state-info)))
                        (update :repair-crdt-ops
                                set/union (:repair-crdt-ops ret))))))
+
+
+        (let [snapshot? (boolean snapshot)]
+          (log/info (str "SCTxs!-bottom:\n"
+                         (u/pprint-str
+                          (u/sym-map snapshot? updated-paths
+                                     msg-arg sync-info)))))
 
         (cond
           snapshot
@@ -327,7 +337,7 @@
                     :loop-name "<sync-producer-txs!"
                     :task-fn #(<sync-producer-txs!* sync-arg)})
         csync-ret (u/start-task-loop!
-                   {:loop-delay-ms 3000
+                   {:loop-delay-ms 30000
                     :loop-name "<sync-consumer-txs!"
                     :task-fn #(<sync-consumer-txs!* sync-arg)})
         {stop-producer-sync! :stop!
@@ -356,6 +366,8 @@
                               (au/go
                                 (reset! *actor-id actor-id)
                                 (reset! *state-info {})
+                                (signal-producer-sync!)
+                                ;; load-local-data! will signal consumer-sync
                                 (load-local-data! lld-arg)))
         stop! (fn []
                 (reset! *client-running? false)

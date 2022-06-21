@@ -296,7 +296,9 @@
     (let [crdt-ops (au/<? (<serializable-crdt-ops->crdt-ops
                            (assoc fn-arg
                                   :crdt-ops (:crdt-ops serializable-tx-info))))]
-      (assoc serializable-tx-info :crdt-ops crdt-ops))))
+      (-> serializable-tx-info
+          (assoc :crdt-ops crdt-ops)
+          (update :updated-paths set)))))
 
 (defn <serializable-tx-infos->tx-infos
   [{:keys [serializable-tx-infos] :as fn-arg}]
@@ -377,7 +379,7 @@
                 (make-tx-id)
                 (u/compact-random-uuid))
         sys-time-ms (u/current-time-ms)
-        updated-paths (map :zeno/path cmds)]
+        updated-paths (into #{} (map :zeno/path) cmds)]
     (u/sym-map actor-id client-id sys-time-ms tx-id updated-paths)))
 
 (defn xf-op-paths [{:keys [prefix crdt-ops]}]
