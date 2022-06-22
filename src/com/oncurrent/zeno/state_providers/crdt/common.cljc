@@ -288,7 +288,9 @@
   (au/go
     (let [ser-crdt-ops (au/<? (<crdt-ops->serializable-crdt-ops
                                (assoc arg :crdt-ops (:crdt-ops tx-info))))]
-      (assoc tx-info :crdt-ops ser-crdt-ops))))
+      (-> tx-info
+          (assoc :crdt-ops ser-crdt-ops)
+          (update :updated-paths seq)))))
 
 (defn <serializable-tx-info->tx-info
   [{:keys [serializable-tx-info storage] :as fn-arg}]
