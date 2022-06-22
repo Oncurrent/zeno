@@ -200,9 +200,9 @@
   [{:keys [old-branch-log-info tx-infos] :as arg}]
   (let [{:keys [branch-tx-ids]} old-branch-log-info
         num-txs (count branch-tx-ids)
-        tx-infos* (map-indexed (fn [i tx-info]
-                                 (assoc tx-info :tx-index (+ num-txs i)))
-                               tx-infos)
+        tx-infos* (vec (map-indexed (fn [i tx-info]
+                                      (assoc tx-info :tx-index (+ num-txs i)))
+                                    tx-infos))
         tx-ids (map :tx-id tx-infos)
         branch-tx-ids* (vec (concat branch-tx-ids tx-ids))]
     (-> old-branch-log-info
@@ -353,16 +353,17 @@
           bli (au/<? (storage/<get storage branch-log-k
                                    shared/branch-log-info-schema))
           {:keys [actor-id-to-log-info branch-tx-ids]} bli
+          branch-tx-ids* (vec branch-tx-ids)
           ba-log-info (get actor-id-to-log-info actor-id)]
       (if ba-log-info
         (au/<? (<log-info->sync-info (assoc arg
-                                            :branch-tx-ids branch-tx-ids
+                                            :branch-tx-ids branch-tx-ids*
                                             :last-tx-index last-tx-index
                                             :log-info ba-log-info)))
         (let [ba-log-info (make-log-info-for-actor-id
                            (assoc arg
                                   :actor-id actor-id
-                                  :branch-tx-ids branch-tx-ids))]
+                                  :branch-tx-ids branch-tx-ids*))]
           (au/<? (storage/<swap!
                   storage branch-log-k shared/branch-log-info-schema
                   (fn [old]
@@ -370,7 +371,7 @@
                               [:actor-id-to-log-info actor-id]
                               ba-log-info))))
           (au/<? (<log-info->sync-info (assoc arg
-                                              :branch-tx-ids branch-tx-ids
+                                              :branch-tx-ids branch-tx-ids*
                                               :last-tx-index last-tx-index
                                               :log-info ba-log-info))))))))
 
@@ -419,12 +420,13 @@
           bli (au/<? (storage/<get storage branch-log-k
                                    shared/branch-log-info-schema))
           {:keys [actor-id-to-log-info branch-tx-ids]} bli
+          branch-tx-ids* (vec branch-tx-ids)
           log-info (get actor-id-to-log-info branch-main-log-actor-id)
           snapshot (au/<? (<get-snapshot
                            (assoc arg
                                   :bulk-storage @*bulk-storage
                                   :log-info log-info)))
-          tx-ids (map #(nth branch-tx-ids %)
+          tx-ids (mapv #(nth branch-tx-ids* %)
                       (:branch-log-tx-indices-since-snapshot log-info))
           tx-infos (au/<? (<get-tx-infos-for-tx-ids (assoc arg :tx-ids tx-ids)))
           crdt-ops (reduce (fn [acc tx-info]

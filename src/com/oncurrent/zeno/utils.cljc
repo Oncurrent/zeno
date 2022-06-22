@@ -464,7 +464,7 @@
                          (or task-fn "nil") "`.")
                     arg)))
   (let [stop-ch (ca/promise-chan)
-        now-ch (ca/chan (ca/dropping-buffer 1))
+        now-ch (ca/chan (ca/dropping-buffer 100))
         stop! #(ca/put! stop-ch true)
         now! (fn [& args]
                (ca/put! now-ch (or args [])))
@@ -485,8 +485,8 @@
               [v ch] (au/alts? [stop-ch now-ch timeout-ch] :priority true)]
           (condp = ch
             stop-ch nil
-            timeout-ch (recur [])
-            now-ch (recur v)))))
+            now-ch (recur v)
+            timeout-ch (recur [])))))
     (sym-map now! stop!)))
 
 (defn fill-env-defaults [m]

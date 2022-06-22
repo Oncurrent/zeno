@@ -267,7 +267,6 @@
                         (conj acc (first path)))
                       #{}
                       cmds)]
-    (log/info roots)
     (when (> (count roots) 1)
       (throw (ex-info
               (str "<update-state! cmds in a single call must all belong to "
@@ -468,17 +467,28 @@
                                                            :path path}]}))]
     (u/sym-map <get-state <set-state! <update-state!)))
 
+(defn <wait-for-connect [{:keys [*conn-id->connected? conn-id]}]
+  (au/go
+   (loop []
+     (if (true? (get @*conn-id->connected? conn-id))
+       true
+       (do
+        (ca/<! (ca/timeout 50))
+        (recur))))))
+
 (defn make-<auth-handler
-  [{:keys [*conn-id->env-name *env-name->info f] :as arg}]
+  [{:keys [*conn-id->env-name *env-name->info <f] :as arg}]
   (let [base-info (select-keys arg [:*conn-id->auth-info
                                     :*connected-actor-id->conn-ids
                                     :storage])]
     (fn [{:keys [conn-id] :as handler-arg}]
-      (let [env-name (get @*conn-id->env-name conn-id)
-            env-info (-> (get @*env-name->info env-name)
-                         (assoc :env-name env-name))
-            state-fns (make-state-fns env-info)]
-        (f (merge base-info env-info state-fns handler-arg))))))
+      (au/go
+        (au/<? (<wait-for-connect (assoc arg :conn-id conn-id)))
+        (let [env-name (get @*conn-id->env-name conn-id)
+              env-info (-> (get @*env-name->info env-name)
+                           (assoc :env-name env-name))
+              state-fns (make-state-fns env-info)]
+          (au/<? (<f (merge base-info env-info state-fns handler-arg))))))))
 
 (defn make-<rpc-handler
   [{:keys [*conn-id->env-name *env-name->info] :as arg}]
@@ -488,14 +498,16 @@
                                     :rpcs
                                     :storage])]
     (fn [{:keys [conn-id] :as handler-arg}]
-      (let [env-name (get @*conn-id->env-name conn-id)
-            env-info (-> (get @*env-name->info env-name)
-                         (assoc :env-name env-name))
-            state-fns (make-state-fns env-info)]
-        (<handle-rpc! (merge base-info
-                             state-fns
-                             handler-arg
-                             {:env-info env-info}))))))
+      (au/go
+        (au/<? (<wait-for-connect (assoc arg :conn-id conn-id)))
+        (let [env-name (get @*conn-id->env-name conn-id)
+              env-info (-> (get @*env-name->info env-name)
+                           (assoc :env-name env-name))
+              state-fns (make-state-fns env-info)]
+          (au/<? (<handle-rpc! (merge base-info
+                                      state-fns
+                                      handler-arg
+                                      {:env-info env-info}))))))))
 
 (defn make-<sp-rpc-handler
   [{:keys [*conn-id->auth-info *conn-id->env-name *env-name->info
@@ -503,6 +515,7 @@
     :as make-handler-arg}]
   (fn [{:keys [conn-id] :as handler-arg}]
     (au/go
+      (au/<? (<wait-for-connect (assoc make-handler-arg :conn-id conn-id)))
       (let [{:keys [arg rpc-id rpc-name-kw-name
                     rpc-name-kw-ns state-provider-name]} (:arg handler-arg)
             <request-schema (su/make-schema-requester handler-arg)
@@ -554,6 +567,7 @@
   (let [<request-schema (su/make-schema-requester make-handler-arg)]
     (fn [{:keys [conn-id] :as handler-arg}]
       (au/go
+        (au/<? (<wait-for-connect (assoc make-handler-arg :conn-id conn-id)))
         (let [{:keys [arg msg-type-name
                       msg-type-ns state-provider-name]} (:arg handler-arg)
               msg-type (keyword msg-type-name msg-type-ns)]
@@ -625,6 +639,7 @@
 (defn make-client-on-connect
   [{:keys [*conn-id->auth-info
            *conn-id->env-name
+           *conn-id->connected?
            *env-name->info]
     :as fn-arg}]
   (fn [{:keys [close! conn-id path remote-address] :as conn}]
@@ -638,6 +653,13 @@
                     (str "Must provide an :env-name in order to connect. "
                          "Got `" (or env-name "nil") "`.")
                     env-params)))
+          (when (and source-env-name
+                     (not (contains? @*env-name->info source-env-name)))
+            (throw (ex-info
+                    (str "source-env-name provided is not an existing env. "
+                         "Got `" source-env-name "`. Valid envs are: "
+                         (keys @*env-name->info)))
+                   env-params))
           (when-not (contains? @*env-name->info env-name)
             ;; Create a temp env
             (swap! *env-name->info
@@ -651,6 +673,7 @@
                      :temp? true})))
           (swap! *conn-id->auth-info assoc conn-id {})
           (swap! *conn-id->env-name assoc conn-id env-name)
+          (swap! *conn-id->connected? assoc conn-id true)
           (log/info
            (str "Client connection opened:\n"
                 (u/pprint-str (u/sym-map conn-id env-name remote-address)))))
@@ -660,9 +683,13 @@
           (close!))))))
 
 (defn make-client-on-disconnect
-  [{:keys [*conn-id->auth-info *conn-id->env-name *connected-actor-id->conn-ids]
+  [{:keys [*conn-id->auth-info
+           *conn-id->env-name
+           *conn-id->connected?
+           *connected-actor-id->conn-ids]
     :as arg}]
   (fn [{:keys [conn-id]}]
+    (swap! *conn-id->connected? assoc conn-id false)
     (when-let [actor-id (some-> @*conn-id->auth-info
                                 (get conn-id)
                                 (:actor-id))]
@@ -681,20 +708,20 @@
 
               :log-in
               (make-<auth-handler
-               (assoc arg :f auth-impl/<handle-log-in))
+               (assoc arg :<f auth-impl/<handle-log-in))
 
               :log-out
               (make-<auth-handler
-               (assoc arg :f auth-impl/<handle-log-out))
+               (assoc arg :<f auth-impl/<handle-log-out))
 
               :read-authenticator-state
               (make-<auth-handler
-               (assoc arg :f auth-impl/<handle-read-authenticator-state))
+               (assoc arg :<f auth-impl/<handle-read-authenticator-state))
 
 
               :resume-login-session
               (make-<auth-handler
-               (assoc arg :f auth-impl/<handle-resume-login-session))
+               (assoc arg :<f auth-impl/<handle-resume-login-session))
 
               :rpc
               (make-<rpc-handler arg)
@@ -707,7 +734,7 @@
 
               :update-authenticator-state
               (make-<auth-handler
-               (assoc arg :f auth-impl/<handle-update-authenticator-state))}
+               (assoc arg :<f auth-impl/<handle-update-authenticator-state))}
    :on-connect (make-client-on-connect arg)
    :on-disconnect (make-client-on-disconnect arg)
    :path "/client"
@@ -935,6 +962,7 @@
                      ws-url]} config
         *conn-id->auth-info (atom {})
         *conn-id->env-name (atom {})
+        *conn-id->connected? (atom {})
         *connected-actor-id->conn-ids (atom {})
         *consumer-actor-id->last-branch-log-tx-index (atom {})
         *rpc-name-kw->handler (atom {})
@@ -950,6 +978,7 @@
         name->state-provider (make-name->state-provider root->state-provider)
         arg (u/sym-map *conn-id->auth-info
                        *conn-id->env-name
+                       *conn-id->connected?
                        *connected-actor-id->conn-ids
                        *consumer-actor-id->last-branch-log-tx-index
                        *env-name->info
