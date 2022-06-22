@@ -658,8 +658,8 @@
             (throw (ex-info
                     (str "source-env-name provided is not an existing env. "
                          "Got `" source-env-name "`. Valid envs are: "
-                         (keys @*env-name->info)))
-                   env-params))
+                         (keys @*env-name->info))
+                    env-params)))
           (when-not (contains? @*env-name->info env-name)
             ;; Create a temp env
             (swap! *env-name->info
