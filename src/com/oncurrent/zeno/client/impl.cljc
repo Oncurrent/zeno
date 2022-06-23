@@ -173,7 +173,7 @@
 ;; TODO: DRY this up w/ com.oncurrent.zeno.server/<rpc!*
 (defn <rpc!*
   [{:keys [<request-schema arg-schema ret-schema rpc-name-kw state-provider-name
-           storage talk2-client rpc-msg-type]
+           storage talk2-client rpc-msg-type timeout-ms]
     :as arg}]
   (au/go
     (let [rpc-id (u/compact-random-uuid)
@@ -184,7 +184,7 @@
                    :rpc-name-kw-ns (namespace rpc-name-kw)
                    :rpc-name-kw-name (name rpc-name-kw)
                    :state-provider-name state-provider-name}
-          rpc-ch (t2c/<send-msg! talk2-client rpc-msg-type rpc-arg)
+          rpc-ch (t2c/<send-msg! talk2-client rpc-msg-type rpc-arg timeout-ms)
           timeout-ms (or (:timeout-ms arg) u/default-rpc-timeout-ms)
           timeout-ch (ca/timeout timeout-ms)
           [ret ch] (au/alts? [rpc-ch timeout-ch])]

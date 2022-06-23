@@ -14,12 +14,19 @@
 
 (defn <read-k* [ddb table-name k]
   (au/go
-    (let [arg {:op :GetItem
-               :request {:TableName table-name
-                         :Key {"k" {:S k}}
-                         :AttributesToGet ["v"]}}
-          ret (au/<? (aws-async/invoke ddb arg))]
-      (some-> ret :Item :v :B slurp ba/b64->byte-array))))
+   (loop [attempts 1]
+     (let [arg {:op :GetItem
+                :request {:TableName table-name
+                          :Key {"k" {:S k}}
+                          :AttributesToGet ["v"]}}
+           ret (au/<? (aws-async/invoke ddb arg))
+           busy? (= :cognitect.anomalies/busy (:cognitect.anomalies/category ret))]
+       (if busy?
+         (if (< attempts 42)
+           (do (ca/<! (ca/timeout (+ 1000 (rand-int 1000))))
+               (recur (inc attempts)))
+           (throw (ex-info "Too many!!!" {})))
+         (some-> ret :Item :v :B slurp ba/b64->byte-array))))))
 
 (defn <add-k!* [ddb table-name k ba]
   (au/go
