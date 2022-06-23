@@ -476,7 +476,8 @@
                    (update info :tx-infos-to-log disj tx-info))))))))
 
 (defn make-<update-state!
-  [{:keys [*branch->crdt-info *storage make-tx-id root schema] :as mus-arg}]
+  [{:keys [*branch->crdt-info *bulk-storage *storage make-tx-id root schema]
+    :as mus-arg}]
   (fn [{:zeno/keys [actor-id branch cmds] :as us-arg}]
     (au/go
       (let [tx-info-base (common/make-update-state-tx-info-base
@@ -500,6 +501,7 @@
         (au/<? (<log-tx-infos! (assoc mus-arg
                                       :actor-id actor-id
                                       :branch branch
+                                      :bulk-storage @*bulk-storage
                                       :storage @*storage)))
         true))))
 
