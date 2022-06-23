@@ -208,9 +208,9 @@
       (let [actor-id @*actor-id
             storage @*storage
             {:keys [<request-schema <send-msg update-subscriptions!]} @*host-fns
-            msg-arg {:msg-type :get-consumer-sync-info
-                     :arg (select-keys @*state-info [:last-tx-index])}
-            sync-info (when @*connected? (au/<? (<send-msg msg-arg)))
+            msg {:msg-type :get-consumer-sync-info
+                 :arg (select-keys @*state-info [:last-tx-index])}
+            sync-info (when @*connected? (au/<? (<send-msg msg)))
             {:keys [snapshot-url
                     snapshot-tx-index
                     tx-ids-since-snapshot]} sync-info
@@ -262,7 +262,7 @@
           (log/info (str "SCTxs!-bottom:\n"
                          (u/pprint-str
                           (u/sym-map snapshot? updated-paths
-                                     msg-arg sync-info)))))
+                                     msg sync-info)))))
 
         (cond
           snapshot
@@ -347,20 +347,40 @@
         mus-arg (u/sym-map *actor-id *env-name *host-fns *state-info *storage
                            authorizer client-id root schema
                            signal-producer-sync!)
-        <wait-for-sync (fn [& args]
-                         (let [actor-id (or (some-> args first :actor-id)
-                                            @*actor-id)]
-                           (au/go
-                             (loop []
-                               (let [aid->tx-ids (au/<? (<get-unsynced-log
-                                                         sync-arg))
-                                     actor-id-str (get-actor-id-str actor-id)
-                                     tx-ids (get aid->tx-ids actor-id-str)]
-                                 (if (empty? tx-ids)
-                                   true
-                                   (do
-                                     (ca/<! (ca/timeout 50))
-                                     (recur))))))))
+        <wait-for-prod-sync (fn []
+                              (au/go
+                                (loop []
+                                  (let [aid->tx-ids (au/<? (<get-unsynced-log
+                                                            sync-arg))
+                                        actor-id @*actor-id
+                                        actor-id-str (get-actor-id-str actor-id)
+                                        tx-ids (get aid->tx-ids actor-id-str)]
+                                    (if (empty? tx-ids)
+                                      true
+                                      (do
+                                        (ca/<! (ca/timeout 50))
+                                        (recur)))))))
+        <wait-for-cons-sync (fn []
+                              (au/go
+                                (loop []
+                                  (let [msg {:msg-type :get-consumer-sync-info
+                                             :arg (select-keys
+                                                   @*state-info
+                                                   [:last-tx-index])}
+                                        connected? @*connected?
+                                        {:keys [<send-msg]} @*host-fns
+                                        sync-info (when connected?
+                                                    (au/<? (<send-msg msg)))]
+                                    (if (and connected? (empty? sync-info))
+                                      true
+                                      (do
+                                        (ca/<! (ca/timeout 50))
+                                        (recur)))))))
+        <wait-for-sync (fn []
+                         (au/go
+                           (au/<? (<wait-for-init (u/sym-map *storage)))
+                           (au/<? (<wait-for-prod-sync))
+                           (au/<? (<wait-for-cons-sync))))
         lld-arg (assoc sync-arg :signal-consumer-sync! signal-consumer-sync!)
         <on-actor-id-change (fn [actor-id]
                               (au/go
