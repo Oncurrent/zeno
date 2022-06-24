@@ -274,9 +274,13 @@
                    "this restriction may be lifted in the future.")
               (u/sym-map roots cmds))))))
 
-(defn check-get-state-arg [arg]
-  ;; TODO: Implement
-  )
+(defn check-get-state-arg [{:zeno/keys [path valid-path-roots]}]
+  ;; TODO: Implement more?
+  (let [[head tail] path]
+      (when-not (valid-path-roots head)
+        (throw (ex-info (str "Path must begin with one of " valid-path-roots
+                             ". Got path `" path "`.")
+                        (u/sym-map path head valid-path-roots))))))
 
 (defn make-<update-state! [{:keys [env-name env-sp-root->info]}]
   (fn [{:zeno/keys [cmds] :as fn-arg}]
@@ -445,7 +449,8 @@
 (defn make-<get-state [{:keys [env-name env-sp-root->info]}]
   (fn [{:zeno/keys [path] :as fn-arg}]
     (au/go
-     (check-get-state-arg fn-arg)
+     (check-get-state-arg (assoc fn-arg :zeno/valid-path-roots
+                                 (into #{} (keys env-sp-root->info))))
      (let [[root & tail] path
            sp-info (env-sp-root->info root)
            branch (or (:branch fn-arg)

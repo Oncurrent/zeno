@@ -26,12 +26,9 @@
               (u/sym-map cmd path))))
     (let [[head tail] path]
       (when-not (valid-path-roots head)
-        (let [[head & tail] path
-              disp-head (or head "nil")]
-          (throw
-           (ex-info (str "Paths must begin with one of " valid-path-roots
-                         ". Got path `" path "` in command.")
-                    (u/sym-map path head cmd valid-path-roots))))))))
+        (throw (ex-info (str "Paths must begin with one of " valid-path-roots
+                             ". Got path `" path "` in command.")
+                        (u/sym-map path head cmd valid-path-roots)))))))
 
 (defn <get-schema-from-peer [{:keys [<request-schema fp storage]}]
   (au/go
