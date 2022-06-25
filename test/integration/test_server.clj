@@ -42,6 +42,16 @@
                          :zeno/value arg}))
     true))
 
+(defn <get-crdt [{:zeno/keys [<get-state]}]
+  (<get-state {:zeno/path [:zeno/crdt]}))
+
+(defn <set-crdt! [{:zeno/keys [<set-state! arg]}]
+  (log/info arg)
+  (au/go
+   (au/<? (<set-state! {:zeno/path [:zeno/crdt]
+                        :zeno/value arg}))
+   true))
+
 (defn <remove-name!
   [{:zeno/keys [<update-state!]}]
   (au/go
@@ -78,6 +88,8 @@
                                    tls? (merge (get-tls-configs))))]
     (server/set-rpc-handler! zs :add-nums add-nums)
     (server/set-rpc-handler! zs :get-name <get-name)
+    (server/set-rpc-handler! zs :get-crdt <get-crdt)
+    (server/set-rpc-handler! zs :set-crdt <set-crdt!)
     (server/set-rpc-handler! zs :remove-name <remove-name!)
     (server/set-rpc-handler! zs :set-name <set-name!)
     (server/set-rpc-handler! zs :throw-if-even <throw-if-even)
