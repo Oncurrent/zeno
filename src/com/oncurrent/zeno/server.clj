@@ -377,9 +377,9 @@
       [nil [path]]
 
       (and (not terminal-kw?) (not join?))
-      (let [{:keys [norm-path value]} (au/<? (<get-state
+      (let [{:keys [norm-path value exists?]} (au/<? (<get-state
                                               (u/sym-map path root)))]
-        [value [norm-path]])
+        [value [norm-path] exists?])
 
       (and terminal-kw? (not join?))
       (let [path* (butlast path)
@@ -414,9 +414,9 @@
           (loop [out []
                  i 0]
             (let [path* (nth xpaths i)
-                  ret (au/<? (<get-value-and-expanded-paths
-                              (assoc fn-arg :path path*)))
-                  new-out (conj out (first ret))
+                  [value _ exists?] (au/<? (<get-value-and-expanded-paths
+                                            (assoc fn-arg :path path*)))
+                  new-out (if (false? exists?) out (conj out value))
                   new-i (inc i)]
               (if (not= num-results new-i)
                 (recur new-out new-i)
@@ -433,9 +433,9 @@
           (let [results (loop [out [] ;; Use loop to stay in go block
                                i 0]
                           (let [path* (nth xpaths i)
-                                ret (au/<? (<get-value-and-expanded-paths
-                                            (assoc fn-arg :path path*)))
-                                new-out (conj out (first ret))
+                                [value _ exists?] (au/<? (<get-value-and-expanded-paths
+                                                          (assoc fn-arg :path path*)))
+                                new-out (if (false? exists?) out (conj out value))
                                 new-i (inc i)]
                             (if (not= num-results new-i)
                               (recur new-out new-i)
