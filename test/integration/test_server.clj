@@ -42,6 +42,12 @@
                          :zeno/value arg}))
     true))
 
+(defn <set-nested! [{:zeno/keys [<set-state! arg]}]
+  (au/go
+   (au/<? (<set-state! {:zeno/path [:zeno/crdt :nested]
+                        :zeno/value arg}))
+   true))
+
 (defn <get-crdt [{:zeno/keys [<get-state]}]
   (<get-state {:zeno/path [:zeno/crdt]}))
 
@@ -88,6 +94,7 @@
                                    tls? (merge (get-tls-configs))))]
     (server/set-rpc-handler! zs :add-nums add-nums)
     (server/set-rpc-handler! zs :get-name <get-name)
+    (server/set-rpc-handler! zs :set-nested <set-nested!)
     (server/set-rpc-handler! zs :get-crdt <get-crdt)
     (server/set-rpc-handler! zs :set-crdt <set-crdt!)
     (server/set-rpc-handler! zs :remove-name <remove-name!)

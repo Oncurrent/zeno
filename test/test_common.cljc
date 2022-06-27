@@ -34,8 +34,12 @@
   [:text l/string-schema]
   [:user-id l/string-schema])
 
+(l/def-record-schema inner-schema
+  [:aa l/int-schema]
+  [:ab l/int-schema])
+
 (l/def-record-schema nested-schema
-  [:a l/int-schema]
+  [:a inner-schema]
   [:b l/int-schema])
 
 (l/def-record-schema crdt-record-schema
@@ -60,6 +64,8 @@
                  :ret-schema l/boolean-schema}
    :set-name {:arg-schema l/string-schema
               :ret-schema l/boolean-schema}
+   :set-nested {:arg-schema nested-schema
+                :ret-schema l/boolean-schema}
    :get-crdt {:arg-schema l/null-schema
               :ret-schema crdt-schema}
    :set-crdt {:arg-schema crdt-schema

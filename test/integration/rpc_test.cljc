@@ -30,12 +30,15 @@
                ret (au/<? (zc/<rpc! zc :add-nums arg))
                expected (apply + arg)
                the-name "Bonzo"]
+           (is (= true (au/<? (zc/<rpc! zc :set-crdt nil))))
            (is (= nil (au/<? (zc/<rpc! zc :get-name nil))))
            (is (= true (au/<? (zc/<rpc! zc :set-name the-name))))
            (is (= the-name (au/<? (zc/<rpc! zc :get-name nil))))
            (is (= true (au/<? (zc/<rpc! zc :remove-name nil))))
            (is (= nil (au/<? (zc/<rpc! zc :get-name nil))))
            (is (= false (au/<? (zc/<rpc! zc :throw-if-even 41))))
+           (is (= true (au/<? (zc/<rpc! zc :set-crdt nil))))
+           (is (= nil (au/<? (zc/<rpc! zc :get-crdt nil))))
            (try
              (au/<? (zc/<rpc! zc :throw-if-even 42))
              (is (= :should-have-thrown :but-didnt))
@@ -59,16 +62,27 @@
            zc (zc/->zeno-client config)]
        (try
         (let [the-name {:name "Bonzo"}
-              nested {:nested {:a 1}}]
+              nested {:nested {:a {:aa 1}}}]
+          (is (= true (au/<? (zc/<rpc! zc :set-crdt nil))))
           (is (= nil (au/<? (zc/<rpc! zc :get-crdt nil))))
+
           (is (= true (au/<? (zc/<rpc! zc :set-crdt the-name))))
           (is (= the-name (au/<? (zc/<rpc! zc :get-crdt nil))))
           (is (= true (au/<? (zc/<rpc! zc :remove-name nil))))
           (is (= {} (au/<? (zc/<rpc! zc :get-crdt nil))))
+
           (is (= true (au/<? (zc/<rpc! zc :set-crdt nil))))
           (is (= nil (au/<? (zc/<rpc! zc :get-crdt nil))))
+
           (is (= true (au/<? (zc/<rpc! zc :set-crdt nested))))
           (is (= nested (au/<? (zc/<rpc! zc :get-crdt nil))))
+
+          (is (= true (au/<? (zc/<rpc! zc :set-crdt nil))))
+          (is (= nil (au/<? (zc/<rpc! zc :get-crdt nil))))
+
+          (is (= true (au/<? (zc/<rpc! zc :set-nested (:nested nested)))))
+          (is (= nested (au/<? (zc/<rpc! zc :get-crdt nil))))
+
           (is (= true (au/<? (zc/<rpc! zc :set-crdt nil))))
           (is (= nil (au/<? (zc/<rpc! zc :get-crdt nil)))))
          (catch #?(:clj Exception :cljs js/Error) e
