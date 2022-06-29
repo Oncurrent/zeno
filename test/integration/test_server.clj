@@ -52,7 +52,6 @@
   (<get-state {:zeno/path [:zeno/crdt]}))
 
 (defn <set-crdt! [{:zeno/keys [<set-state! arg]}]
-  (log/info arg)
   (au/go
    (au/<? (<set-state! {:zeno/path [:zeno/crdt]
                         :zeno/value arg}))

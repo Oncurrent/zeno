@@ -200,11 +200,8 @@
     :as arg}]
   ;; TODO: Don't re-apply own txns
   (au/go
-    (log/info "SCTxs!-top")
     (au/<? (<wait-for-init arg))
-    (log/info "SCTxs!-inited")
     (when @*connected?
-      (log/info "SCTxs!-connected")
       (let [actor-id @*actor-id
             storage @*storage
             {:keys [<request-schema <send-msg update-subscriptions!]} @*host-fns
@@ -256,14 +253,6 @@
                                                  (:last-tx-index state-info)))
                        (update :repair-crdt-ops
                                set/union (:repair-crdt-ops ret))))))
-
-
-        (let [snapshot? (boolean snapshot)]
-          (log/info (str "SCTxs!-bottom:\n"
-                         (u/pprint-str
-                          (u/sym-map snapshot? updated-paths
-                                     msg sync-info)))))
-
         (cond
           snapshot
           (update-subscriptions! {:updated-paths [[root]]})
