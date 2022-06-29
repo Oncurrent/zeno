@@ -15,7 +15,7 @@
 
 (deftest test-s3-bulk-storage-basic-ops
   (au/test-async
-   3000
+   5000
    (au/go
      (let [bucket-name (u/compact-random-uuid)
            _ (is (= true (au/<? (bs/<create-s3-bucket!

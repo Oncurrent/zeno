@@ -34,7 +34,16 @@
   [:text l/string-schema]
   [:user-id l/string-schema])
 
-(l/def-record-schema crdt-schema
+(l/def-record-schema inner-schema
+  [:aa l/int-schema]
+  [:ab l/int-schema])
+
+(l/def-record-schema nested-schema
+  [:a inner-schema]
+  [:b l/int-schema])
+
+(l/def-record-schema crdt-record-schema
+  [:nested nested-schema]
   [:books (l/map-schema book-schema)]
   [:msgs (l/array-schema msg-schema)]
   [:my-book-ids (l/array-schema l/string-schema)]
@@ -42,6 +51,9 @@
   [:num l/int-schema]
   [:numbers (l/array-schema l/int-schema)]
   [:the-id l/string-schema])
+
+(l/def-union-schema crdt-schema
+  l/null-schema crdt-record-schema)
 
 (def rpcs
   {:add-nums {:arg-schema (l/array-schema l/int-schema)
@@ -51,6 +63,12 @@
    :remove-name {:arg-schema l/null-schema
                  :ret-schema l/boolean-schema}
    :set-name {:arg-schema l/string-schema
+              :ret-schema l/boolean-schema}
+   :set-nested {:arg-schema nested-schema
+                :ret-schema l/boolean-schema}
+   :get-crdt {:arg-schema l/null-schema
+              :ret-schema crdt-schema}
+   :set-crdt {:arg-schema crdt-schema
               :ret-schema l/boolean-schema}
    :throw-if-even {:arg-schema l/int-schema
                    :ret-schema l/boolean-schema}})
