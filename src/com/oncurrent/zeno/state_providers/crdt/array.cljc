@@ -415,18 +415,18 @@
            :value nil}
           (let [_ (c/check-key (assoc arg :key raw-i))
                 i (u/get-normalized-array-index {:array-len array-len
-                                                 :i raw-i})
-                node-id (nth ordered-node-ids i)
-                child-crdt (get-in crdt [:children node-id])]
+                                                 :i raw-i})]
             (if (or (not i) (empty? ordered-node-ids))
               {:exists? false
                :norm-path norm-path
                :value nil}
-              (c/get-value-info (assoc arg
+              (let [node-id (nth ordered-node-ids i)
+                    child-crdt (get-in crdt [:children node-id])]
+                (c/get-value-info (assoc arg
                                        :crdt child-crdt
                                        :norm-path (conj (or norm-path []) i)
                                        :path (or sub-path [])
-                                       :schema child-schema)))))))))
+                                       :schema child-schema))))))))))
 
 (defmulti get-edge-insert-info :cmd-type)
 
