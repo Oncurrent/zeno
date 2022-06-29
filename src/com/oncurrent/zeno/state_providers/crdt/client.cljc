@@ -326,7 +326,7 @@
                     :loop-name "<sync-producer-txs!"
                     :task-fn #(<sync-producer-txs!* sync-arg)})
         csync-ret (u/start-task-loop!
-                   {:loop-delay-ms 30000
+                   {:loop-delay-ms 3000
                     :loop-name "<sync-consumer-txs!"
                     :task-fn #(<sync-consumer-txs!* sync-arg)})
         {stop-producer-sync! :stop!
