@@ -417,6 +417,7 @@
                 i (u/get-normalized-array-index {:array-len array-len
                                                  :i raw-i})
                 _ (when (or (not i) (empty? ordered-node-ids))
+            ; DON'T THROW HERE. RETURN `nil` LIKE CLOJURE'S `get` RATHER THAN `nth`
                     (throw
                      (ex-info
                       (str "Index `" i "` into array `" ordered-node-ids

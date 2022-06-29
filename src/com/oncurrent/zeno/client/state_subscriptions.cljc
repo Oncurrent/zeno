@@ -185,9 +185,12 @@
       [@(:*actor-id zc) [path]]
 
       (and (not terminal-kw?) (not join?))
-      (let [{:keys [norm-path value exists?]} (get-in-state
+      (let [_ (log/info "pretty sure it's here")
+            {:keys [norm-path value exists?]} (get-in-state
                                                (u/sym-map path root zc))]
-        [value [norm-path] exists?])
+        (do
+         (log/info "does it get past?")
+         [value [norm-path] exists?]))
 
       (and terminal-kw? (not join?))
       (let [path* (butlast path)
