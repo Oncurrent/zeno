@@ -37,7 +37,8 @@
 
   :cider-nrepl {:extra-deps {cider/cider-nrepl {:mvn/version "0.28.5"}}}
 
-  :clj {:extra-deps {org.clojure/clojure {:mvn/version "1.11.1"}}}
+  :clj {:extra-deps {org.clojure/clojure {:mvn/version "1.11.1"}}
+        :jvm-opts ["--add-modules" "jdk.incubator.foreign,jdk.incubator.vector"]}
 
   :cljs {:extra-deps {org.clojure/clojurescript {:mvn/version "1.11.60"}}}
 
