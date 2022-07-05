@@ -19,16 +19,16 @@
 ;;
 ;; 0                   1                   2                   3
 ;; 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 6 7 8 9 0 1
-;; +-----------------------------------------------+---------------+
-;; |                                               |               |
-;; | Path                                          | Path
-;; | Header                                        |               |
-;; | (24)                                          | (168)
-;; +-----------------------------------------------+- - - - - - - -+
+;; +---------------------------------------------------------------+
 ;; |                                                               |
-;;   Path
-;; | (cont'd)                                                      |
-;;
+;; | Path                                                          |
+;; | Header                                                        |
+;; | (32)                                                          |
+;; +---------------------------------------------------------------+
+;; |                                                               |
+;; | Path
+;; |                                                               |
+;; | (160)
 ;; +- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -+
 ;; |                                                               |
 ;;   Path
@@ -49,28 +49,25 @@
 ;;   Path                                                          |
 ;; | (cont'd)                                                      |
 ;;                                                                 |
-;; +-+-+-+-+---------------+---------------------------------------+
-;; |P|O|V|R| Sys           |                                       |
-;; |L|T|T|S| Time          | Add                                   |
-;; |E|Y|Y|V| Milliseconds  | ID                                    |
-;; |N|P|P| | (8)           | (16)                                  |
-;; +-+-+-+-+---------------+---------------------------------------+
+;; +-+-+-+---------+----------------+------------------------------+
+;; |V|O|V| Reserved| System         |                              |
+;; |E|T|T| Padding | Time           | Add                          |
+;; |R|Y|Y|         | Milliseconds   | ID                           |
+;; | |P|P| (5)     | (8)            | (16)                         |
+;; +-+-+-+-+-------+----------------+------------------------------+
 ;; |                                                               |
 ;; | Value                                                         |
 ;; |                                                               |
 ;; | (32)                                                          |
 ;; +---------------------------------------------------------------+
 ;;
-;;  PLEN = Path Length
+;;  VER = Version
 ;;  OTYP = Op Type
 ;;  VTYP = Value Type
-;;  RSV  = Reserved / Padding
 ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(def op-byte-array-len 128)
-(def path-element-len 8)
-(def path-len-offset 96)
+(def op-byte-array-len 256)
 
 ;; WARNING: Only add to the bottom of this list; do not insert in the
 ;; middle. Doing so will change the meaning of stored data.
@@ -80,9 +77,6 @@
                :delete-array-edge
                :delete-container
                :delete-value])
-
-(def keyword-marker "K")
-(def string-marker "S")
 
 (defn insert-ba [ba index item]
   (let [len (count ba)
@@ -97,18 +91,6 @@
                         new-mem-seg (long (inc index))
                         (long (- len index)))
     new-ba))
-#_
-(defn read-path [^MemorySegment mem-seg]
-  (let [path-len (.get mem-seg ValueLayout/JAVA_BYTE (long path-len-offset))
-        last-i (dec path-len)]
-    (if (zero? path-len)
-      []
-      (loop [i 0]
-        (let [hash (.get mem-seg
-                         ValueLayout/JAVA_LONG
-                         (long (* i path-element-len)))
-              s (hash->string)]
-          (dslfsj))))))
 
 (defn write-path! [path ^MemorySegment mem-seg]
   (let [path-len (count path)
