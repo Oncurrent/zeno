@@ -297,7 +297,7 @@
         *topic-name->sub-id->cb (atom {})
         *stop? (atom false)
         *state-sub-name->info (atom {})
-        *actor-id (atom nil)
+        *actor-id (atom u/unauthenticated-actor-id)
         *talk2-client (atom nil)
         *connected? (atom false)
         ;; TODO: Is there a case where this would drop data?
@@ -380,7 +380,7 @@
 
 (defn logged-in?
   [zc]
-  (boolean @(:*actor-id zc)))
+  (not= u/unauthenticated-actor-id @(:*actor-id zc)))
 
 (defn <rpc! [{:keys [rpc-name-kw zc] :as arg}]
   (when-not (:talk2-client zc)

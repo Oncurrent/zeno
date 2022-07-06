@@ -173,7 +173,7 @@
              zc independent-pairs ordered-dependent-pairs)
         {:keys [state expanded-paths]} ret
         expected-state {'page :frobnozzle
-                        'actor-id nil}
+                        'actor-id u/unauthenticated-actor-id}
         expected-expanded-paths [[:zeno/client :page]
                                  [:zeno/actor-id]]
         _ (is (= expected-state state))
