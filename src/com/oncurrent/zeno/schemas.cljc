@@ -6,6 +6,7 @@
 
 ;; Keeping schemas in a single cljc namespace simplifies Avro namespace mgmt
 
+(def actor-id-schema l/string-schema)
 (def authenticator-name-schema l/keyword-schema)
 (def branch-schema l/string-schema)
 (def chunk-id-schema l/string-schema)
@@ -18,13 +19,6 @@
 (def state-provider-name-schema l/keyword-schema)
 (def timestamp-ms-schema l/long-schema)
 (def ws-url-schema l/string-schema)
-
-(l/def-enum-schema unauthenticated-actor-id-schema
-  :unauthenticated)
-
-(l/def-union-schema actor-id-schema
-  l/string-schema
-  unauthenticated-actor-id-schema)
 
 (l/def-record-schema serialized-value-schema
   [:bytes l/bytes-schema]

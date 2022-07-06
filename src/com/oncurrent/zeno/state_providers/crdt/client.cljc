@@ -22,11 +22,6 @@
 (defn ->unsynced-log-k [{:keys [env-name]}]
   (str unsynced-log-prefix env-name))
 
-(defn get-actor-id-str [actor-id]
-  (if (= u/unauthenticated-actor-id-kw actor-id)
-    u/unauthenticated-actor-id-str
-    actor-id))
-
 (defn <get-unsynced-log [{:keys [*env-name *storage]}]
   (let [k (->unsynced-log-k {:env-name @*env-name})]
     (storage/<get @*storage k shared/unsynced-log-schema)))
@@ -73,11 +68,10 @@
           (au/<? (storage/<swap! storage unsynced-log-k
                                  shared/unsynced-log-schema
                                  (fn [aid->tx-ids]
-                                   (let [aid (get-actor-id-str actor-id)]
-                                     (update aid->tx-ids aid
-                                             (fn [tx-ids]
-                                               (conj (or tx-ids [])
-                                                     tx-id)))))))
+                                   (update aid->tx-ids actor-id
+                                           (fn [tx-ids]
+                                             (conj (or tx-ids [])
+                                                   tx-id))))))
           (swap! *state-info (fn [state-info]
                                (update state-info :tx-infos-to-log
                                        disj tx-info))))))))
@@ -134,14 +128,13 @@
 (defn <sync-producer-txs-for-actor-id!
   [{:keys [*client-running? *connected? *env-name *host-fns
            actor-id storage sync-whole-log? unsynced-log-k]}]
-  (let [{:keys [<send-msg]} @*host-fns
-        actor-id-str (get-actor-id-str actor-id)]
+  (let [{:keys [<send-msg]} @*host-fns]
     (au/go
       (loop []
         (let [aid->tx-ids (au/<? (storage/<get storage
                                                unsynced-log-k
                                                shared/unsynced-log-schema))
-              tx-ids (get aid->tx-ids actor-id-str)
+              tx-ids (get aid->tx-ids actor-id)
               batch (set (take 10 tx-ids))
               ser-tx-infos (when (seq tx-ids)
                              (au/<? (common/<get-serializable-tx-infos
@@ -155,7 +148,7 @@
                                    unsynced-log-k
                                    shared/unsynced-log-schema
                                    (fn [aid->tx-ids]
-                                     (update aid->tx-ids actor-id-str
+                                     (update aid->tx-ids actor-id
                                              (fn [tx-ids]
                                                (remove-batch
                                                 (u/sym-map tx-ids batch))))))))
@@ -171,7 +164,6 @@
     (au/<? (<wait-for-init arg))
     (when @*connected?
       (let [actor-id @*actor-id
-            actor-id-str (get-actor-id-str actor-id)
             storage @*storage
             unsynced-log-k (->unsynced-log-k {:env-name @*env-name})
             aid->tx-ids (au/<? (storage/<get storage
@@ -179,7 +171,7 @@
                                              shared/unsynced-log-schema))
             aids (reduce-kv (fn [acc aid tx-ids]
                               (if (or (empty? tx-ids)
-                                      (= actor-id-str aid))
+                                      (= actor-id aid))
                                 acc
                                 (conj acc aid)))
                             [actor-id]
@@ -302,7 +294,7 @@
     (throw (ex-info (str "No schema was specified in the state provider "
                          "configuration.")
                     config)))
-  (let [*actor-id (atom :unauthenticated)
+  (let [*actor-id (atom u/unauthenticated-actor-id)
         *client-running? (atom true)
         *connected? (atom false)
         *env-name (atom nil)
@@ -342,8 +334,7 @@
                                   (let [aid->tx-ids (au/<? (<get-unsynced-log
                                                             sync-arg))
                                         actor-id @*actor-id
-                                        actor-id-str (get-actor-id-str actor-id)
-                                        tx-ids (get aid->tx-ids actor-id-str)]
+                                        tx-ids (get aid->tx-ids actor-id)]
                                     (if (empty? tx-ids)
                                       true
                                       (do
