@@ -1413,3 +1413,81 @@
     (is (= data
            (->value crdt [] schema)
            (->value acrdt [] schema)))))
+
+(defn gen-delete-cmd [i]
+  {:zeno/op :zeno/remove
+   :zeno/path [i]})
+
+(defn gen-insert-before-cmd [i]
+  {:zeno/op :zeno/insert-before
+   :zeno/path [i]
+   :zeno/arg (rand-int 100)})
+
+(defn gen-insert-after-cmd [i]
+  {:zeno/op :zeno/insert-after
+   :zeno/path [i]
+   :zeno/arg (rand-int 100)})
+
+(defn gen-insert-range-before-cmd [i]
+  {:zeno/op :zeno/insert-range-before
+   :zeno/path [i]
+   :zeno/arg (take 5 (repeatedly #(rand-int 100)))})
+
+(defn gen-insert-range-after-cmd [i]
+  {:zeno/op :zeno/insert-range-after
+   :zeno/path [i]
+   :zeno/arg (take 5 (repeatedly #(rand-int 100)))})
+
+(defn rand-cmds-from-array-of-ints [aoi]
+  (keep-indexed (fn [i v]
+                  (case (rand-int 6)
+                    0 (gen-delete-cmd i)
+                    2 (gen-insert-before-cmd i)
+                    1 (gen-insert-after-cmd i)
+                    4 (gen-insert-range-before-cmd i)
+                    3 (gen-insert-range-after-cmd i)
+                    5 nil))
+                aoi))
+
+(comment (kaocha.repl/run #'test-thing))
+(deftest test-thing []
+  (let [data [1 2 3 4]
+        schema (l/array-schema l/int-schema)
+        cmd {:zeno/arg data
+             :zeno/op :zeno/set
+             :zeno/path []}
+        arg {:cmds [cmd]
+             :root :zeno/crdt
+             :schema schema}
+        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        acrdt (ops->crdt crdt-ops schema)
+        _ (is (= data
+                 (->value crdt [] schema)
+                 (->value acrdt [] schema)))
+        cmds1 (rand-cmds-from-array-of-ints data)
+        cmds2 (rand-cmds-from-array-of-ints data)
+        {crdt1 :crdt crdt-ops1 :crdt-ops} (commands/process-cmds
+                                           (assoc arg :cmds cmds1 :crdt crdt))
+        data1 (->value crdt1 [] schema)
+        {crdt2 :crdt crdt-ops2 :crdt-ops} (commands/process-cmds
+                                           (assoc arg :cmds cmds2 :crdt crdt))
+        data2 (->value crdt2 [] schema)
+        acrdt1 (ops->crdt (set/union crdt-ops crdt-ops1) schema)
+        _ (is (= data1
+                 (->value acrdt1 [] schema)))
+        acrdt2 (ops->crdt (set/union crdt-ops crdt-ops2) schema)
+        _ (is (= data2
+                 (->value acrdt2 [] schema)))
+        acrdt-all (ops->crdt (set/union crdt-ops crdt-ops1 crdt-ops2) schema)
+        data-all (->value acrdt-all [] schema)
+        mcrdt (-> (apply-ops/apply-ops {:crdt crdt
+                                        :crdt-ops (set/union crdt-ops1 crdt-ops2)
+                                        :schema schema})
+                  (:crdt))
+        data-m (->value mcrdt [] schema)
+        _ (is (= data-all data-m))
+        ; TODO test no interleaving and complete representation by using data1,
+        ; data2, and the ->value result from either acrdt-all or mcrdt (already
+        ; asserted to be the same).
+        ]
+    ))
