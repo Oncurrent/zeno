@@ -1421,26 +1421,26 @@
 (defn gen-insert-before-cmd [i]
   {:zeno/op :zeno/insert-before
    :zeno/path [i]
-   :zeno/arg (rand-int 100)})
+   :zeno/arg (u/compact-random-uuid)})
 
 (defn gen-insert-after-cmd [i]
   {:zeno/op :zeno/insert-after
    :zeno/path [i]
-   :zeno/arg (rand-int 100)})
+   :zeno/arg (u/compact-random-uuid)})
 
 (defn gen-insert-range-before-cmd [i]
   {:zeno/op :zeno/insert-range-before
    :zeno/path [i]
-   :zeno/arg (take 5 (repeatedly #(rand-int 100)))})
+   :zeno/arg (u/compact-random-uuids 5)})
 
 (defn gen-insert-range-after-cmd [i]
   {:zeno/op :zeno/insert-range-after
    :zeno/path [i]
-   :zeno/arg (take 5 (repeatedly #(rand-int 100)))})
+   :zeno/arg (u/compact-random-uuids 5)})
 
-(defn rand-cmds-from-array-of-ints [aoi]
+(defn rand-cmds-from-array-of-strs[aoi]
   (keep-indexed (fn [i v]
-                  (case (rand-int 6)
+                  (case (int (rand-int 6))
                     0 (gen-delete-cmd i)
                     2 (gen-insert-before-cmd i)
                     1 (gen-insert-after-cmd i)
@@ -1449,10 +1449,18 @@
                     5 nil))
                 aoi))
 
+(defn get-deleted-values-as-set [data cmds]
+  (->> cmds
+       (filter (fn [{:zeno/keys [op]}]
+                 (= :zeno/remove op)))
+       (map (comp #(nth data %) first :zeno/path))
+       (into #{})))
+
 (comment (kaocha.repl/run #'test-thing))
 (deftest test-thing []
-  (let [data [1 2 3 4]
-        schema (l/array-schema l/int-schema)
+  (let [;; First, we set up an initial CRDT and ensure it's correct.
+        data (u/compact-random-uuids 4)
+        schema (l/array-schema l/string-schema)
         cmd {:zeno/arg data
              :zeno/op :zeno/set
              :zeno/path []}
@@ -1464,30 +1472,48 @@
         _ (is (= data
                  (->value crdt [] schema)
                  (->value acrdt [] schema)))
-        cmds1 (rand-cmds-from-array-of-ints data)
-        cmds2 (rand-cmds-from-array-of-ints data)
+        ;; Next, we generate two sets of random commands concurrently (they
+        ;; have no knowledge of each other).
+        cmds1 (rand-cmds-from-array-of-strs data)
+        cmds2 (rand-cmds-from-array-of-strs data)
+        ;; Process each set of commands and extract the value from the resulting
+        ;; CRDTs as well as construct CRDTs from the returned ops.
         {crdt1 :crdt crdt-ops1 :crdt-ops} (commands/process-cmds
                                            (assoc arg :cmds cmds1 :crdt crdt))
-        data1 (->value crdt1 [] schema)
         {crdt2 :crdt crdt-ops2 :crdt-ops} (commands/process-cmds
                                            (assoc arg :cmds cmds2 :crdt crdt))
+        data1 (->value crdt1 [] schema)
         data2 (->value crdt2 [] schema)
         acrdt1 (ops->crdt (set/union crdt-ops crdt-ops1) schema)
+        acrdt2 (ops->crdt (set/union crdt-ops crdt-ops2) schema)
+        ;; Some consistency checks for each CRDT individually.
         _ (is (= data1
                  (->value acrdt1 [] schema)))
-        acrdt2 (ops->crdt (set/union crdt-ops crdt-ops2) schema)
         _ (is (= data2
                  (->value acrdt2 [] schema)))
+        ;; Create the combined CRDT both ways, extract value, and assert
+        ;; equality. The m in mcrdt and data-m is for "merge".
         acrdt-all (ops->crdt (set/union crdt-ops crdt-ops1 crdt-ops2) schema)
-        data-all (->value acrdt-all [] schema)
         mcrdt (-> (apply-ops/apply-ops {:crdt crdt
                                         :crdt-ops (set/union crdt-ops1 crdt-ops2)
                                         :schema schema})
                   (:crdt))
+        data-all (->value acrdt-all [] schema)
         data-m (->value mcrdt [] schema)
         _ (is (= data-all data-m))
-        ; TODO test no interleaving and complete representation by using data1,
-        ; data2, and the ->value result from either acrdt-all or mcrdt (already
-        ; asserted to be the same).
+        ;; Because the values are UUIDs we can use sets for these next parts
+        ;; instead of vectors. Also since data-all and data-m are the same we
+        ;; can just pick one.
+        set-all (into #{} data-all)
+        ;; Test that all not-deleted things are present post merge.
+        _ (is (= data1 (set/intersection set-all data1)))
+        _ (is (= data2 (set/intersection set-all data2)))
+        ;; Test that deleted things are not present.
+        deleted1 (get-deleted-values-as-set data cmds1)
+        deleted2 (get-deleted-values-as-set data cmds2)
+        _ (is (empty? (set/intersection set-all deleted1)))
+        _ (is (empty? (set/intersection set-all deleted2)))
+        ;; TODO: Test no interleaving, the entire transaction (set of commands)
+        ;; needs to come out not interleaved.
         ]
     ))

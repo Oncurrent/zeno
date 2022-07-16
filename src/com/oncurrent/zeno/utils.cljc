@@ -55,6 +55,15 @@
   (compact-uuid/str #?(:cljs (random-uuid)
                        :clj (UUID/randomUUID))))
 
+(defn compact-random-uuids [n]
+  (when-not (int? n)
+    (throw (ex-info (str "Invalid argument n: " n " of type " (type n)
+                         ", expected int.")
+                    (sym-map n))))
+  (for [x (range n)]
+    (compact-random-uuid)))
+
+
 (defn pprint [x]
   #?(:clj (let [^String s (puget/with-color (puget/pprint-str x))]
             (.write *out* s))
