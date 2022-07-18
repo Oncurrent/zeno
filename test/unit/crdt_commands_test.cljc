@@ -1501,12 +1501,11 @@
  (kaocha.repl/run #'test-thing {:capture-output? false :color? false}))
 (deftest test-thing []
   (let [;; First, we set up an initial CRDT and ensure it's correct.
-        data (prefixed-uuids 3 "zeroth-")
         schema (l/array-schema l/string-schema)
-        cmd {:zeno/arg data
-             :zeno/op :zeno/set
-             :zeno/path []}
-        arg {:cmds [cmd]
+        data (prefixed-uuids 3 "zeroth-")
+        arg {:cmds [{:zeno/arg data
+                     :zeno/op :zeno/set
+                     :zeno/path []}]
              :root :zeno/crdt
              :schema schema}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
