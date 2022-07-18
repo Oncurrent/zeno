@@ -1,6 +1,7 @@
 (ns unit.crdt-commands-test
   (:require
    [clojure.set :as set]
+   [clojure.string :as str]
    [clojure.test :as t :refer [deftest is]]
    [deercreeklabs.lancaster :as l]
    [com.oncurrent.zeno.state-providers.crdt.apply-ops :as apply-ops]
@@ -1414,40 +1415,61 @@
            (->value crdt [] schema)
            (->value acrdt [] schema)))))
 
+(defn prefixed-uuid [prefix]
+  (str prefix (u/compact-random-uuid)))
+
+(defn prefixed-uuids [n prefix]
+  (map #(str prefix %) (u/compact-random-uuids n)))
+
 (defn gen-delete-cmd [i]
   {:zeno/op :zeno/remove
    :zeno/path [i]})
 
-(defn gen-insert-before-cmd [i]
-  {:zeno/op :zeno/insert-before
-   :zeno/path [i]
-   :zeno/arg (u/compact-random-uuid)})
+(defn gen-insert-before-cmd
+  ([i]
+   (gen-insert-before-cmd i ""))
+  ([i prefix]
+   {:zeno/op :zeno/insert-before
+    :zeno/path [i]
+    :zeno/arg (prefixed-uuid prefix)}))
 
-(defn gen-insert-after-cmd [i]
-  {:zeno/op :zeno/insert-after
-   :zeno/path [i]
-   :zeno/arg (u/compact-random-uuid)})
+(defn gen-insert-after-cmd
+  ([i]
+   (gen-insert-after-cmd i ""))
+  ([i prefix]
+   {:zeno/op :zeno/insert-after
+    :zeno/path [i]
+    :zeno/arg (prefixed-uuid prefix)}))
 
-(defn gen-insert-range-before-cmd [i]
-  {:zeno/op :zeno/insert-range-before
-   :zeno/path [i]
-   :zeno/arg (u/compact-random-uuids 5)})
+(defn gen-insert-range-before-cmd
+  ([i]
+   (gen-insert-range-before-cmd i ""))
+  ([i prefix]
+   {:zeno/op :zeno/insert-range-before
+    :zeno/path [i]
+    :zeno/arg (prefixed-uuids 5 prefix)}))
 
-(defn gen-insert-range-after-cmd [i]
-  {:zeno/op :zeno/insert-range-after
-   :zeno/path [i]
-   :zeno/arg (u/compact-random-uuids 5)})
+(defn gen-insert-range-after-cmd
+  ([i]
+   (gen-insert-range-after-cmd i ""))
+  ([i prefix]
+   {:zeno/op :zeno/insert-range-after
+    :zeno/path [i]
+    :zeno/arg (prefixed-uuids 5 prefix)}))
 
-(defn rand-cmds-from-array-of-strs[aoi]
-  (keep-indexed (fn [i v]
-                  (case (int (rand-int 6))
-                    0 (gen-delete-cmd i)
-                    2 (gen-insert-before-cmd i)
-                    1 (gen-insert-after-cmd i)
-                    4 (gen-insert-range-before-cmd i)
-                    3 (gen-insert-range-after-cmd i)
-                    5 nil))
-                aoi))
+(defn rand-cmds-from-coll-of-strs
+  ([coll]
+   (rand-cmds-from-coll-of-strs coll ""))
+  ([coll prefix]
+   (keep-indexed (fn [i v]
+                   (case (int (rand-int 6))
+                     0 (gen-delete-cmd i)
+                     2 (gen-insert-before-cmd i prefix)
+                     1 (gen-insert-after-cmd i prefix)
+                     4 (gen-insert-range-before-cmd i prefix)
+                     3 (gen-insert-range-after-cmd i prefix)
+                     5 nil))
+                 coll)))
 
 (defn get-deleted-values-as-set [data cmds]
   (->> cmds
@@ -1456,10 +1478,23 @@
        (map (comp #(nth data %) first :zeno/path))
        (into #{})))
 
-(comment (kaocha.repl/run #'test-thing))
+(defn filter-out-values [values-set data]
+  (filter #(not (contains? values-set %)) data))
+
+(defn keep-by-prefix [prefix data]
+  (filter #(str/starts-with? % prefix) data))
+
+(defn drop-by-prefix [prefix data]
+  (filter #(not (str/starts-with? % prefix)) data))
+
+(defn partition-by-prefix [delimeter data]
+  (partition-by #(->> (re-pattern delimeter) (str/split %) (first)) data))
+
+(comment
+ (kaocha.repl/run #'test-thing {:capture-output? false :color? false}))
 (deftest test-thing []
   (let [;; First, we set up an initial CRDT and ensure it's correct.
-        data (u/compact-random-uuids 4)
+        data (prefixed-uuids 3 "zeroth-")
         schema (l/array-schema l/string-schema)
         cmd {:zeno/arg data
              :zeno/op :zeno/set
@@ -1474,46 +1509,68 @@
                  (->value acrdt [] schema)))
         ;; Next, we generate two sets of random commands concurrently (they
         ;; have no knowledge of each other).
-        cmds1 (rand-cmds-from-array-of-strs data)
-        cmds2 (rand-cmds-from-array-of-strs data)
+        cmds1 (rand-cmds-from-coll-of-strs data "first-")
+        cmds2 (rand-cmds-from-coll-of-strs data "second-")
         ;; Process each set of commands and extract the value from the resulting
         ;; CRDTs as well as construct CRDTs from the returned ops.
         {crdt1 :crdt crdt-ops1 :crdt-ops} (commands/process-cmds
                                            (assoc arg :cmds cmds1 :crdt crdt))
         {crdt2 :crdt crdt-ops2 :crdt-ops} (commands/process-cmds
                                            (assoc arg :cmds cmds2 :crdt crdt))
-        data1 (->value crdt1 [] schema)
-        data2 (->value crdt2 [] schema)
         acrdt1 (ops->crdt (set/union crdt-ops crdt-ops1) schema)
         acrdt2 (ops->crdt (set/union crdt-ops crdt-ops2) schema)
+        data1 (->value crdt1 [] schema)
+        data2 (->value crdt2 [] schema)
         ;; Some consistency checks for each CRDT individually.
         _ (is (= data1
                  (->value acrdt1 [] schema)))
         _ (is (= data2
                  (->value acrdt2 [] schema)))
         ;; Create the combined CRDT both ways, extract value, and assert
-        ;; equality. The m in mcrdt and data-m is for "merge".
+        ;; equality.
         acrdt-all (ops->crdt (set/union crdt-ops crdt-ops1 crdt-ops2) schema)
         mcrdt (-> (apply-ops/apply-ops {:crdt crdt
                                         :crdt-ops (set/union crdt-ops1 crdt-ops2)
                                         :schema schema})
                   (:crdt))
         data-all (->value acrdt-all [] schema)
-        data-m (->value mcrdt [] schema)
-        _ (is (= data-all data-m))
-        ;; Because the values are UUIDs we can use sets for these next parts
-        ;; instead of vectors. Also since data-all and data-m are the same we
-        ;; can just pick one.
+        _ (is (= data-all (->value mcrdt [] schema)))
+        ;; Because the values are UUIDs we can use sets instead of vectors for
+        ;; the next two parts
+        set1 (into #{} data1)
+        set2 (into #{} data2)
         set-all (into #{} data-all)
         ;; Test that all not-deleted things are present post merge.
-        _ (is (= data1 (set/intersection set-all data1)))
-        _ (is (= data2 (set/intersection set-all data2)))
-        ;; Test that deleted things are not present.
+        _ (is (= set1 (set/intersection set-all set1)))
+        _ (is (= set2 (set/intersection set-all set2)))
+        ;; Test that deleted things are not present post merge.
         deleted1 (get-deleted-values-as-set data cmds1)
         deleted2 (get-deleted-values-as-set data cmds2)
         _ (is (empty? (set/intersection set-all deleted1)))
         _ (is (empty? (set/intersection set-all deleted2)))
-        ;; TODO: Test no interleaving, the entire transaction (set of commands)
-        ;; needs to come out not interleaved.
+        ;; Test that all zeroth things are in the correct order, cmds can't
+        ;; rearrage without deleting and readding but we aren't doing that
+        ;; since each new insertion is a new UUID.
+        data-post-merge-expected (filter-out-values
+                                  (set/union deleted1 deleted2) data)
+        data-post-merge-actual (keep-by-prefix "zeroth" data-all)
+        _ (is (= data-post-merge-expected data-post-merge-actual))
+        ;; Test that the values from each consecutive cmds do not overlap.
+        partitioned (->> data-all
+                         (drop-by-prefix "zeroth")
+                         (partition-by-prefix "-"))
+        _ (case (count partitioned)
+            0 (is (= data-post-merge-expected (first partitioned)))
+            1 (is (or (str/starts-with? (ffirst partitioned) "first")
+                      (str/starts-with? (ffirst partitioned) "second")))
+            2 (is (and (str/starts-with? (ffirst partitioned) "first")
+                       (str/starts-with? (last (last partitioned)) "second")))
+            (is (= "commands interleaved" "but should not have")))
+        _ (log/info (str "\n" (u/pprint-str* (vec data))))
+        _ (log/info (str "\n" (u/pprint-str* (vec data1))))
+        _ (log/info (str "\n" (u/pprint-str* (vec data2))))
+        _ (log/info (str "\n" (u/pprint-str* (vec data-all))))
+        _ (log/info (str "\n" (u/pprint-str* (vec cmds1))))
+        _ (log/info (str "\n" (u/pprint-str* (vec cmds2))))
         ]
     ))
