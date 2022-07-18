@@ -1487,8 +1487,15 @@
 (defn drop-by-prefix [prefix data]
   (filter #(not (str/starts-with? % prefix)) data))
 
-(defn partition-by-prefix [delimeter data]
+(defn partition-by-prefix [prefix delimiter data]
+  (partition-by #(= prefix (->> (re-pattern delimiter) (str/split %) (first)))
+                data))
+
+(defn partition-by-prefixes [delimeter data]
   (partition-by #(->> (re-pattern delimeter) (str/split %) (first)) data))
+
+(defn drop-partitions-by-prefix [prefix data]
+  (filter #(not (str/starts-with? (first %) prefix)) data))
 
 (comment
  (kaocha.repl/run #'test-thing {:capture-output? false :color? false}))
@@ -1555,24 +1562,33 @@
                                   (set/union deleted1 deleted2) data)
         data-post-merge-actual (keep-by-prefix "zeroth" data-all)
         _ (is (= data-post-merge-expected data-post-merge-actual))
-        ;; Test that the values from each consecutive cmds do not overlap.
+        ;; Test that at any given position, i.e. before or after an element of
+        ;; the original array, there is not interleaving and that whichever
+        ;; comes first at in one position comes first in all positions. We start
+        ;; by creating partitions of all prefixes between all original elements.
         partitioned (->> data-all
-                         (drop-by-prefix "zeroth")
-                         (partition-by-prefix "-"))
-        _ (case (count partitioned)
-            0 (is (= data-all data-post-merge-expected data-post-merge-actual))
-            1 (is (or (str/starts-with? (ffirst partitioned) "first")
-                      (str/starts-with? (ffirst partitioned) "second")))
-            2 (is (or (and (str/starts-with? (ffirst partitioned) "first")
-                           (str/starts-with? (last (last partitioned)) "second"))
-                      (and (str/starts-with? (ffirst partitioned) "second")
-                           (str/starts-with? (last (last partitioned)) "first"))))
-            (is (= "commands interleaved" "but should not have")))
-        _ (log/info (str "\n" (u/pprint-str* (vec data))))
-        _ (log/info (str "\n" (u/pprint-str* (vec data1))))
-        _ (log/info (str "\n" (u/pprint-str* (vec data2))))
-        _ (log/info (str "\n" (u/pprint-str* (vec data-all))))
-        _ (log/info (str "\n" (u/pprint-str* (vec cmds1))))
-        _ (log/info (str "\n" (u/pprint-str* (vec cmds2))))
+                         (partition-by-prefix "zeroth" "-")
+                         (drop-partitions-by-prefix "zeroth")
+                         (map #(partition-by-prefixes "-" %)))
+        *came-first (atom nil)
+        *came-last (atom nil)
+        _ (doseq [p partitioned]
+            (case (count p)
+              0 nil ; Not a problem, perhaps no commands were generated.
+              1 nil ; Not a problem, testing would only be testing partition-by.
+              2 (do
+                 (when-not @*came-first
+                   (reset! *came-first (p ffirst (str/split #"-") first)))
+                 (when-not @*came-last
+                   (reset! *came-last (p last first (str/split #"-" first))))
+                 (is (and (every? #(str/starts-with? % @*came-first) (first p))
+                         (every? #(str/starts-with? % @*came-last) (last p)))))
+              (is (= "commands interleaved" "but should not have"))))
+        ; _ (log/info (str "\n" (u/pprint-str* (vec data))))
+        ; _ (log/info (str "\n" (u/pprint-str* (vec data1))))
+        ; _ (log/info (str "\n" (u/pprint-str* (vec data2))))
+        ; _ (log/info (str "\n" (u/pprint-str* (vec data-all))))
+        ; _ (log/info (str "\n" (u/pprint-str* (vec cmds1))))
+        ; _ (log/info (str "\n" (u/pprint-str* (vec cmds2))))
         ]
     ))
