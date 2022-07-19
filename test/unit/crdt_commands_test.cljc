@@ -1590,12 +1590,19 @@
             (case (count p)
               0 nil ; Not a problem, perhaps no commands were generated.
               1 nil ; Not a problem, testing would only be testing partition-by.
-              2 nil ; These should be in the same order as below...
+              2 (do ; I can only test this if I've seen the 3 case below so I know what the order should be.
+                 (when (and @*came-first @*came-second @*came-last)
+                   (is (or (and (every? #(str/starts-with? % @*came-first) (first p))
+                                (every? #(str/starts-with? % @*came-second) (second p)))
+                           (and (every? #(str/starts-with? % @*came-first) (first p))
+                                (every? #(str/starts-with? % @*came-last) (last p)))
+                           (and (every? #(str/starts-with? % @*came-second) (second p))
+                                (every? #(str/starts-with? % @*came-last) (last p)))))))
               3 (do
                  (when-not @*came-first
                    (reset! *came-first (-> p ffirst (str/split #"-") first)))
                  (when-not @*came-second
-                   (reset! *came-second (-> p second first (str/split #"-" first))))
+                   (reset! *came-second (-> p second first (str/split #"-") first)))
                  (when-not @*came-last
                    (reset! *came-last (-> p last first (str/split #"-") first)))
                  (is (and (every? #(str/starts-with? % @*came-first) (first p))
