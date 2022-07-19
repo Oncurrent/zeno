@@ -1484,9 +1484,6 @@
 (defn keep-by-prefix [prefix data]
   (filter #(str/starts-with? % prefix) data))
 
-(defn drop-by-prefix [prefix data]
-  (filter #(not (str/starts-with? % prefix)) data))
-
 (defn partition-by-prefix [prefix delimiter data]
   (partition-by #(= prefix (->> (re-pattern delimiter) (str/split %) (first)))
                 data))
@@ -1498,8 +1495,9 @@
   (filter #(not (str/starts-with? (first %) prefix)) data))
 
 (comment
- (kaocha.repl/run #'test-thing {:capture-output? false :color? false}))
-(deftest test-thing []
+ (kaocha.repl/run #'test-random-three-way-array-merge
+                  {:capture-output? false :color? false}))
+(deftest test-random-three-way-array-merge []
   (let [;; First, we set up an initial CRDT and ensure it's correct.
         schema (l/array-schema l/string-schema)
         data (prefixed-uuids 3 "zeroth-")
@@ -1518,8 +1516,8 @@
         cmds1 (rand-cmds-from-coll-of-strs data "first-")
         cmds2 (rand-cmds-from-coll-of-strs data "second-")
         cmds3 (rand-cmds-from-coll-of-strs data "third-")
-        ;; Process each set of commands and extract the value from the resulting
-        ;; CRDTs as well as construct CRDTs from the returned ops.
+        ;; Process each set of commands and extract the value from the
+        ;; resulting CRDTs as well as construct CRDTs from the returned ops.
         {crdt1 :crdt crdt-ops1 :crdt-ops} (commands/process-cmds
                                            (assoc arg :cmds cmds1 :crdt crdt))
         {crdt2 :crdt crdt-ops2 :crdt-ops} (commands/process-cmds
@@ -1551,8 +1549,8 @@
                   (:crdt))
         data-all (->value acrdt-all [] schema)
         _ (is (= data-all (->value mcrdt [] schema)))
-        ;; Because the values are UUIDs we can use sets instead of vectors for
-        ;; the next two parts
+        ;; Because the values are UUIDs we can use sets instead of vectors
+        ;; for the next two parts
         set1 (into #{} data1)
         set2 (into #{} data2)
         set3 (into #{} data3)
@@ -1575,37 +1573,40 @@
                                   (set/union deleted1 deleted2 deleted3) data)
         data-post-merge-actual (keep-by-prefix "zeroth" data-all)
         _ (is (= data-post-merge-expected data-post-merge-actual))
-        ;; Test that at any given position, i.e. before or after an element of
-        ;; the original array, there is not interleaving and that whichever
-        ;; comes first at in one position comes first in all positions. We start
-        ;; by creating partitions of all prefixes between all original elements.
+        ;; Test that at any given position, i.e. before or after an element
+        ;; of the original array, there is not interleaving and that
+        ;; whichever comes first at in one position comes first in all
+        ;; positions. We start by creating partitions of all prefixes between
+        ;; all original elements.
         partitioned (->> data-all
                          (partition-by-prefix "zeroth" "-")
                          (drop-partitions-by-prefix "zeroth")
                          (map #(partition-by-prefixes "-" %)))
         *came-first (atom nil)
         *came-second (atom nil)
-        *came-last (atom nil)
-        _ (doseq [p partitioned]
-            (case (count p)
-              0 nil ; Not a problem, perhaps no commands were generated.
-              1 nil ; Not a problem, testing would only be testing partition-by.
-              2 (do ; I can only test this if I've seen the 3 case below so I know what the order should be.
-                 (when (and @*came-first @*came-second @*came-last)
-                   (is (or (and (every? #(str/starts-with? % @*came-first) (first p))
-                                (every? #(str/starts-with? % @*came-second) (second p)))
-                           (and (every? #(str/starts-with? % @*came-first) (first p))
-                                (every? #(str/starts-with? % @*came-last) (last p)))
-                           (and (every? #(str/starts-with? % @*came-second) (second p))
-                                (every? #(str/starts-with? % @*came-last) (last p)))))))
-              3 (do
-                 (when-not @*came-first
-                   (reset! *came-first (-> p ffirst (str/split #"-") first)))
-                 (when-not @*came-second
-                   (reset! *came-second (-> p second first (str/split #"-") first)))
-                 (when-not @*came-last
-                   (reset! *came-last (-> p last first (str/split #"-") first)))
-                 (is (and (every? #(str/starts-with? % @*came-first) (first p))
-                          (every? #(str/starts-with? % @*came-second) (second p))
-                          (every? #(str/starts-with? % @*came-last) (last p)))))
-              (is (= "commands interleaved" "but should not have"))))]))
+        *came-last (atom nil)]
+    (doseq [p partitioned]
+      (case (count p)
+        0 nil ; Not a problem, perhaps no commands were generated.
+        1 nil ; Not a problem, testing would only be testing partition-by.
+        2 (do ; I can only test this if I've seen the 3 case below so I know what the order should be.
+              (when (and @*came-first @*came-second @*came-last)
+                (is
+                 (or
+                  (and (every? #(str/starts-with? % @*came-first) (first p))
+                       (every? #(str/starts-with? % @*came-second) (second p)))
+                  (and (every? #(str/starts-with? % @*came-first) (first p))
+                       (every? #(str/starts-with? % @*came-last) (last p)))
+                  (and (every? #(str/starts-with? % @*came-second) (second p))
+                       (every? #(str/starts-with? % @*came-last) (last p)))))))
+        3 (do
+           (when-not @*came-first
+             (reset! *came-first (-> p ffirst (str/split #"-") first)))
+           (when-not @*came-second
+             (reset! *came-second (-> p second first (str/split #"-") first)))
+           (when-not @*came-last
+             (reset! *came-last (-> p last first (str/split #"-") first)))
+           (is (and (every? #(str/starts-with? % @*came-first) (first p))
+                    (every? #(str/starts-with? % @*came-second) (second p))
+                    (every? #(str/starts-with? % @*came-last) (last p)))))
+        (is (= "commands interleaved" "but should not have"))))))
