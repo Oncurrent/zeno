@@ -1590,11 +1590,11 @@
             (case (count p)
               0 nil ; Not a problem, perhaps no commands were generated.
               1 nil ; Not a problem, testing would only be testing partition-by.
-              2 nil ; Not a problem, testing would only be testing partition-by.
+              2 nil ; These should be in the same order as below...
               3 (do
                  (when-not @*came-first
                    (reset! *came-first (-> p ffirst (str/split #"-") first)))
-                 (when-not @*came-first
+                 (when-not @*came-second
                    (reset! *came-second (-> p second first (str/split #"-" first))))
                  (when-not @*came-last
                    (reset! *came-last (-> p last first (str/split #"-") first)))
