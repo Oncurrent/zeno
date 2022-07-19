@@ -1577,17 +1577,9 @@
               1 nil ; Not a problem, testing would only be testing partition-by.
               2 (do
                  (when-not @*came-first
-                   (reset! *came-first (p ffirst (str/split #"-") first)))
+                   (reset! *came-first (-> p ffirst (str/split #"-") first)))
                  (when-not @*came-last
-                   (reset! *came-last (p last first (str/split #"-" first))))
+                   (reset! *came-last (-> p last first (str/split #"-" first))))
                  (is (and (every? #(str/starts-with? % @*came-first) (first p))
                          (every? #(str/starts-with? % @*came-last) (last p)))))
-              (is (= "commands interleaved" "but should not have"))))
-        ; _ (log/info (str "\n" (u/pprint-str* (vec data))))
-        ; _ (log/info (str "\n" (u/pprint-str* (vec data1))))
-        ; _ (log/info (str "\n" (u/pprint-str* (vec data2))))
-        ; _ (log/info (str "\n" (u/pprint-str* (vec data-all))))
-        ; _ (log/info (str "\n" (u/pprint-str* (vec cmds1))))
-        ; _ (log/info (str "\n" (u/pprint-str* (vec cmds2))))
-        ]
-    ))
+              (is (= "commands interleaved" "but should not have"))))]))
