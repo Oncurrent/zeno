@@ -1517,26 +1517,36 @@
         ;; have no knowledge of each other).
         cmds1 (rand-cmds-from-coll-of-strs data "first-")
         cmds2 (rand-cmds-from-coll-of-strs data "second-")
+        cmds3 (rand-cmds-from-coll-of-strs data "third-")
         ;; Process each set of commands and extract the value from the resulting
         ;; CRDTs as well as construct CRDTs from the returned ops.
         {crdt1 :crdt crdt-ops1 :crdt-ops} (commands/process-cmds
                                            (assoc arg :cmds cmds1 :crdt crdt))
         {crdt2 :crdt crdt-ops2 :crdt-ops} (commands/process-cmds
                                            (assoc arg :cmds cmds2 :crdt crdt))
+        {crdt3 :crdt crdt-ops3 :crdt-ops} (commands/process-cmds
+                                           (assoc arg :cmds cmds3 :crdt crdt))
         acrdt1 (ops->crdt (set/union crdt-ops crdt-ops1) schema)
         acrdt2 (ops->crdt (set/union crdt-ops crdt-ops2) schema)
+        acrdt3 (ops->crdt (set/union crdt-ops crdt-ops3) schema)
         data1 (->value crdt1 [] schema)
         data2 (->value crdt2 [] schema)
+        data3 (->value crdt3 [] schema)
         ;; Some consistency checks for each CRDT individually.
         _ (is (= data1
                  (->value acrdt1 [] schema)))
         _ (is (= data2
                  (->value acrdt2 [] schema)))
+        _ (is (= data3
+                 (->value acrdt3 [] schema)))
         ;; Create the combined CRDT both ways, extract value, and assert
         ;; equality.
-        acrdt-all (ops->crdt (set/union crdt-ops crdt-ops1 crdt-ops2) schema)
+        acrdt-all (ops->crdt (set/union crdt-ops crdt-ops1 crdt-ops2 crdt-ops3)
+                             schema)
         mcrdt (-> (apply-ops/apply-ops {:crdt crdt
-                                        :crdt-ops (set/union crdt-ops1 crdt-ops2)
+                                        :crdt-ops (set/union crdt-ops1
+                                                             crdt-ops2
+                                                             crdt-ops3)
                                         :schema schema})
                   (:crdt))
         data-all (->value acrdt-all [] schema)
@@ -1545,20 +1555,24 @@
         ;; the next two parts
         set1 (into #{} data1)
         set2 (into #{} data2)
+        set3 (into #{} data3)
         set-all (into #{} data-all)
         ;; Test that all not-deleted things are present post merge.
         _ (is (= set1 (set/intersection set-all set1)))
         _ (is (= set2 (set/intersection set-all set2)))
+        _ (is (= set3 (set/intersection set-all set3)))
         ;; Test that deleted things are not present post merge.
         deleted1 (get-deleted-values-as-set data cmds1)
         deleted2 (get-deleted-values-as-set data cmds2)
+        deleted3 (get-deleted-values-as-set data cmds3)
         _ (is (empty? (set/intersection set-all deleted1)))
         _ (is (empty? (set/intersection set-all deleted2)))
+        _ (is (empty? (set/intersection set-all deleted3)))
         ;; Test that all zeroth things are in the correct order, cmds can't
         ;; rearrage without deleting and readding but we aren't doing that
         ;; since each new insertion is a new UUID.
         data-post-merge-expected (filter-out-values
-                                  (set/union deleted1 deleted2) data)
+                                  (set/union deleted1 deleted2 deleted3) data)
         data-post-merge-actual (keep-by-prefix "zeroth" data-all)
         _ (is (= data-post-merge-expected data-post-merge-actual))
         ;; Test that at any given position, i.e. before or after an element of
@@ -1570,16 +1584,21 @@
                          (drop-partitions-by-prefix "zeroth")
                          (map #(partition-by-prefixes "-" %)))
         *came-first (atom nil)
+        *came-second (atom nil)
         *came-last (atom nil)
         _ (doseq [p partitioned]
             (case (count p)
               0 nil ; Not a problem, perhaps no commands were generated.
               1 nil ; Not a problem, testing would only be testing partition-by.
-              2 (do
+              2 nil ; Not a problem, testing would only be testing partition-by.
+              3 (do
                  (when-not @*came-first
                    (reset! *came-first (-> p ffirst (str/split #"-") first)))
+                 (when-not @*came-first
+                   (reset! *came-second (-> p second first (str/split #"-" first))))
                  (when-not @*came-last
                    (reset! *came-last (-> p last first (str/split #"-") first)))
                  (is (and (every? #(str/starts-with? % @*came-first) (first p))
-                         (every? #(str/starts-with? % @*came-last) (last p)))))
+                          (every? #(str/starts-with? % @*came-second) (second p))
+                          (every? #(str/starts-with? % @*came-last) (last p)))))
               (is (= "commands interleaved" "but should not have"))))]))
