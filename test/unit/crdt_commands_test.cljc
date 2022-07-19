@@ -1579,7 +1579,7 @@
                  (when-not @*came-first
                    (reset! *came-first (-> p ffirst (str/split #"-") first)))
                  (when-not @*came-last
-                   (reset! *came-last (-> p last first (str/split #"-" first))))
+                   (reset! *came-last (-> p last first (str/split #"-") first)))
                  (is (and (every? #(str/starts-with? % @*came-first) (first p))
                          (every? #(str/starts-with? % @*came-last) (last p)))))
               (is (= "commands interleaved" "but should not have"))))]))
