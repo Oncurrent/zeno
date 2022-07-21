@@ -86,12 +86,9 @@
                 links)))))
 
 (defn get-connected-node
-  [{:keys [nodes-connected-to-start
-           nodes-connected-to-end
-           deleted-edges
-           node->edge-info
-           node
-           terminal] :as arg}]
+  [{:keys [nodes-connected-to-start nodes-connected-to-end deleted-edges
+           node->edge-info node terminal]
+    :as arg}]
   (let [node->deleted-edge-info (make-node->edge-info deleted-edges)
         [nodes-connected
          links-k] (if (= :start terminal)
@@ -120,7 +117,9 @@
 (defn make-connections-to-terminal
   [{:keys [make-id terminal] :as arg}]
   (let [make-id* (or make-id u/compact-random-uuid)]
+    (log/info terminal)
     (reduce (fn [acc node]
+              (log/info (node-id->node-value node (:crdt arg)))
               (let [node->edge-info (make-node->edge-info (:edges acc))
                     arg* (assoc arg
                                 :node node
@@ -128,15 +127,13 @@
                                 :terminal terminal)]
                 (if (connected-to-terminal? arg*)
                   acc
-                  (let [conn-node (get-connected-node arg*)
-                        [self-add-id opp-add-id] (if (= :start terminal)
-                                                   [:tail-node-id
-                                                    :head-node-id]
-                                                   [:head-node-id
-                                                    :tail-node-id])
-                        edge {:add-id (make-id*)
-                              self-add-id node
-                              opp-add-id conn-node}
+                  (let [[lineal-node conn-node] (get-lineal-conn-nodes arg*)
+                        edge (-> (if (= :start terminal)
+                                   {:head-node-id conn-node
+                                    :tail-node-id lineal-node}
+                                   {:head-node-id lineal-node
+                                    :tail-node-id conn-node})
+                                 (assoc :add-id (make-id*)))
                         new-edges (:new-edges acc)]
                     (-> acc
                         (update :edges conj edge)
@@ -334,12 +331,16 @@
           edges))
 
 (defn connect-nodes-to-terminals
-  [{:keys [live-nodes make-id sys-time-ms] :as arg}]
+  [{:keys [live-nodes make-id sys-time-ms crdt] :as arg}]
   (let [edges (get-edges (assoc arg :edge-type :current))
         deleted-edges (get-edges (assoc arg :edge-type :deleted))
         {:keys [nodes-connected-to-start
                 nodes-connected-to-end]} (get-nodes-connected-to-terminals edges)
-        new-edges (make-connecting-edges (u/sym-map deleted-edges
+        ; _ (log/info (str "\n" (u/pprint-str* (u/sym-map edges deleted-edges
+        ;                                                 nodes-connected-to-start
+        ;                                                 nodes-connected-to-end))))
+        new-edges (make-connecting-edges (u/sym-map crdt
+                                                    deleted-edges
                                                     edges
                                                     live-nodes
                                                     make-id
