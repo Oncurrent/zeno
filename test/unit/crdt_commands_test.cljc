@@ -50,9 +50,13 @@
   [:right-child ::tree]
   [:left-child ::tree])
 
-(defn ops->crdt [crdt-ops schema]
-  (-> (apply-ops/apply-ops (u/sym-map crdt-ops schema))
-      (:crdt)))
+(defn ops->crdt
+  ([arg]
+   (-> (apply-ops/apply-ops arg)
+       (:crdt)))
+  ([crdt-ops schema]
+   (-> (apply-ops/apply-ops (u/sym-map crdt-ops schema))
+       (:crdt))))
 
 (defn ->value [crdt path schema]
   (crdt/get-value (u/sym-map crdt path schema)))
@@ -1500,22 +1504,85 @@
 (deftest test-random-three-way-array-merge []
   (let [;; First, we set up an initial CRDT and ensure it's correct.
         schema (l/array-schema l/string-schema)
-        data (prefixed-uuids 3 "zeroth-")
+        ; data (prefixed-uuids 3 "zeroth-")
+        prefix0 "0" ; "zeroth"
+        prefix1 "1" ; "first"
+        prefix2 "2" ; "second"
+        prefix3 "3" ; "third"
+        delimiter "-"
+        data [(str prefix0 delimiter "a")
+              #_"zeroth-1xxvagjenwgvzbqkh1rmvkxcwd"
+              #_"zeroth-9akvybdp9rj388bhjq65qx0451"
+              #_"zeroth-669nha6hw2gzmaab4xw4jxw4wd"]
+        *id (atom 0)
+        make-id (fn []
+                  (let [id @*id]
+                    (swap! *id inc)
+                    (str id)))
         arg {:cmds [{:zeno/arg data
                      :zeno/op :zeno/set
                      :zeno/path []}]
              :root :zeno/crdt
-             :schema schema}
+             :schema schema
+             :make-id make-id}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
-        acrdt (ops->crdt crdt-ops schema)
-        _ (is (= data
-                 (->value crdt [] schema)
-                 (->value acrdt [] schema)))
+        ; acrdt (ops->crdt crdt-ops schema)
+        ; _ (is (= data
+        ;          (->value crdt [] schema)
+        ;          (->value acrdt [] schema)))
         ;; Next, we generate two sets of random commands concurrently (they
         ;; have no knowledge of each other).
-        cmds1 (rand-cmds-from-coll-of-strs data "first-")
-        cmds2 (rand-cmds-from-coll-of-strs data "second-")
-        cmds3 (rand-cmds-from-coll-of-strs data "third-")
+        ; cmds1 (rand-cmds-from-coll-of-strs data "first-")
+        ; cmds2 (rand-cmds-from-coll-of-strs data "second-")
+        ; cmds3 (rand-cmds-from-coll-of-strs data "third-")
+        cmds1 [#:zeno{:op :zeno/insert-range-before
+                      :path [0]
+                      :arg [(str prefix1 delimiter "a")
+                            #_"first-82bzy3z8w0kvyaf6d9307kzy48"
+                            #_"first-78kkvbt568jpe9pdwyvpm9yy5q"
+                            #_"first-114gxat3r6jrx8vw29bdeaawvb"
+                            #_"first-36hj8ehvswjnz8awxyx20pvvdb"
+                            #_"first-860sa340xrkjva6zq3fx95zmyc"]}
+               #:zeno{:op :zeno/insert-after
+                      :path [1]
+                      :arg (str prefix1 delimiter "b") #_"first-01nqybma9eg6ebag41e8m6y4jz"}
+               #:zeno{:op :zeno/insert-range-after
+                      :path [2]
+                      :arg [(str prefix1 delimiter "c")
+                            #_"first-bm9sfe9r16hc5b8z3mkgwzzyh6"
+                            #_"first-avgcjpd82ej5dbt8afcbnjxp6t"
+                            #_"first-b41xjtz8a6ggmb8ehvbxtwcxmm"
+                            #_"first-0zjazgzcr4jp496cg6raw80jm1"
+                            #_"first-96hnx0h58ygc586c66ykj6pj4e"]}]
+        cmds2 [#:zeno{:op :zeno/insert-range-after
+                      :path [0]
+                      :arg [(str prefix2 delimiter "a")
+                            #_"second-en2bmdgprmhtgbzm0kzakg7s0d"
+                            #_"second-25v9bj6v0tg17bcy1ehm6jcstw"
+                            #_"second-922bz80e4wght95np90p0rtsgr"
+                            #_"second-fj34agdrvcjxxbd9ksjf836es0"
+                            #_"second-eh102et83ek169cmyx8wasys3h"]}
+               #:zeno{:op :zeno/insert-after
+                      :path [1]
+                      :arg (str prefix2 delimiter "b") #_"second-62r7y3t7pgjrv8ctrc7rm9382j"}
+               #:zeno{:op :zeno/insert-range-before
+                      :path [2]
+                      :arg [(str prefix2 delimiter "c")
+                            #_"second-975q32239whqr8egpsx60fevv8"
+                            #_"second-3c8jhwjr76jg2b2zsrjhmmeaf8"
+                            #_"second-dk2txhjp54jwyb63hk7k6hy4jq"
+                            #_"second-f6rvmtprp2jj2a9212nzdgsd3f"
+                            #_"second-4ejrxged0rh2x8t8hq2j5zn4bh"]}]
+        cmds3 [#:zeno{:op :zeno/remove
+                      :path [0]}
+               #:zeno{:op :zeno/insert-range-after
+                      :path [1]
+                      :arg [(str prefix3 delimiter "a")
+                            #_"third-6eezfx1xzrk48by16pqz7c0peb"
+                            #_"third-eacbe6zje8gkg96hage370s2rp"
+                            #_"third-atmg391fxtgyhb01bzt5sbpqyy"
+                            #_"third-cgjj58zxcmk1v8k0hn9p2hjdx8"
+                            #_"third-2jz1pdba1rgvrbvdv34nx5fcha"]}]
         ;; Process each set of commands and extract the value from the
         ;; resulting CRDTs as well as construct CRDTs from the returned ops.
         {crdt1 :crdt crdt-ops1 :crdt-ops} (commands/process-cmds
@@ -1524,23 +1591,26 @@
                                            (assoc arg :cmds cmds2 :crdt crdt))
         {crdt3 :crdt crdt-ops3 :crdt-ops} (commands/process-cmds
                                            (assoc arg :cmds cmds3 :crdt crdt))
-        acrdt1 (ops->crdt (set/union crdt-ops crdt-ops1) schema)
-        acrdt2 (ops->crdt (set/union crdt-ops crdt-ops2) schema)
-        acrdt3 (ops->crdt (set/union crdt-ops crdt-ops3) schema)
+        ; acrdt1 (ops->crdt (set/union crdt-ops crdt-ops1) schema)
+        ; acrdt2 (ops->crdt (set/union crdt-ops crdt-ops2) schema)
+        ; acrdt3 (ops->crdt (set/union crdt-ops crdt-ops3) schema)
         data1 (->value crdt1 [] schema)
         data2 (->value crdt2 [] schema)
         data3 (->value crdt3 [] schema)
         ;; Some consistency checks for each CRDT individually.
-        _ (is (= data1
-                 (->value acrdt1 [] schema)))
-        _ (is (= data2
-                 (->value acrdt2 [] schema)))
-        _ (is (= data3
-                 (->value acrdt3 [] schema)))
+        ; _ (is (= data1
+        ;          (->value acrdt1 [] schema)))
+        ; _ (is (= data2
+        ;          (->value acrdt2 [] schema)))
+        ; _ (is (= data3
+        ;          (->value acrdt3 [] schema)))
         ;; Create the combined CRDT both ways, extract value, and assert
         ;; equality.
-        acrdt-all (ops->crdt (set/union crdt-ops crdt-ops1 crdt-ops2 crdt-ops3)
-                             schema)
+        _ (log/info "BEFORE")
+        acrdt-all (ops->crdt {:crdt-ops (set/union crdt-ops crdt-ops1 crdt-ops2 crdt-ops3)
+                              :schema schema
+                              :make-id make-id})
+        _ (log/info "AFTER")
         mcrdt (-> (apply-ops/apply-ops {:crdt crdt
                                         :crdt-ops (set/union crdt-ops1
                                                              crdt-ops2
@@ -1571,7 +1641,7 @@
         ;; since each new insertion is a new UUID.
         data-post-merge-expected (filter-out-values
                                   (set/union deleted1 deleted2 deleted3) data)
-        data-post-merge-actual (keep-by-prefix "zeroth" data-all)
+        data-post-merge-actual (keep-by-prefix prefix0 data-all)
         _ (is (= data-post-merge-expected data-post-merge-actual))
         ;; Test that at any given position, i.e. before or after an element
         ;; of the original array, there is not interleaving and that
@@ -1579,9 +1649,9 @@
         ;; positions. We start by creating partitions of all prefixes between
         ;; all original elements.
         partitioned (->> data-all
-                         (partition-by-prefix "zeroth" "-")
-                         (drop-partitions-by-prefix "zeroth")
-                         (map #(partition-by-prefixes "-" %)))
+                         (partition-by-prefix prefix0 delimiter)
+                         (drop-partitions-by-prefix prefix0)
+                         (map #(partition-by-prefixes delimiter %)))
         *came-first (atom nil)
         *came-second (atom nil)
         *came-last (atom nil)]

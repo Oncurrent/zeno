@@ -11,6 +11,27 @@
 (def array-end-node-id "-END-")
 (def array-start-node-id "-START-")
 
+(defn node-id->node-value [node-id crdt]
+  (if (or (= array-start-node-id node-id)
+          (= array-end-node-id node-id))
+    node-id
+    (or (-> crdt :children (get node-id) :current-add-id-to-value-info first
+            second :value)
+        "x")))
+
+(defn single-array-crdt->dot!
+  [{:keys [add-id-to-edge children current-edge-add-ids] :as crdt} filepath]
+  (spit filepath "digraph G {\n")
+  (mapv (fn [{:keys [head-node-id tail-node-id]}]
+          (spit filepath
+                (str "\"" (node-id->node-value head-node-id crdt) "\""
+                     " -> "
+                     "\"" (node-id->node-value tail-node-id crdt) "\";\n")
+                :append true))
+        (vals (select-keys add-id-to-edge current-edge-add-ids)))
+  (spit filepath "}" :append true)
+  nil)
+
 (declare repair-array)
 
 (defn get-edges [{:keys [crdt edge-type]}]
@@ -68,6 +89,7 @@
   [{:keys [nodes-connected-to-start
            nodes-connected-to-end
            deleted-edges
+           node->edge-info
            node
            terminal] :as arg}]
   (let [node->deleted-edge-info (make-node->edge-info deleted-edges)
@@ -79,6 +101,9 @@
                      :children])
         linked-nodes (-> (get-in node->deleted-edge-info [node links-k])
                          (sort))
+        ; linked-nodes (sort
+        ;               (set/union (get-in node->deleted-edge-info [node links-k])
+        ;                          (get-in node->edge-info [node links-k])))
         conn-node (reduce (fn [acc linked-node]
                             (when (nodes-connected linked-node)
                               (reduced linked-node)))
@@ -94,7 +119,7 @@
 
 (defn make-connections-to-terminal
   [{:keys [make-id terminal] :as arg}]
-  (let [make-id (or make-id u/compact-random-uuid)]
+  (let [make-id* (or make-id u/compact-random-uuid)]
     (reduce (fn [acc node]
               (let [node->edge-info (make-node->edge-info (:edges acc))
                     arg* (assoc arg
@@ -109,7 +134,7 @@
                                                     :head-node-id]
                                                    [:head-node-id
                                                     :tail-node-id])
-                        edge {:add-id (make-id)
+                        edge {:add-id (make-id*)
                               self-add-id node
                               opp-add-id conn-node}
                         new-edges (:new-edges acc)]
@@ -158,7 +183,7 @@
 
 (defn get-serializing-crdt-ops-for-path
   [{:keys [combining-node edges make-id paths splitting-node sys-time-ms]}]
-  (let [make-id (or make-id u/compact-random-uuid)]
+  (let [make-id* (or make-id u/compact-random-uuid)]
     (reduce (fn [acc [path next-path]]
               (let [del-op-1 {:add-id (find-edge-add-id
                                        {:edges edges
@@ -172,7 +197,7 @@
                                         :tail-node-id (first next-path)})
                               :op-path '()
                               :op-type :delete-array-edge}
-                    add-id (make-id)
+                    add-id (make-id*)
                     add-op {:add-id add-id
                             :op-path '()
                             :op-type :add-array-edge
@@ -190,18 +215,29 @@
   (let [node->edge-info (make-node->edge-info edges)]
     (loop [node array-start-node-id
            crdt-ops #{}]
+      #_(if (or (= array-start-node-id node) (= array-end-node-id node))
+        (log/info node)
+        (log/info (-> arg :crdt :children (get node)
+                      :current-add-id-to-value-info first second :value)))
       (if (= array-end-node-id node)
-        crdt-ops
-        (let [;; We sort by node add-id to guarantee consistent order
+        (do #_(log/info "found end")
+            crdt-ops)
+        (let [;_ (log/info "not end")
+              ;; We sort by node add-id to guarantee consistent order
               children (sort (get-in node->edge-info [node :children]))]
           (if (= (count children) 1)
-            (recur (first children) crdt-ops)
+            (do
+             ; (log/info "not splitting")
+             (recur (first children) crdt-ops))
             ;; This is a splitting node
-            (let [path-infos (map (fn [node*]
+            (let [;_ (log/info "is splitting")
+                  path-infos (map (fn [node*]
+                                    ; (log/info "child" node*)
                                     (path-to-combining-node-info
                                      {:node node*
                                       :node->edge-info node->edge-info}))
                                   children)
+                  ; _ (log/info (vec path-infos))
                   {:keys [combining-node]} (first path-infos)]
               (recur combining-node
                      (set/union crdt-ops
@@ -346,9 +382,17 @@
   (-> (assoc arg
              :live-nodes (get-live-nodes arg)
              :sys-time-ms (u/current-time-ms))
+      (u/log-> #(single-array-crdt->dot!
+                 (:crdt %) "/Users/burbma/Desktop/pre1.dot"))
       (delete-dangling-edges)
+      (u/log-> #(single-array-crdt->dot!
+                 (:crdt %) "/Users/burbma/Desktop/no-dangle1.dot"))
       (connect-nodes-to-terminals)
+      (u/log-> #(single-array-crdt->dot!
+                 (:crdt %) "/Users/burbma/Desktop/connected1.dot"))
       (serialize-parallel-paths)
+      (u/log-> #(single-array-crdt->dot!
+                 (:crdt %) "/Users/burbma/Desktop/serialized1.dot"))
       (select-keys [:crdt :repair-crdt-ops])))
 
 (defmethod c/repair :array

@@ -63,7 +63,6 @@
   (for [x (range n)]
     (compact-random-uuid)))
 
-
 (defn pprint [x]
   #?(:clj (let [^String s (puget/with-color (puget/pprint-str x))]
             (.write *out* s))
@@ -76,6 +75,13 @@
 (defn pprint-str [x]
   #?(:clj (puget/with-color (pprint-str* x))
      :cljs (pprint-str* x)))
+
+(defn log-> [x log]
+  (if (fn? log)
+    (let [log* (log x)]
+      (log/info log*))
+    (log/info log))
+  x)
 
 (defn int-pow [base exp]
   (int (Math/pow base exp)))
