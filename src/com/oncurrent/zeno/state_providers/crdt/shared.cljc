@@ -21,6 +21,7 @@
   :delete-value)
 
 (l/def-record-schema crdt-array-edge-schema
+  [:add-id add-id-schema]
   [:head-node-id node-id-schema]
   [:tail-node-id node-id-schema])
 
