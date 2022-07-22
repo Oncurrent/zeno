@@ -76,7 +76,7 @@
     (if (nodes-connected node)
       true
       (let [path* (conj path node)
-            links (get-in node->edge-info [node link-key])]
+            links (sort (get-in node->edge-info [node link-key]))]
         (reduce (fn [acc link]
                   (if-not (connected-to-terminal?
                            (assoc arg :node link :path path*))
@@ -85,41 +85,37 @@
                 false
                 links)))))
 
-(defn get-connected-node
-  [{:keys [nodes-connected-to-start nodes-connected-to-end deleted-edges
-           node->edge-info node terminal]
+(defn get-lineal-and-conn-nodes
+  [{:keys [nodes-connected-to-start nodes-connected-to-end
+           deleted-edges node->edge-info node terminal]
     :as arg}]
   (let [node->deleted-edge-info (make-node->edge-info deleted-edges)
-        [nodes-connected
-         links-k] (if (= :start terminal)
-                    [nodes-connected-to-start
-                     :parents]
-                    [nodes-connected-to-end
-                     :children])
-        linked-nodes (-> (get-in node->deleted-edge-info [node links-k])
-                         (sort))
-        ; linked-nodes (sort
-        ;               (set/union (get-in node->deleted-edge-info [node links-k])
-        ;                          (get-in node->edge-info [node links-k])))
-        conn-node (reduce (fn [acc linked-node]
-                            (when (nodes-connected linked-node)
-                              (reduced linked-node)))
-                          nil
-                          linked-nodes)]
-    (or conn-node
-        (reduce (fn [acc linked-node]
-                  (when-let [conn-node (get-connected-node
-                                        (assoc arg :node linked-node))]
-                    (reduced conn-node)))
-                nil
-                linked-nodes))))
+        [nodes-connected link-key] (if (= :start terminal)
+                                     [nodes-connected-to-start :parents]
+                                     [nodes-connected-to-end :children])
+        ->living-link (fn [node*]
+                        (-> node->edge-info
+                            (get-in [node* link-key])
+                            (sort)
+                            (first)))
+        ->dead-link (fn [node*]
+                      (-> node->deleted-edge-info
+                          (get-in [node* link-key])
+                          (sort)
+                          (first)))]
+    (loop [living-link (->living-link node)]
+      (if living-link
+        (recur (->living-link living-link))
+        (let [lineal-node node]
+          (loop [dead-link (->dead-link lineal-node)]
+            (if (contains? node->edge-info dead-link)
+              [lineal-node dead-link]
+              (recur (->dead-link dead-link)))))))))
 
 (defn make-connections-to-terminal
   [{:keys [make-id terminal] :as arg}]
   (let [make-id* (or make-id u/compact-random-uuid)]
-    (log/info terminal)
     (reduce (fn [acc node]
-              (log/info (node-id->node-value node (:crdt arg)))
               (let [node->edge-info (make-node->edge-info (:edges acc))
                     arg* (assoc arg
                                 :node node
@@ -127,7 +123,9 @@
                                 :terminal terminal)]
                 (if (connected-to-terminal? arg*)
                   acc
-                  (let [[lineal-node conn-node] (get-lineal-conn-nodes arg*)
+                  (let [[lineal-node conn-node] (get-lineal-and-conn-nodes arg*)
+                        _ (log/info (node-id->node-value lineal-node (:crdt arg))
+                                    (node-id->node-value conn-node (:crdt arg)))
                         edge (-> (if (= :start terminal)
                                    {:head-node-id conn-node
                                     :tail-node-id lineal-node}
@@ -212,29 +210,18 @@
   (let [node->edge-info (make-node->edge-info edges)]
     (loop [node array-start-node-id
            crdt-ops #{}]
-      #_(if (or (= array-start-node-id node) (= array-end-node-id node))
-        (log/info node)
-        (log/info (-> arg :crdt :children (get node)
-                      :current-add-id-to-value-info first second :value)))
       (if (= array-end-node-id node)
-        (do #_(log/info "found end")
-            crdt-ops)
-        (let [;_ (log/info "not end")
-              ;; We sort by node add-id to guarantee consistent order
+        crdt-ops
+        (let [;; We sort by node add-id to guarantee consistent order
               children (sort (get-in node->edge-info [node :children]))]
           (if (= (count children) 1)
-            (do
-             ; (log/info "not splitting")
-             (recur (first children) crdt-ops))
+            (recur (first children) crdt-ops)
             ;; This is a splitting node
-            (let [;_ (log/info "is splitting")
-                  path-infos (map (fn [node*]
-                                    ; (log/info "child" node*)
+            (let [path-infos (map (fn [node*]
                                     (path-to-combining-node-info
                                      {:node node*
                                       :node->edge-info node->edge-info}))
                                   children)
-                  ; _ (log/info (vec path-infos))
                   {:keys [combining-node]} (first path-infos)]
               (recur combining-node
                      (set/union crdt-ops
@@ -336,9 +323,6 @@
         deleted-edges (get-edges (assoc arg :edge-type :deleted))
         {:keys [nodes-connected-to-start
                 nodes-connected-to-end]} (get-nodes-connected-to-terminals edges)
-        ; _ (log/info (str "\n" (u/pprint-str* (u/sym-map edges deleted-edges
-        ;                                                 nodes-connected-to-start
-        ;                                                 nodes-connected-to-end))))
         new-edges (make-connecting-edges (u/sym-map crdt
                                                     deleted-edges
                                                     edges
@@ -384,16 +368,16 @@
              :live-nodes (get-live-nodes arg)
              :sys-time-ms (u/current-time-ms))
       (u/log-> #(single-array-crdt->dot!
-                 (:crdt %) "/Users/burbma/Desktop/pre1.dot"))
+                 (:crdt %) "/Users/burbma/Desktop/pre2.dot"))
       (delete-dangling-edges)
       (u/log-> #(single-array-crdt->dot!
-                 (:crdt %) "/Users/burbma/Desktop/no-dangle1.dot"))
+                 (:crdt %) "/Users/burbma/Desktop/no-dangle2.dot"))
       (connect-nodes-to-terminals)
       (u/log-> #(single-array-crdt->dot!
-                 (:crdt %) "/Users/burbma/Desktop/connected1.dot"))
+                 (:crdt %) "/Users/burbma/Desktop/connected2.dot"))
       (serialize-parallel-paths)
       (u/log-> #(single-array-crdt->dot!
-                 (:crdt %) "/Users/burbma/Desktop/serialized1.dot"))
+                 (:crdt %) "/Users/burbma/Desktop/serialized2.dot"))
       (select-keys [:crdt :repair-crdt-ops])))
 
 (defmethod c/repair :array

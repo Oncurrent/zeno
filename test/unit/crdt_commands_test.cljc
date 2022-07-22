@@ -1499,6 +1499,38 @@
   (filter #(not (str/starts-with? (first %) prefix)) data))
 
 (comment
+ {:deleted-edges #{{:add-id "10", :head-node-id "1", :tail-node-id "9"}
+                   {:add-id "11", :head-node-id "9", :tail-node-id "-END-"}
+                   {:add-id "19", :head-node-id "17", :tail-node-id "-END-"}
+                   {:add-id "20", :head-node-id "1", :tail-node-id "17"}
+                   {:add-id "22", :head-node-id "17", :tail-node-id "21"}
+                   {:add-id "29", :head-node-id "-START-", :tail-node-id "-END-"}
+                   {:add-id "3", :head-node-id "-START-", :tail-node-id "1"}
+                   {:add-id "4", :head-node-id "1", :tail-node-id "-END-"}
+                   {:add-id "8", :head-node-id "5", :tail-node-id "1"}},
+  :node "9",
+  :node->deleted-edge-info {"-END-" {:parents #{"-START-" "1" "17" "9"}},
+                            "-START-" {:children #{"-END-" "1"}},
+                            "1" {:children #{"-END-" "17" "9"},
+                                 :parents #{"-START-" "5"}},
+                            "17" {:children #{"-END-" "21"}, :parents #{"1"}},
+                            "21" {:parents #{"17"}},
+                            "5" {:children #{"1"}},
+                            "9" {:children #{"-END-"}, :parents #{"1"}}},
+  :node->edge-info {"-END-" {:parents #{"13" "21" "30"}},
+                    "-START-" {:children #{"30" "5"}},
+                    "13" {:children #{"-END-"}, :parents #{"9"}},
+                    "17" {:children #{"25"}},
+                    "21" {:children #{"-END-"}, :parents #{"25"}},
+                    "25" {:children #{"21"}, :parents #{"17"}},
+                    "30" {:children #{"-END-"}, :parents #{"-START-"}},
+                    "5" {:parents #{"-START-"}},
+                    "9" {:children #{"13"}}},
+  :nodes-connected-to-end #{"-END-" "13" "21" "30"},
+  :nodes-connected-to-start #{"-START-" "30" "5"},
+  :terminal :start})
+
+(comment
  (kaocha.repl/run #'test-random-three-way-array-merge
                   {:capture-output? false :color? false}))
 (deftest test-random-three-way-array-merge []
@@ -1607,6 +1639,10 @@
         ;; Create the combined CRDT both ways, extract value, and assert
         ;; equality.
         _ (log/info "BEFORE")
+        _ (log/info (str "\n" (u/pprint-str* (u/sym-map crdt-ops
+                                                        crdt-ops1
+                                                        crdt-ops2
+                                                        crdt-ops3))))
         acrdt-all (ops->crdt {:crdt-ops (set/union crdt-ops crdt-ops1 crdt-ops2 crdt-ops3)
                               :schema schema
                               :make-id make-id})
