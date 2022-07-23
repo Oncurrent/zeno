@@ -30,7 +30,7 @@
   [:add-id add-id-schema]
   [:op-type crdt-op-type-schema]
   [:op-path schemas/path-schema]
-  [:serialized-value schemas/serialized-value-schema]
+  [:serialized-value l/bytes-schema]
   [:sys-time-ms schemas/timestamp-ms-schema])
 
 ;;;;;;;;;;;;;;;; Transaction & Log Schemas ;;;;;;;;;;;;;;;;;
