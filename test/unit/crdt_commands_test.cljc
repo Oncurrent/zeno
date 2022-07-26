@@ -15,7 +15,7 @@
      (:import
       (clojure.lang ExceptionInfo))))
 
-(comment (kaocha.repl/run *ns* {:capture-output? false}))
+(comment (kaocha.repl/run *ns* {:capture-output? false :color? false}))
 
 #?(:clj
    (defn krun
@@ -877,6 +877,8 @@
                                            :path [:pets]
                                            :schema pet-owner-schema})))))
 
+(comment
+ (kaocha.repl/run #'test-merge-3-way-array-conflict {:color? false}))
 (deftest test-merge-3-way-array-conflict
   (let [*next-id-num (atom 0)
         make-id #(let [n (swap! *next-id-num inc)]
@@ -1530,6 +1532,41 @@
   :nodes-connected-to-start #{"-START-" "30" "5"},
   :terminal :start})
 
+; replacing-edge
+; {:head-node-id "2", :tail-node-id "20", :op-group-id "19", :add-id "23"}
+
+; relevant-deleted-edges
+; #{{:head-node-id "-START-", :tail-node-id "-END-", :op-group-id "32", :add-id "33"}
+;   {:head-node-id "20", :tail-node-id "-END-", :op-group-id "19", :add-id "22"}
+;   {:head-node-id "-START-", :tail-node-id "2", :op-group-id "0", :add-id "4"}
+;   {:head-node-id "20", :tail-node-id "24", :op-group-id "19", :add-id "25"}
+;   {:head-node-id "11", :tail-node-id "-END-", :op-group-id "6", :add-id "13"}
+;   {:head-node-id "2", :tail-node-id "20", :op-group-id "19", :add-id "23"}
+;   {:head-node-id "2", :tail-node-id "-END-", :op-group-id "0", :add-id "5"}}
+
+; all-danglers
+; #{{:head-node-id "7", :tail-node-id "2", :op-group-id "6", :add-id "10"}
+;   {:head-node-id "2", :tail-node-id "20", :op-group-id "19", :add-id "23"}
+;   {:head-node-id "2", :tail-node-id "11", :op-group-id "6", :add-id "12"}}
+
+; all-deleted-edges
+; #{{:head-node-id "-START-", :tail-node-id "-END-", :op-group-id "32", :add-id "33"}
+;   {:head-node-id "20", :tail-node-id "-END-", :op-group-id "19", :add-id "22"}
+;   {:head-node-id "7", :tail-node-id "2", :op-group-id "6", :add-id "10"}
+;   {:head-node-id "-START-", :tail-node-id "2", :op-group-id "0", :add-id "4"}
+;   {:head-node-id "20", :tail-node-id "24", :op-group-id "19", :add-id "25"}
+;   {:head-node-id "11", :tail-node-id "-END-", :op-group-id "6", :add-id "13"}
+;   {:head-node-id "2", :tail-node-id "20", :op-group-id "19", :add-id "23"}
+;   {:head-node-id "2", :tail-node-id "-END-", :op-group-id "0", :add-id "5"}
+;   {:head-node-id "2", :tail-node-id "11", :op-group-id "6", :add-id "12"}}
+
+; 2 x
+; -START-
+; -START- -START-
+; nil
+; nil x
+; nil
+
 (comment
  (kaocha.repl/run #'test-random-three-way-array-merge
                   {:capture-output? false :color? false}))
@@ -1638,60 +1675,61 @@
         ;          (->value acrdt3 [] schema)))
         ;; Create the combined CRDT both ways, extract value, and assert
         ;; equality.
-        _ (log/info "BEFORE")
-        _ (log/info (str "\n" (u/pprint-str* (u/sym-map crdt-ops
-                                                        crdt-ops1
-                                                        crdt-ops2
-                                                        crdt-ops3))))
+        ; _ (log/info "BEFORE")
+        ; _ (log/info (str "\n" (u/pprint-str* (u/sym-map crdt-ops
+        ;                                                 crdt-ops1
+        ;                                                 crdt-ops2
+        ;                                                 crdt-ops3))))
         acrdt-all (ops->crdt {:crdt-ops (set/union crdt-ops crdt-ops1 crdt-ops2 crdt-ops3)
                               :schema schema
                               :make-id make-id})
-        _ (log/info "AFTER")
-        mcrdt (-> (apply-ops/apply-ops {:crdt crdt
-                                        :crdt-ops (set/union crdt-ops1
-                                                             crdt-ops2
-                                                             crdt-ops3)
-                                        :schema schema})
-                  (:crdt))
-        data-all (->value acrdt-all [] schema)
-        _ (is (= data-all (->value mcrdt [] schema)))
-        ;; Because the values are UUIDs we can use sets instead of vectors
-        ;; for the next two parts
-        set1 (into #{} data1)
-        set2 (into #{} data2)
-        set3 (into #{} data3)
-        set-all (into #{} data-all)
-        ;; Test that all not-deleted things are present post merge.
-        _ (is (= set1 (set/intersection set-all set1)))
-        _ (is (= set2 (set/intersection set-all set2)))
-        _ (is (= set3 (set/intersection set-all set3)))
-        ;; Test that deleted things are not present post merge.
-        deleted1 (get-deleted-values-as-set data cmds1)
-        deleted2 (get-deleted-values-as-set data cmds2)
-        deleted3 (get-deleted-values-as-set data cmds3)
-        _ (is (empty? (set/intersection set-all deleted1)))
-        _ (is (empty? (set/intersection set-all deleted2)))
-        _ (is (empty? (set/intersection set-all deleted3)))
-        ;; Test that all zeroth things are in the correct order, cmds can't
-        ;; rearrage without deleting and readding but we aren't doing that
-        ;; since each new insertion is a new UUID.
-        data-post-merge-expected (filter-out-values
-                                  (set/union deleted1 deleted2 deleted3) data)
-        data-post-merge-actual (keep-by-prefix prefix0 data-all)
-        _ (is (= data-post-merge-expected data-post-merge-actual))
-        ;; Test that at any given position, i.e. before or after an element
-        ;; of the original array, there is not interleaving and that
-        ;; whichever comes first at in one position comes first in all
-        ;; positions. We start by creating partitions of all prefixes between
-        ;; all original elements.
-        partitioned (->> data-all
-                         (partition-by-prefix prefix0 delimiter)
-                         (drop-partitions-by-prefix prefix0)
-                         (map #(partition-by-prefixes delimiter %)))
-        *came-first (atom nil)
-        *came-second (atom nil)
-        *came-last (atom nil)]
-    (doseq [p partitioned]
+        ; _ (log/info "AFTER")
+        ; mcrdt (-> (apply-ops/apply-ops {:crdt crdt
+        ;                                 :crdt-ops (set/union crdt-ops1
+        ;                                                      crdt-ops2
+        ;                                                      crdt-ops3)
+        ;                                 :schema schema})
+        ;           (:crdt))
+        ; data-all (->value acrdt-all [] schema)
+        ; _ (is (= data-all (->value mcrdt [] schema)))
+        ; ;; Because the values are UUIDs we can use sets instead of vectors
+        ; ;; for the next two parts
+        ; set1 (into #{} data1)
+        ; set2 (into #{} data2)
+        ; set3 (into #{} data3)
+        ; set-all (into #{} data-all)
+        ; ;; Test that all not-deleted things are present post merge.
+        ; _ (is (= set1 (set/intersection set-all set1)))
+        ; _ (is (= set2 (set/intersection set-all set2)))
+        ; _ (is (= set3 (set/intersection set-all set3)))
+        ; ;; Test that deleted things are not present post merge.
+        ; deleted1 (get-deleted-values-as-set data cmds1)
+        ; deleted2 (get-deleted-values-as-set data cmds2)
+        ; deleted3 (get-deleted-values-as-set data cmds3)
+        ; _ (is (empty? (set/intersection set-all deleted1)))
+        ; _ (is (empty? (set/intersection set-all deleted2)))
+        ; _ (is (empty? (set/intersection set-all deleted3)))
+        ; ;; Test that all zeroth things are in the correct order, cmds can't
+        ; ;; rearrage without deleting and readding but we aren't doing that
+        ; ;; since each new insertion is a new UUID.
+        ; data-post-merge-expected (filter-out-values
+        ;                           (set/union deleted1 deleted2 deleted3) data)
+        ; data-post-merge-actual (keep-by-prefix prefix0 data-all)
+        ; _ (is (= data-post-merge-expected data-post-merge-actual))
+        ; ;; Test that at any given position, i.e. before or after an element
+        ; ;; of the original array, there is not interleaving and that
+        ; ;; whichever comes first at in one position comes first in all
+        ; ;; positions. We start by creating partitions of all prefixes between
+        ; ;; all original elements.
+        ; partitioned (->> data-all
+        ;                  (partition-by-prefix prefix0 delimiter)
+        ;                  (drop-partitions-by-prefix prefix0)
+        ;                  (map #(partition-by-prefixes delimiter %)))
+        ; *came-first (atom nil)
+        ; *came-second (atom nil)
+        ; *came-last (atom nil)
+        ]
+    #_(doseq [p partitioned]
       (case (count p)
         0 nil ; Not a problem, perhaps no commands were generated.
         1 nil ; Not a problem, testing would only be testing partition-by.

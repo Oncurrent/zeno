@@ -657,24 +657,26 @@
   [arg]
   (do-insert arg))
 
-(defn process-cmd [{:keys [cmd root] :as arg}]
-  (let [cmd-path (:zeno/path cmd)]
-    (process-cmd* (-> arg
-                      (assoc :cmd-arg (:zeno/arg cmd))
-                      (assoc :cmd-path cmd-path)
-                      (assoc :cmd-type (:zeno/op cmd))
-                      (assoc :path (u/chop-root cmd-path root))))))
-
-(defn process-cmds [{:keys [cmds crdt make-id root] :as arg}]
-  (let [make-id* (or make-id u/compact-random-uuid)]
+(defn process-cmds [{:keys [cmds crdt make-id root op-group-id] :as arg}]
+  (let [make-id* (or make-id u/compact-random-uuid)
+        op-group-id (or op-group-id (make-id*))]
     (reduce (fn [acc cmd]
-              (let [ret (process-cmd (assoc arg
-                                            :crdt (:crdt acc)
-                                            :cmd cmd
-                                            :make-id make-id*))]
+              (let [cmd-path (:zeno/path cmd)
+                    ret (process-cmd*
+                         (-> arg
+                             (assoc :crdt (:crdt acc))
+                             (assoc :cmd cmd)
+                             (assoc :cmd-arg (:zeno/arg cmd))
+                             (assoc :cmd-path cmd-path)
+                             (assoc :cmd-type (:zeno/op cmd))
+                             (assoc :make-id make-id*)
+                             (assoc :path (u/chop-root cmd-path root))))]
                 (-> acc
                     (assoc :crdt (:crdt ret))
-                    (update :crdt-ops set/union (:crdt-ops ret)))))
+                    (update :crdt-ops set/union
+                            (->> (:crdt-ops ret)
+                                 (map #(assoc % :op-group-id op-group-id))
+                                 (into #{}))))))
             {:crdt crdt
              :crdt-ops #{}}
             cmds)))

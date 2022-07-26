@@ -482,18 +482,15 @@
       (let [tx-info-base (common/make-update-state-tx-info-base
                           (assoc us-arg :make-tx-id make-tx-id))]
         (swap! *branch->crdt-info update branch
-               (fn [{:keys [repair-crdt-ops
-                            tx-infos-to-log] :as info}]
-                 (let [ret (commands/process-cmds {:cmds cmds
-                                                   :crdt (:crdt info)
-                                                   :schema schema
-                                                   :root root})
-                       {:keys [crdt crdt-ops]} ret
+               (fn [{:keys [crdt repair-crdt-ops tx-infos-to-log] :as info}]
+                 (let [op-group-id actor-id
+                       ret (commands/process-cmds
+                            (u/sym-map cmds crdt schema root op-group-id))
                        tx-info (assoc tx-info-base :crdt-ops
-                                      (set/union crdt-ops
+                                      (set/union (:crdt-ops ret)
                                                  repair-crdt-ops))]
                    (assoc info
-                          :crdt crdt
+                          :crdt (:crdt ret)
                           :repair-crdt-ops #{}
                           :tx-infos-to-log (conj (or tx-infos-to-log #{})
                                                  tx-info)))))

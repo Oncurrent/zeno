@@ -256,27 +256,28 @@
                           (u/sym-map add-id op-path edge))))))))
 
 (defmethod apply-op [:array :add-array-edge]
-  [{:keys [add-id crdt op-path schema value] :as arg}]
+  [{:keys [add-id crdt op-path schema op-group-id value] :as arg}]
   (if (seq op-path)
     (associative-apply-op (assoc arg :get-child-schema
                                  (fn [_] (l/child-schema schema))))
     ;; We use a slightly different CRDT implementation here because we
     ;; need to be able to resurrect deleted edges. The `:single-value`
     ;; CRDT does not keep info for deleted items.
-    (let [{:keys [add-id-to-edge
+    (let [value* (if op-group-id (assoc value :op-group-id op-group-id) value)
+          {:keys [add-id-to-edge
                   current-edge-add-ids
                   deleted-edge-add-ids]} crdt
           deleted? (get deleted-edge-add-ids add-id)
           current? (get current-edge-add-ids add-id)
           edge (get add-id-to-edge add-id)
-          same? (= edge value)]
-      (when (and edge value (not same?))
+          same? (= edge value*)]
+      (when (and edge value* (not same?))
         (throw (ex-info
                 (str "Attempt to reuse an existing add-id "
                      "(`" add-id "`) to add a different edge to CRDT.")
                 arg)))
       (check-edge arg)
-      (cond-> (assoc-in crdt [:add-id-to-edge add-id] value)
+      (cond-> (assoc-in crdt [:add-id-to-edge add-id] value*)
         (not deleted?)
         (update :current-edge-add-ids (fn [ids]
                                         (if (seq ids)
