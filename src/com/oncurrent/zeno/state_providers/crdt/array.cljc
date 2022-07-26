@@ -66,11 +66,11 @@
    edges))
 
 (defn get-live-ancestor-node
-  [{:keys [edge deleted-edges deleted-dangling-edges live-nodes]
+  [{:keys [edge deleted-edges dangling-edges live-nodes]
     :as arg}]
   (let [non-relevant-danglers (filter #(not= (:op-group-id edge)
                                              (:op-group-id %))
-                                      deleted-dangling-edges)
+                                      dangling-edges)
         relevant-deleted-edges (set/difference deleted-edges
                                                non-relevant-danglers)]
     (loop [lineal-node* (:head-node-id edge)]
@@ -91,7 +91,7 @@
                                  "own-lineal-edge or other-lineal-edge."
                                  "Something is misunderstood.")
                             (u/sym-map
-                             edge deleted-edges deleted-dangling-edges
+                             edge deleted-edges dangling-edges
                              non-relevant-danglers live-nodes
                              relevant-deleted-edges lineal-node* lineal-edges
                              own-lineal-edges other-lineal-edges))))
@@ -101,10 +101,10 @@
           (recur (:head-node-id lineal-edge)))))))
 
 (defn make-replacement-edges
-  [{:keys [edges deleted-dangling-edges deleted-edges live-nodes make-id]
+  [{:keys [edges dangling-edges deleted-edges live-nodes make-id]
     :as arg}]
   (let [make-id* (or make-id u/compact-random-uuid)]
-    (->> deleted-dangling-edges
+    (->> dangling-edges
          (filter #(live-nodes (:tail-node-id %)))
          (reduce (fn [acc edge]
                    (let [node (:tail-node-id edge)
@@ -264,26 +264,25 @@
                           (or (live-nodes tail-node-id)
                               (= array-end-node-id tail-node-id)))
                    acc
-                   (do
-                    (-> acc
+                   (-> acc
                        (update :crdt-ops
                                conj {:add-id add-id
                                      :op-path '()
                                      :op-type :delete-array-edge})
-                       (update :deleted-dangling-edges
+                       (update :dangling-edges
                                conj (first (filter #(= add-id (:add-id %))
-                                                   edges))))))))
+                                                   edges)))))))
              {:crdt-ops #{}
-              :deleted-dangling-edges #{}}
+              :dangling-edges #{}}
              edges)
         crdt* (aoi/apply-ops-without-repair
                (assoc arg :crdt-ops (:crdt-ops ret)))]
     (-> arg
         (assoc :crdt crdt*)
-        (assoc :deleted-dangling-edges (:deleted-dangling-edges ret))
+        (assoc :dangling-edges (:dangling-edges ret))
         (update :repair-crdt-ops set/union (:crdt-ops ret)))))
 
-(defn replace-deleted-dangling-edges
+(defn replace-dangling-edges
   [{:keys [live-nodes make-id sys-time-ms crdt] :as arg}]
   (let [edges (get-edges (assoc arg :edge-type :current))
         deleted-edges (get-edges (assoc arg :edge-type :deleted))
@@ -331,7 +330,7 @@
       (delete-dangling-edges)
       ; (u/log-> #(single-array-crdt->dot!
       ;            (:crdt %) "/Users/burbma/Desktop/no-dangle6.dot"))
-      (replace-deleted-dangling-edges)
+      (replace-dangling-edges)
       ; (u/log-> #(single-array-crdt->dot!
       ;            (:crdt %) "/Users/burbma/Desktop/connected6.dot"))
       (serialize-parallel-paths)
