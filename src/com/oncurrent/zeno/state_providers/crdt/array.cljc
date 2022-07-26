@@ -326,17 +326,17 @@
   (-> (assoc arg
              :live-nodes (get-live-nodes arg)
              :sys-time-ms (u/current-time-ms))
-      (u/log-> #(single-array-crdt->dot!
-                 (:crdt %) "/Users/burbma/Desktop/pre6.dot"))
+      ; (u/log-> #(single-array-crdt->dot!
+      ;            (:crdt %) "/Users/burbma/Desktop/pre6.dot"))
       (delete-dangling-edges)
-      (u/log-> #(single-array-crdt->dot!
-                 (:crdt %) "/Users/burbma/Desktop/no-dangle6.dot"))
+      ; (u/log-> #(single-array-crdt->dot!
+      ;            (:crdt %) "/Users/burbma/Desktop/no-dangle6.dot"))
       (replace-deleted-dangling-edges)
-      (u/log-> #(single-array-crdt->dot!
-                 (:crdt %) "/Users/burbma/Desktop/connected6.dot"))
+      ; (u/log-> #(single-array-crdt->dot!
+      ;            (:crdt %) "/Users/burbma/Desktop/connected6.dot"))
       (serialize-parallel-paths)
-      (u/log-> #(single-array-crdt->dot!
-                 (:crdt %) "/Users/burbma/Desktop/serialized6.dot"))
+      ; (u/log-> #(single-array-crdt->dot!
+      ;            (:crdt %) "/Users/burbma/Desktop/serialized6.dot"))
       (select-keys [:crdt :repair-crdt-ops])))
 
 (defmethod c/repair :array
