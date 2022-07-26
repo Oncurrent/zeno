@@ -1,6 +1,7 @@
 (ns com.oncurrent.zeno.state-providers.crdt.apply-ops
   (:require
    [com.oncurrent.zeno.state-providers.crdt.common :as c]
+   [com.oncurrent.zeno.state-providers.crdt.shared :as shared]
    [com.oncurrent.zeno.utils :as u]
    [deercreeklabs.lancaster :as l]
    [taoensso.timbre :as log]))
@@ -28,19 +29,23 @@
         (update :deleted-add-ids #(conj (or % #{}) add-id)))))
 
 (defn apply-op-to-child
-  [{:keys [crdt growing-path op-path schema shrinking-path] :as arg}]
+  [{:keys [add-id crdt growing-path op-path op-type schema shrinking-path]
+    :as arg}]
   (let [[k & ks] shrinking-path
-        new-growing-path (conj growing-path k)]
+        new-growing-path (conj growing-path k)
+        record? (= :record (l/schema-type schema))]
     (c/check-key (assoc arg :key k :path new-growing-path))
     (update-in crdt [:children k]
                (fn [child-crdt]
                  (apply-op (assoc arg
                                   :crdt child-crdt
                                   :growing-path new-growing-path
-                                  :schema (l/child-schema schema)
+                                  :schema (if record?
+                                            (l/child-schema schema k)
+                                            (l/child-schema schema))
                                   :shrinking-path ks))))))
 
-(defmethod apply-op [:map :add-container]
+(defn associative-add-container
   [{:keys [add-id crdt shrinking-path] :as arg}]
   (if (seq shrinking-path)
     (apply-op-to-child arg)
@@ -49,8 +54,8 @@
       crdt
       (update crdt :container-add-ids #(conj (or % #{}) add-id)))))
 
-(defmethod apply-op [:map :delete-container]
-  [{:keys [add-id crdt growing-path schema shrinking-path] :as arg}]
+(defn associative-delete-container
+  [{:keys [add-id crdt shrinking-path] :as arg}]
   (if (seq shrinking-path)
     (apply-op-to-child arg)
     (if (some-> (:deleted-container-add-ids crdt)
@@ -60,20 +65,103 @@
           (update :container-add-ids #(disj (or % #{}) add-id))
           (update :deleted-container-add-ids #(conj (or % #{}) add-id))))))
 
+(defmethod apply-op [:map :add-container]
+  [arg]
+  (associative-add-container arg))
+
+(defmethod apply-op [:record :add-container]
+  [arg]
+  (associative-add-container arg))
+
+(defmethod apply-op [:map :delete-container]
+  [arg]
+  (associative-delete-container arg))
+
+(defmethod apply-op [:record :delete-container]
+  [arg]
+  (associative-delete-container arg))
+
+(defmethod apply-op [:single-value :add-container]
+  [{:keys [crdt] :as arg}]
+  ;; This can be called from apply-union-op
+  crdt)
+
+(defmethod apply-op [:single-value :delete-container]
+  [{:keys [crdt] :as arg}]
+  ;; This can be called from apply-union-op
+  crdt)
+
 (defmethod apply-op [:map :add-value]
-  [{:keys [add-id crdt op-path op-type shrinking-path] :as arg}]
+  [{:keys [op-path op-type shrinking-path] :as arg}]
   (if (seq shrinking-path)
     (apply-op-to-child arg)
     (throw (ex-info (str "Invalid op. Can't `:add-value` at map root. "
                          "`:op-path` should contain a map key.")
                     (u/sym-map op-type op-path)))))
 
+(defmethod apply-op [:record :add-value]
+  [{:keys [op-path op-type shrinking-path] :as arg}]
+  (if (seq shrinking-path)
+    (apply-op-to-child arg)
+    (throw (ex-info (str "Invalid op. Can't `:add-value` at record root. "
+                         "`:op-path` should contain a record field key.")
+                    (u/sym-map op-type op-path)))))
+
+(defn apply-union-op
+  [{:keys [add-id crdt growing-path op-path op-type schema shrinking-path
+           sys-time-ms value]
+    :as arg}]
+  (let [[union-branch & ks] shrinking-path
+        _ (when-not (int? union-branch)
+            (throw (ex-info (str "Union op paths must incluce an explicit "
+                                 "union branch index.")
+                            (u/sym-map add-id growing-path op-path op-type
+                                       shrinking-path value))))
+        member-schema (nth (l/member-schemas schema) union-branch)
+        branch-k (keyword (str "branch-" union-branch))
+        branch-time-k (keyword (str "branch-"  union-branch "-sys-time-ms"))
+        add-op? (shared/add-op-types op-type)]
+    (cond-> crdt
+      add-op? (assoc branch-time-k sys-time-ms)
+      true (update branch-k
+                   (fn [child-crdt]
+                     (apply-op (assoc arg
+                                      :crdt child-crdt
+                                      :growing-path (conj growing-path
+                                                          union-branch)
+                                      :schema member-schema
+                                      :shrinking-path ks)))))))
+
+(defmethod apply-op [:union :add-value]
+  [arg]
+  (apply-union-op arg))
+
+(defmethod apply-op [:union :delete-value]
+  [arg]
+  (apply-union-op arg))
+
+(defmethod apply-op [:union :add-container]
+  [arg]
+  (apply-union-op arg))
+
+(defmethod apply-op [:union :delete-container]
+  [arg]
+  (apply-union-op arg))
+
 (defmethod apply-op [:map :delete-value]
-  [{:keys [add-id crdt op-path op-type shrinking-path] :as arg}]
+  [{:keys [op-path op-type shrinking-path] :as arg}]
   (if (seq shrinking-path)
     (apply-op-to-child arg)
     (throw (ex-info (str "Invalid op. Can't `:delete-value` at map root. "
                          "`:op-path` should contain a map key.")
+                    (u/sym-map op-type op-path)))))
+
+(defmethod apply-op [:record :delete-value]
+  [{:keys [op-path op-type shrinking-path] :as arg}]
+  (if (seq shrinking-path)
+    (apply-op-to-child arg)
+    (throw (ex-info (str "Invalid op. Can't `:delete-value` at record root. "
+                         "`:op-path` should contain a record field key.")
                     (u/sym-map op-type op-path)))))
 
 (defn apply-ops

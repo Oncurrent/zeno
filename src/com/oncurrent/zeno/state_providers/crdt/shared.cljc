@@ -1,6 +1,7 @@
 (ns com.oncurrent.zeno.state-providers.crdt.shared
   (:require
    [deercreeklabs.lancaster :as l]
+   [clojure.set :as set]
    [com.oncurrent.zeno.schemas :as schemas]
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
@@ -12,13 +13,20 @@
 (def add-id-schema l/string-schema)
 (def node-id-schema l/string-schema)
 
-(l/def-enum-schema crdt-op-type-schema
-  :add-array-edge
-  :add-container
-  :add-value
-  :delete-array-edge
-  :delete-container
-  :delete-value)
+(def add-op-types
+  #{:add-array-edge
+    :add-container
+    :add-value})
+
+(def delete-op-types
+  #{:delete-array-edge
+    :delete-container
+    :delete-value})
+
+(def crdt-op-type-schema
+  (l/enum-schema
+   (keyword (namespace ::foo) "crdt-op-type")
+   (seq (set/union add-op-types delete-op-types))))
 
 (l/def-record-schema crdt-array-edge-schema
   [:add-id add-id-schema]

@@ -10,8 +10,8 @@
 
 (defmethod get-in-state* :single-value
   [{:keys [crdt growing-path]}]
-  (let [[[add-id value-info] & rest] (:add-id-to-value-info crdt)]
-    (when (seq rest)
+  (let [[[add-id value-info] & others] (:add-id-to-value-info crdt)]
+    (when (seq others)
       (throw (ex-info "CRDT needs repair"
                       {:crdt crdt
                        :path growing-path})))
@@ -31,21 +31,54 @@
                             :schema child-schema
                             :shrinking-path ks)))))
 
-(defmethod get-in-state* :map
+(defn associative-get-in-state*
   [{:keys [crdt growing-path schema shrinking-path] :as arg}]
-  (let [{:keys [children container-add-ids]} crdt]
+  (let [{:keys [children container-add-ids]} crdt
+        record? (= :record (l/schema-type schema))
+        child-ks (if record?
+                   (map :name (:fields (l/edn schema)))
+                   (keys children))]
     (when (seq container-add-ids)
       (if (seq shrinking-path)
         (get-in-child-state arg)
-        (reduce-kv
-         (fn [acc k child-crdt]
+        (reduce
+         (fn [acc k]
            (assoc acc k
                   (get-in-state* (assoc arg
-                                        :crdt child-crdt
+                                        :crdt (get children k)
                                         :growing-path (conj growing-path k)
-                                        :schema (l/child-schema schema)))))
+                                        :schema (if record?
+                                                  (l/child-schema schema k)
+                                                  (l/child-schema schema))))))
          {}
-         children)))))
+         child-ks)))))
+
+(defmethod get-in-state* :map
+  [arg]
+  (associative-get-in-state* arg))
+
+(defmethod get-in-state* :record
+  [arg]
+  (associative-get-in-state* arg))
+
+(defmethod get-in-state* :union
+  [{:keys [crdt schema] :as arg}]
+  (let [member-schemas (l/member-schemas schema)
+        ts-i-pairs (map (fn [union-branch]
+                          (let [ts (->> (str "branch-"  union-branch
+                                             "-sys-time-ms")
+                                        (keyword)
+                                        (get crdt))]
+                            [(or ts 0) union-branch]))
+                        (range (count member-schemas)))
+        [ts i] (-> (sort-by first ts-i-pairs)
+                   (reverse)
+                   (first))]
+    (when (pos? ts)
+      (let [branch-k (keyword (str "branch-" i))]
+        (get-in-state* (assoc arg
+                              :crdt (get crdt branch-k)
+                              :schema (nth member-schemas i)))))))
 
 (defn get-in-state [{:keys [crdt data-schema path root] :as arg}]
   (when-not (keyword? root)

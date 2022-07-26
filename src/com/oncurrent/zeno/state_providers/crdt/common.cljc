@@ -55,3 +55,59 @@
 
 (defn deserialize-op-value [arg]
   (throw (ex-info "Implement me." {})))
+
+(defn edn-schema->pred [edn-schema]
+  (-> (lu/get-avro-type edn-schema)
+      (lu/avro-type->pred)))
+
+(defn get-union-branch-and-schema-for-value [{:keys [schema v]}]
+  (let [member-schemas (vec (l/member-schemas schema))
+        last-union-branch (dec (count member-schemas))]
+    (loop [union-branch 0]
+      (let [member-schema (nth member-schemas union-branch)
+            edn-member-schema (l/edn member-schema)
+            pred (edn-schema->pred edn-member-schema)]
+        (cond
+          (pred v)
+          (u/sym-map union-branch member-schema)
+
+          (= last-union-branch union-branch)
+          (throw (ex-info
+                  (str "The value `" v "` does not match any of the "
+                       "member schemas in the union schema.")
+                  {:union-edn-schema (l/edn schema)
+                   :v v}))
+
+          :else
+          (recur (inc union-branch)))))))
+
+(defn avro-type->key-pred [type]
+  (case type
+    :array integer?
+    :map string?
+    :record keyword?
+    (throw (ex-info (str "The given avro type `" type "` is not a container.")
+                    (u/sym-map type)))))
+
+(defn get-union-branch-and-schema-for-key [{:keys [schema k]}]
+  (let [member-schemas (vec (l/member-schemas schema))
+        last-union-branch (dec (count member-schemas))]
+    (loop [union-branch 0]
+      (let [member-schema (nth member-schemas union-branch)
+            avro-type (l/schema-type member-schema)
+            container? (lu/avro-container-types avro-type)
+            pred (when container?
+                   (avro-type->key-pred avro-type))]
+        (cond
+          (and container? (pred k))
+          (u/sym-map union-branch member-schema)
+
+          (= last-union-branch union-branch)
+          (throw (ex-info
+                  (str "The path key `" k "` does not match any of the "
+                       "member schemas in the union schema.")
+                  {:union-edn-schema (l/edn schema)
+                   :k k}))
+
+          :else
+          (recur (inc union-branch)))))))
