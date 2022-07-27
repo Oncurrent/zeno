@@ -430,15 +430,11 @@
                    :op-group-id "2"}]
         path []
         expected-v ["A" "X" "Y" "C"]]
-    (log/info 1)
     ;; Too many permutations to test them all, so we take a random sample
     (doseq [crdt-ops (repeatedly 500 #(shuffle crdt-ops))]
-      (log/info 2)
       (let [{:keys [crdt]} (apply-ops/apply-ops
                             (u/sym-map crdt-ops schema sys-time-ms))
-            _ (log/info 3)
             v (crdt/get-value (u/sym-map crdt make-id path schema))]
-        (log/info 4)
         (is (= expected-v v))))))
 
 (deftest test-array-indexing
