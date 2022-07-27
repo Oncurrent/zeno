@@ -190,6 +190,12 @@
         crdt (apply-ops/apply-ops (assoc arg :crdt-ops crdt-ops))]
     (u/sym-map crdt crdt-ops)))
 
+(defmethod process-cmd* :zeno/remove
+  [arg]
+  (let [crdt-ops (get-delete-ops arg)
+        crdt (apply-ops/apply-ops (assoc arg :crdt-ops crdt-ops))]
+    (u/sym-map crdt crdt-ops)))
+
 (defn process-cmd [{:keys [cmd crdt data-schema root] :as arg}]
   (let [cmd-path (:zeno/path cmd)]
     (when-not (= root (first cmd-path))
