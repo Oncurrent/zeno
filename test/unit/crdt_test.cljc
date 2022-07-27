@@ -211,24 +211,28 @@
         crdt-1 (:crdt (apply-ops/apply-ops
                        {:crdt-ops [{:add-id "a100"
                                     :op-path []
-                                    :op-type :add-container}
+                                    :op-type :add-container
+                                    :op-group-id "1"}
                                    {:add-id "a1"
                                     :op-type :add-value
                                     :op-path [:foo/a 1]
                                     :schema schema
-                                    :value 1}]
+                                    :value 1
+                                    :op-group-id "1"}]
                         :schema schema
                         :sys-time-ms (u/str->long "1640205282858")}))
         crdt-2 (:crdt (apply-ops/apply-ops
                        {:crdt crdt-1
                         :crdt-ops [{:add-id "a200"
                                     :op-path []
-                                    :op-type :add-container}
+                                    :op-type :add-container
+                                    :op-group-id "2"}
                                    {:add-id "a2"
                                     :op-type :add-value
                                     :op-path [:foo/a 1]
                                     :schema schema
-                                    :value 42}]
+                                    :value 42
+                                    :op-group-id "2"}]
                         :schema schema
                         :sys-time-ms (u/str->long "1640205282862")}))
         v (crdt/get-value {:crdt crdt-2
@@ -329,6 +333,8 @@
       (is (= expected-v (crdt/get-value
                          (u/sym-map crdt make-id path schema)))))))
 
+(comment
+ (kaocha.repl/run #'test-array-crdt-conflict {:capture-output? false :color? false}))
 (deftest test-array-crdt-conflict
   (let [schema (l/array-schema l/string-schema)
         sys-time-ms (u/str->long "1640205282858")
@@ -338,79 +344,101 @@
         crdt-ops [;; Start state: ABC
                   {:add-id "a100"
                    :op-path []
-                   :op-type :add-container}
+                   :op-type :add-container
+                   :op-group-id "0"}
                   {:add-id "a1"
                    :op-type :add-value
                    :op-path ["NodeA"]
-                   :value "A"}
+                   :value "A"
+                   :op-group-id "0"}
                   {:add-id "a2"
                    :op-type :add-value
                    :op-path ["NodeB"]
-                   :value "B"}
+                   :value "B"
+                   :op-group-id "0"}
                   {:add-id "a3"
                    :op-type :add-value
                    :op-path ["NodeC"]
-                   :value "C"}
+                   :value "C"
+                   :op-group-id "0"}
                   {:add-id "a4"
                    :op-type :add-array-edge
                    :value {:head-node-id array/array-start-node-id
-                           :tail-node-id "NodeA"}}
+                           :tail-node-id "NodeA"}
+                   :op-group-id "0"}
                   {:add-id "a5"
                    :op-type :add-array-edge
                    :value {:head-node-id "NodeA"
-                           :tail-node-id "NodeB"}}
+                           :tail-node-id "NodeB"}
+                   :op-group-id "0"}
                   {:add-id "a6"
                    :op-type :add-array-edge
                    :value {:head-node-id "NodeB"
-                           :tail-node-id "NodeC"}}
+                           :tail-node-id "NodeC"}
+                   :op-group-id "0"}
                   {:add-id "a7"
                    :op-type :add-array-edge
                    :value {:head-node-id "NodeC"
-                           :tail-node-id array/array-end-node-id}}
+                           :tail-node-id array/array-end-node-id}
+                   :op-group-id "0"}
                   ;; While offline, client 1 inserts X in between A and B
                   ;; Client 1's state is now AXBC
                   {:add-id "a8"
                    :op-type :add-value
                    :op-path ["NodeX"]
-                   :value "X"}
+                   :value "X"
+                   :op-group-id "1"}
                   {:add-id "a5"
-                   :op-type :delete-array-edge}
+                   :op-type :delete-array-edge
+                   :op-group-id "1"}
                   {:add-id "a9"
                    :op-type :add-array-edge
                    :value {:head-node-id "NodeA"
-                           :tail-node-id "NodeX"}}
+                           :tail-node-id "NodeX"}
+                   :op-group-id "1"}
                   {:add-id "a10"
                    :op-type :add-array-edge
                    :value {:head-node-id "NodeX"
-                           :tail-node-id "NodeB"}}
+                           :tail-node-id "NodeB"}
+                   :op-group-id "1"}
                   ;; While offline, client 2 deletes B, then adds Y in its place
                   ;; Client 2's state is now AYC
                   {:add-id "a2"
                    :op-type :delete-value
-                   :op-path ["NodeB"]}
+                   :op-path ["NodeB"]
+                   :op-group-id "2"}
                   {:add-id "a5"
-                   :op-type :delete-array-edge}
+                   :op-type :delete-array-edge
+                   :op-group-id "2"}
                   {:add-id "a6"
-                   :op-type :delete-array-edge}
+                   :op-type :delete-array-edge
+                   :op-group-id "2"}
                   {:add-id "a11"
                    :op-type :add-value
                    :op-path ["NodeY"]
-                   :value "Y"}
+                   :value "Y"
+                   :op-group-id "2"}
                   {:add-id "a12"
                    :op-type :add-array-edge
                    :value {:head-node-id "NodeA"
-                           :tail-node-id "NodeY"}}
+                           :tail-node-id "NodeY"}
+                   :op-group-id "2"}
                   {:add-id "a13"
                    :op-type :add-array-edge
                    :value {:head-node-id "NodeY"
-                           :tail-node-id "NodeC"}}]
+                           :tail-node-id "NodeC"}
+                   :op-group-id "2"}]
         path []
         expected-v ["A" "X" "Y" "C"]]
+    (log/info 1)
     ;; Too many permutations to test them all, so we take a random sample
     (doseq [crdt-ops (repeatedly 500 #(shuffle crdt-ops))]
+      (log/info 2)
       (let [{:keys [crdt]} (apply-ops/apply-ops
                             (u/sym-map crdt-ops schema sys-time-ms))
+            _ (log/info 3)
             v (crdt/get-value (u/sym-map crdt make-id path schema))]
+        (log/info 4)
         (is (= expected-v v))))))
 
 (deftest test-array-indexing

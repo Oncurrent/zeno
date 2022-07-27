@@ -65,18 +65,18 @@
    {}
    edges))
 
-(defn get-live-ancestor-node
-  [{:keys [edge deleted-edges dangling-edges live-nodes]
+(defn get-live-lineal-node
+  [{:keys [edge node-key lineal-key deleted-edges dangling-edges live-nodes]
     :as arg}]
   (let [non-relevant-danglers (filter #(not= (:op-group-id edge)
                                              (:op-group-id %))
                                       dangling-edges)
         relevant-deleted-edges (set/difference deleted-edges
                                                non-relevant-danglers)]
-    (loop [lineal-node* (:head-node-id edge)]
-      (if (or (live-nodes lineal-node*) (= array-start-node-id lineal-node*))
+    (loop [lineal-node* (lineal-key edge)]
+      (if (live-nodes lineal-node*)
         lineal-node*
-        (let [lineal-edges (filter #(= lineal-node* (:tail-node-id %))
+        (let [lineal-edges (filter #(= lineal-node* (node-key %))
                                    relevant-deleted-edges)
               own-lineal-edges (filter #(= (:op-group-id edge)
                                            (:op-group-id %))
@@ -98,27 +98,73 @@
               lineal-edge (if-not (empty? own-lineal-edges)
                             (first own-lineal-edges)
                             (first other-lineal-edges))]
-          (recur (:head-node-id lineal-edge)))))))
+          (recur (lineal-key lineal-edge)))))))
+
+(defn get-nodes-connected-to-terminals [edges]
+  (reduce (fn [acc {:keys [head-node-id tail-node-id]}]
+            (cond
+              (= array-start-node-id head-node-id)
+              (update acc :nodes-connected-to-start conj tail-node-id)
+
+              (= array-end-node-id tail-node-id)
+              (update acc :nodes-connected-to-end conj head-node-id)
+
+              :else acc))
+          {:nodes-connected-to-start #{array-start-node-id}
+           :nodes-connected-to-end #{array-end-node-id}}
+          edges))
+
+(defn connected-to-terminal?
+  [{:keys [nodes-connected-to-start nodes-connected-to-end node
+           node->edge-info terminal]
+    :as arg}]
+  (let [[nodes-connected link-key] (if (= :start terminal)
+                                     [nodes-connected-to-start :parents]
+                                     [nodes-connected-to-end :children])]
+    (if (nodes-connected node)
+      true
+      (let [links (get-in node->edge-info [node link-key])]
+        (reduce (fn [acc link]
+                  (if-not (connected-to-terminal?
+                           (assoc arg :node link))
+                    acc
+                    (reduced true)))
+                false
+                links)))))
 
 (defn make-replacement-edges
   [{:keys [edges dangling-edges deleted-edges live-nodes make-id]
     :as arg}]
-  (let [make-id* (or make-id u/compact-random-uuid)]
-    (->> dangling-edges
-         (filter #(live-nodes (:tail-node-id %)))
-         (reduce (fn [acc edge]
-                   (let [node (:tail-node-id edge)
-                         lineal-node (get-live-ancestor-node
-                                      (assoc arg :edge edge))
-                         edge (-> {:head-node-id lineal-node
-                                   :tail-node-id node}
-                                  (assoc :add-id (make-id*)))]
-                     (-> acc
-                         (update :edges conj edge)
-                         (update :new-edges conj edge))))
-                 {:edges edges
-                  :new-edges #{}})
-         (:new-edges))))
+  (let [make-id* (or make-id u/compact-random-uuid)
+        nodes-connected-to-terminals (get-nodes-connected-to-terminals edges)
+        node->edge-info (make-node->edge-info edges)]
+    (reduce
+     (fn [acc [node-key lineal-key terminal]]
+       (->> dangling-edges
+            (filter #(live-nodes (node-key %)))
+            (reduce
+             (fn [acc* edge]
+               (let [node (node-key edge)]
+                 (if (connected-to-terminal?
+                      (merge arg (u/sym-map node terminal node->edge-info)
+                             nodes-connected-to-terminals))
+                   acc*
+                   (let [lineal-node (get-live-lineal-node
+                                      (merge arg (u/sym-map edge node-key
+                                                            lineal-key)))
+                         new-edge (-> {lineal-key lineal-node
+                                       node-key node}
+                                      (assoc :add-id (make-id*)))]
+                     (-> acc*
+                         (update :edges conj new-edge)
+                         (update :new-edges conj new-edge))))))
+             {:edges edges
+              :new-edges #{}})
+            (:new-edges)
+            (set/union acc)))
+     #{}
+     [[:tail-node-id :head-node-id :start]
+      [:head-node-id :tail-node-id :end]])))
 
 (defn path-to-combining-node-info
   [{:keys [node->edge-info node]}]
@@ -249,7 +295,7 @@
                (nil?))
          acc
          (conj acc node-id)))
-     #{}
+     #{array-start-node-id array-end-node-id}
      (:children crdt))))
 
 (defn delete-dangling-edges [{:keys [live-nodes] :as arg}]
@@ -326,16 +372,20 @@
              :live-nodes (get-live-nodes arg)
              :sys-time-ms (u/current-time-ms))
       ; (u/log-> #(single-array-crdt->dot!
-      ;            (:crdt %) "/Users/burbma/Desktop/pre6.dot"))
+      ;            (:crdt %) "/Users/burbma/Desktop/pre1.dot"))
+      ; (u/log-> 2.1)
       (delete-dangling-edges)
       ; (u/log-> #(single-array-crdt->dot!
-      ;            (:crdt %) "/Users/burbma/Desktop/no-dangle6.dot"))
+      ;            (:crdt %) "/Users/burbma/Desktop/no-dangle1.dot"))
+      ; (u/log-> 2.2)
       (replace-dangling-edges)
       ; (u/log-> #(single-array-crdt->dot!
-      ;            (:crdt %) "/Users/burbma/Desktop/connected6.dot"))
+      ;            (:crdt %) "/Users/burbma/Desktop/connected1.dot"))
+      ; (u/log-> 2.3)
       (serialize-parallel-paths)
       ; (u/log-> #(single-array-crdt->dot!
-      ;            (:crdt %) "/Users/burbma/Desktop/serialized6.dot"))
+      ;            (:crdt %) "/Users/burbma/Desktop/serialized1.dot"))
+      ; (u/log-> 2.4)
       (select-keys [:crdt :repair-crdt-ops])))
 
 (defmethod c/repair :array

@@ -828,6 +828,48 @@
                                            :path [:pets]
                                            :schema pet-owner-schema})))))
 
+(comment
+ (kaocha.repl/run #'test-merge-array-conflict {:capture-output? false :color? false}))
+(deftest test-merge-array-conflict
+  (let [*next-id-num (atom 0)
+        make-id #(let [n (swap! *next-id-num inc)]
+                   (str "I" n))
+        schema (l/array-schema l/string-schema)
+        arg0 {:cmds [{:zeno/arg ["A" "B" "C"]
+                      :zeno/op :zeno/set
+                      :zeno/path [:zeno/crdt]}]
+              :root :zeno/crdt
+              :schema schema
+              :make-id make-id}
+        ret0 (commands/process-cmds arg0)
+        arg1 {:cmds [{:zeno/arg "X"
+                      :zeno/op :zeno/insert-after
+                      :zeno/path [:zeno/crdt 0]}]
+              :root :zeno/crdt
+              :crdt (:crdt ret0)
+              :schema schema
+              :make-id make-id}
+        arg2 {:cmds [{:zeno/op :zeno/remove
+                      :zeno/path [:zeno/crdt 1]}
+                     {:zeno/arg "Y"
+                      :zeno/op :zeno/insert-after
+                      :zeno/path [:zeno/crdt 0]}]
+              :root :zeno/crdt
+              :crdt (:crdt ret0)
+              :schema schema
+              :make-id make-id}
+        ret1 (commands/process-cmds arg1)
+        ret2 (commands/process-cmds arg2)
+        new-crdt-ops (set/union (:crdt-ops ret1) (:crdt-ops ret2))
+        merged-crdt (:crdt (apply-ops/apply-ops {:crdt (:crdt ret0)
+                                                 :crdt-ops new-crdt-ops
+                                                 :schema schema}))
+        expected-value ["A" "X" "Y" "C"]
+        actual-value (crdt/get-value {:crdt merged-crdt
+                                           :path []
+                                           :schema schema})]
+    (is (= expected-value actual-value))))
+
 (deftest test-nested-merge-array-conflict
   (let [*next-id-num (atom 0)
         make-id #(let [n (swap! *next-id-num inc)]
