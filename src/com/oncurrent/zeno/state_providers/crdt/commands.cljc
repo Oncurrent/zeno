@@ -5,18 +5,14 @@
    [com.oncurrent.zeno.state-providers.crdt.apply-ops :as apply-ops]
    [com.oncurrent.zeno.state-providers.crdt.get :as get]
    [com.oncurrent.zeno.state-providers.crdt.common :as c]
+   [com.oncurrent.zeno.state-providers.crdt.shared :as shared]
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
-(def insert-crdt-ops #{:zeno/insert-after
-                       :zeno/insert-before
-                       :zeno/insert-range-after
-                       :zeno/insert-range-before})
-
-(defmulti process-cmd* (fn [{:keys [cmd]}]
+(defmulti process-cmd* (fn [{:keys [cmd schema]}]
                          (let [{:zeno/keys [op]} cmd]
-                           (if (insert-crdt-ops op)
-                             :zeno/insert*
+                           (if (c/insert-crdt-cmd-types op)
+                             [:zeno/insert* (c/schema->dispatch-type schema)]
                              op))))
 
 (defmulti get-delete-ops (fn [{:keys [schema]}]
@@ -195,6 +191,156 @@
   (let [crdt-ops (get-delete-ops arg)
         crdt (apply-ops/apply-ops (assoc arg :crdt-ops crdt-ops))]
     (u/sym-map crdt crdt-ops)))
+
+(defn associative-do-insert
+  [{:keys [cmd cmd-arg cmd-type growing-path schema shrinking-path] :as arg}]
+  (when (empty? shrinking-path)
+    (let [schema-type (l/schema-type schema)]
+      (throw (ex-info (str "Can only process `" cmd-type "` cmd on "
+                           "an array. Path points to schema type `"
+                           schema-type "`.")
+                      (u/sym-map cmd growing-path shrinking-path)))))
+  (let [[k & ks] shrinking-path
+        _ (c/check-key (assoc arg :key k))
+        container-ops (get-add-container-ops arg)
+        crdt (apply-ops/apply-ops (assoc arg :crdt-ops container-ops))
+        record? (= :record (l/schema-type schema))
+        child-schema (if record?
+                       (l/child-schema schema k)
+                       (l/child-schema schema))
+        child-crdt (get-in crdt [:children k])
+        ret (process-cmd* (assoc arg
+                                 :crdt child-crdt
+                                 :growing-path (conj growing-path k)
+                                 :schema child-schema
+                                 :shrinking-path ks))]
+    {:crdt (assoc-in crdt [:children k] (:crdt ret))
+     :crdt-ops (set/union container-ops (:crdt-ops ret))}))
+
+(defmethod process-cmd* [:zeno/insert* :map]
+  [arg]
+  (associative-do-insert arg))
+
+(defmethod process-cmd* [:zeno/insert* :record]
+  [arg]
+  (associative-do-insert arg))
+
+(defmethod process-cmd* [:zeno/insert* :single-value]
+  [{:keys [cmd cmd-type schema] :as arg}]
+  (let [schema-type (l/schema-type schema)]
+    (throw (ex-info (str "Can only process `" cmd-type "` cmd on "
+                         "an array. Path points to schema type `"
+                         schema-type "`.")
+                    cmd))))
+
+(defn get-parent-node-id [{:keys [cmd-type crdt norm-i]}]
+  (if (c/after-cmd-types cmd-type)
+    (get-in crdt [:ordered-node-ids norm-i])
+    (if (zero? norm-i)
+      c/array-head-node-id
+      (get-in crdt [:ordered-node-ids (dec norm-i)]))))
+
+(defn do-single-insert
+  [{:keys [cmd-type crdt growing-path make-id norm-i schema] :as arg}]
+  (let [node-id (make-id)
+        child-ops (get-add-ops
+                   (assoc arg
+                          :crdt nil
+                          :growing-path (conj growing-path node-id)
+                          :schema (l/child-schema schema)
+                          :shrinking-path []))
+        parent-node-id (get-parent-node-id arg)
+        peer-node-ids (->> (get-in crdt [:node-id-to-child-nodes
+                                         parent-node-id])
+                           (map :node-id)
+                           (set))
+        node-info (u/sym-map node-id parent-node-id peer-node-ids)
+        sval (l/serialize shared/crdt-array-node-info-schema node-info)
+        node-op {:op-type :add-array-node
+                 :op-path growing-path
+                 :serialized-value sval
+                 :value node-info}
+        ops (conj child-ops node-op)]
+    {:crdt (apply-ops/apply-ops (assoc arg :crdt-ops ops))
+     :crdt-ops ops}))
+
+(defn do-range-insert
+  [{:keys [cmd-arg cmd-path cmd-type crdt growing-path make-id norm-i schema]
+    :as arg}]
+  (when-not (sequential? cmd-arg)
+    (throw (ex-info (str "The `:zeno/arg` in a range insert command must be "
+                         "sequential. Got `" cmd-arg "`.")
+                    (u/sym-map cmd-arg cmd-type cmd-path))))
+  (let [range-parent-node-id (get-parent-node-id arg)
+        vs (vec cmd-arg)
+        node-ids (mapv (constantly make-id) vs)
+        ops (reduce
+             (fn [acc i]
+               (let [node-id (nth node-ids i)
+                     new-growing-path (conj growing-path node-id)
+                     child-ops (get-add-ops
+                                (assoc arg
+                                       :cmd-arg (nth vs i)
+                                       :crdt nil
+                                       :growing-path new-growing-path
+                                       :schema (l/child-schema schema)
+                                       :shrinking-path []))
+                     parent-node-id (if (pos? i)
+                                      (nth node-ids (dec i))
+                                      range-parent-node-id)
+                     peer-node-ids (if (pos? i)
+                                     #{}
+                                     (->> (get-in crdt [:node-id-to-child-nodes
+                                                        parent-node-id])
+                                          (map :node-id)
+                                          (set)))
+                     node-info (u/sym-map node-id parent-node-id peer-node-ids)
+                     sval (l/serialize shared/crdt-array-node-info-schema
+                                       node-info)
+                     node-op {:op-type :add-array-node
+                              :op-path growing-path
+                              :serialized-value sval
+                              :value node-info}]
+                 (set/union acc (conj child-ops node-op))))
+             #{}
+             (range (count cmd-arg)))]
+    {:crdt (apply-ops/apply-ops (assoc arg :crdt-ops ops))
+     :crdt-ops ops}))
+
+(defmethod process-cmd* [:zeno/insert* :array]
+  [{:keys [cmd-type cmd-path crdt growing-path schema shrinking-path] :as arg}]
+  (let [container-ops (get-add-container-ops arg)
+        {:keys [ordered-node-ids]} crdt
+        [i & sub-path] shrinking-path
+        _ (when-not (int? i)
+            (throw (ex-info (str "Array index must be an integer. Got: `"
+                                 (or i "nil") "`.")
+                            (u/sym-map cmd-type cmd-path growing-path
+                                       i shrinking-path sub-path))))
+        array-len (count ordered-node-ids)
+        norm-i (u/get-normalized-array-index (u/sym-map array-len i))]
+    (when-not norm-i
+      (throw (ex-info (str "Array index `" i "` is out of bounds for the "
+                           "indicated array, whose length is "
+                           array-len".")
+                      (u/sym-map array-len i))))
+    (if (seq sub-path)
+      (let [k (get-in crdt [:ordered-node-ids norm-i])
+            ret (process-cmd*
+                 (assoc arg
+                        :crdt (get-in crdt [:children k])
+                        :growing-path (conj growing-path norm-i)
+                        :schema (l/child-schema schema)
+                        :shrinking-path sub-path))
+            new-crdt (assoc-in crdt [:children k] (:crdt ret))]
+        {:crdt (:crdt ret)
+         :crdt-ops (set/union container-ops (:crdt-ops ret))})
+      (let [arg* (assoc arg :crdt crdt :norm-i norm-i)
+            ret (if (c/range-cmd-types cmd-type)
+                  (do-range-insert arg*)
+                  (do-single-insert arg*))]
+        {:crdt (:crdt ret)
+         :crdt-ops (set/union container-ops (:crdt-ops ret))}))))
 
 (defn process-cmd [{:keys [cmd crdt data-schema root] :as arg}]
   (let [cmd-path (:zeno/path cmd)]

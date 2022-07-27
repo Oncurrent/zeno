@@ -21,11 +21,13 @@
                       (ba/byte-array->hex-str)
                       (str "array-crdt-")
                       (keyword (namespace ::foo)))
-        fields [[:add-id-to-edge shared/crdt-array-edge-schema]
-                [:head-node-id-to-edge (l/map-schema
-                                        shared/crdt-array-edge-schema)]
-                [:deleted-edges (l/array-schema shared/crdt-array-edge-schema)]
-                [:ordered-node-ids l/string-set-schema]]]
+        fields [[:children children-schema]
+                [:container-add-ids l/string-set-schema]
+                [:deleted-node-ids l/string-set-schema]
+                [:node-id-to-child-infos (l/map-schema
+                                          (l/array-schema
+                                           shared/crdt-array-node-info-schema))]
+                [:ordered-node-ids (l/array-schema shared/node-id-schema)]]]
     (l/record-schema sch-name fields)))
 
 (defmethod ->crdt-schema* :map

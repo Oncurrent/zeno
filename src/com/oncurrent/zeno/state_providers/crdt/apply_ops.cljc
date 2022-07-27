@@ -6,8 +6,33 @@
    [deercreeklabs.lancaster :as l]
    [taoensso.timbre :as log]))
 
-(defmulti apply-op (fn [{:keys [op-type schema]}]
-                     [(c/schema->dispatch-type schema) op-type]))
+(def container-op-types #{:add-container :delete-container})
+(def array-op-types #{:add-array-node :delete-array-node})
+
+(defmulti apply-op
+  (fn [{:keys [op-type schema]}]
+    (let [sch-type (c/schema->dispatch-type schema)]
+      (cond
+        (= :union sch-type)
+        [:union :any]
+
+        (and (container-op-types op-type)
+             (c/container-types sch-type))
+        [:container op-type]
+
+        (and (array-op-types op-type)
+             (= :array sch-type))
+        [:array op-type]
+
+        (and (array-op-types op-type)
+             (c/container-types sch-type))
+        [:container :array-op]
+
+        (array-op-types op-type)
+        [:single-value :array-op]
+
+        :else
+        [sch-type op-type]))))
 
 (defmethod apply-op [:single-value :add-value]
   [{:keys [add-id crdt op-path sys-time-ms] :as arg}]
@@ -45,7 +70,7 @@
                                             (l/child-schema schema))
                                   :shrinking-path ks))))))
 
-(defn associative-add-container
+(defmethod apply-op [:container :add-container]
   [{:keys [add-id crdt shrinking-path] :as arg}]
   (if (seq shrinking-path)
     (apply-op-to-child arg)
@@ -54,7 +79,7 @@
       crdt
       (update crdt :container-add-ids #(conj (or % #{}) add-id)))))
 
-(defn associative-delete-container
+(defmethod apply-op [:container :delete-container]
   [{:keys [add-id crdt shrinking-path] :as arg}]
   (if (seq shrinking-path)
     (apply-op-to-child arg)
@@ -65,22 +90,6 @@
           (update :container-add-ids #(disj (or % #{}) add-id))
           (update :deleted-container-add-ids #(conj (or % #{}) add-id))))))
 
-(defmethod apply-op [:map :add-container]
-  [arg]
-  (associative-add-container arg))
-
-(defmethod apply-op [:record :add-container]
-  [arg]
-  (associative-add-container arg))
-
-(defmethod apply-op [:map :delete-container]
-  [arg]
-  (associative-delete-container arg))
-
-(defmethod apply-op [:record :delete-container]
-  [arg]
-  (associative-delete-container arg))
-
 (defmethod apply-op [:single-value :add-container]
   [{:keys [crdt] :as arg}]
   ;; This can be called from apply-union-op
@@ -90,6 +99,14 @@
   [{:keys [crdt] :as arg}]
   ;; This can be called from apply-union-op
   crdt)
+
+(defmethod apply-op [:array :add-value]
+  [{:keys [op-path op-type shrinking-path] :as arg}]
+  (if (seq shrinking-path)
+    (apply-op-to-child (assoc arg :string-array-keys? true))
+    (throw (ex-info (str "Invalid op. Can't `:add-value` at array root. "
+                         "`:op-path` should contain an array index.")
+                    (u/sym-map op-type op-path)))))
 
 (defmethod apply-op [:map :add-value]
   [{:keys [op-path op-type shrinking-path] :as arg}]
@@ -107,7 +124,7 @@
                          "`:op-path` should contain a record field key.")
                     (u/sym-map op-type op-path)))))
 
-(defn apply-union-op
+(defmethod apply-op [:union :any]
   [{:keys [add-id crdt growing-path op-path op-type schema shrinking-path
            sys-time-ms value]
     :as arg}]
@@ -132,21 +149,13 @@
                                       :schema member-schema
                                       :shrinking-path ks)))))))
 
-(defmethod apply-op [:union :add-value]
-  [arg]
-  (apply-union-op arg))
-
-(defmethod apply-op [:union :delete-value]
-  [arg]
-  (apply-union-op arg))
-
-(defmethod apply-op [:union :add-container]
-  [arg]
-  (apply-union-op arg))
-
-(defmethod apply-op [:union :delete-container]
-  [arg]
-  (apply-union-op arg))
+(defmethod apply-op [:array :delete-value]
+  [{:keys [op-path op-type shrinking-path] :as arg}]
+  (if (seq shrinking-path)
+    (apply-op-to-child (assoc arg :string-array-keys? true))
+    (throw (ex-info (str "Invalid op. Can't `:delete-value` at array root. "
+                         "`:op-path` should contain an array index.")
+                    (u/sym-map op-type op-path)))))
 
 (defmethod apply-op [:map :delete-value]
   [{:keys [op-path op-type shrinking-path] :as arg}]
@@ -163,6 +172,75 @@
     (throw (ex-info (str "Invalid op. Can't `:delete-value` at record root. "
                          "`:op-path` should contain a record field key.")
                     (u/sym-map op-type op-path)))))
+
+(defmethod apply-op [:single-value :array-op]
+  [{:keys [op-path op-type schema shrinking-path] :as arg}]
+  (let [schema-type (l/schema-type schema)]
+    (throw (ex-info
+            "Invalid op. Can't apply an array operation on a single value."
+            (u/sym-map op-type op-path schema-type shrinking-path)))))
+
+(defmethod apply-op [:container :array-op]
+  [{:keys [op-path op-type schema shrinking-path] :as arg}]
+  (if (seq shrinking-path)
+    (apply-op-to-child (assoc arg :string-array-keys? true))
+    (let [schema-type (l/schema-type schema)]
+      (throw (ex-info (str "Invalid op. Can't apply an array operation on "
+                           "a " (name schema-type) ".")
+                      (u/sym-map op-type op-path schema-type))))))
+
+(defn causal-comparator [x y]
+  (cond
+    ((:peer-node-ids x) (:node-id y)) 1
+    ((:peer-node-ids y) (:node-id x)) -1
+    :else (compare (:node-id x) (:node-id y))))
+
+(defn causal-traversal
+  [{:keys [deleted-node-ids node-id-to-child-infos start-node-id] :as arg}]
+  (loop [node-id start-node-id
+         out (:out arg)]
+    (let [infos (get node-id-to-child-infos node-id)]
+      (case (count infos)
+        0 out
+        1 (let [new-node-id (-> infos first :node-id)
+                new-out (if (get deleted-node-ids new-node-id)
+                          out
+                          (conj out new-node-id))]
+            (recur new-node-id new-out))
+        (reduce (fn [acc child-node-info]
+                  (let [child-node-id (:node-id child-node-info)
+                        new-out (if (deleted-node-ids child-node-id)
+                                  acc
+                                  (conj acc child-node-id))]
+                    (causal-traversal (assoc arg
+                                             :out new-out
+                                             :start-node-id child-node-id))))
+                out
+                (sort-by identity causal-comparator infos))))))
+
+(defn calc-ordered-node-ids [crdt]
+  (causal-traversal (assoc crdt
+                           :out []
+                           :start-node-id c/array-head-node-id)))
+
+(defmethod apply-op [:array :add-array-node]
+  [{:keys [crdt shrinking-path] :as arg}]
+  (if (seq shrinking-path)
+    (apply-op-to-child (assoc arg :string-array-keys? true))
+    (let [value (or (:value arg)
+                    (c/deserialize-op-value arg))
+          {:keys [parent-node-id]} value
+          new-crdt (update-in crdt [:node-id-to-child-infos parent-node-id]
+                              (fn [child-infos]
+                                (conj child-infos value)))]
+      (assoc new-crdt :ordered-node-ids (calc-ordered-node-ids new-crdt)))))
+
+(defmethod apply-op [:array :delete-array-node]
+  [{:keys [crdt node-id shrinking-path] :as arg}]
+  (if (seq shrinking-path)
+    (apply-op-to-child (assoc arg :string-array-keys? true))
+    (let [new-crdt (update crdt :deleted-node-ids assoc node-id)]
+      (assoc new-crdt :ordered-node-ids (calc-ordered-node-ids new-crdt)))))
 
 (defn apply-ops
   [{:keys [crdt crdt-ops data-schema root] :as arg}]

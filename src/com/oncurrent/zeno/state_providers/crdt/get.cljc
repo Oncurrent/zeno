@@ -13,14 +13,17 @@
   (if (seq shrinking-path)
     (throw (ex-info "Can't index into a single-value CRDT."
                     (u/sym-map growing-path shrinking-path)))
-    (let [[[add-id value-info] & others] (:add-id-to-value-info crdt)]
-      (when (seq others)
-        (throw (ex-info "CRDT needs repair"
-                        {:crdt crdt
-                         :path growing-path})))
-      {:value (:value value-info)
-       :exists? (boolean value-info)
-       :norm-path growing-path})))
+    (let [{:keys [add-id-to-value-info]} crdt
+          value-info (case (count add-id-to-value-info)
+                       0 nil
+                       1 (-> add-id-to-value-info first second)
+                       (->> (vals add-id-to-value-info)
+                            (sort-by :sys-time-ms)
+                            (reverse)
+                            (first)))
+          {:value (:value value-info)
+           :exists? (boolean value-info)
+           :norm-path growing-path}])))
 
 (defn get-child-value-info
   [{:keys [crdt growing-path schema shrinking-path] :as arg}]
@@ -28,13 +31,16 @@
         child-crdt (get-in crdt [:children k])
         child-schema (if (keyword? k)
                        (l/child-schema schema k) ; record
-                       (l/child-schema schema))] ; map / array
-    (when child-crdt
+                       (l/child-schema schema))] ; map
+    (if child-crdt
       (get-value-info (assoc arg
                              :crdt child-crdt
                              :growing-path (conj growing-path k)
                              :schema child-schema
-                             :shrinking-path ks)))))
+                             :shrinking-path ks))
+      {:value nil
+       :exists? false
+       :norm-path growing-path})))
 
 (defn associative-get-value-info
   [{:keys [crdt growing-path schema shrinking-path] :as arg}]
@@ -63,6 +69,46 @@
                        acc)))
                  {}
                  child-ks)]
+          {:value v
+           :exists? true
+           :norm-path growing-path})))))
+
+(defmethod get-value-info :array
+  [{:keys [crdt growing-path path schema shrinking-path] :as arg}]
+  (let [child-schema (l/child-schema schema)
+        {:keys [children container-add-ids ordered-node-ids]} crdt]
+    (if (empty? container-add-ids)
+      {:value nil
+       :exists? false
+       :norm-path growing-path}
+      (if (seq shrinking-path)
+        (let [[i & sub-path] shrinking-path
+              _ (when-not (int? i)
+                  (throw (ex-info (str "Array index must be an integer. Got: `"
+                                       (or i "nil") "`.")
+                                  (u/sym-map path growing-path
+                                             i shrinking-path sub-path))))
+              array-len (count ordered-node-ids)
+              norm-i (u/get-normalized-array-index (u/sym-map array-len i))
+              k (get ordered-node-ids norm-i)]
+          (get-value-info
+           (assoc arg
+                  :crdt (get-in crdt [:children k])
+                  :growing-path (conj growing-path norm-i)
+                  :schema child-schema
+                  :shrinking-path sub-path)))
+        (let [v (reduce
+                 (fn [acc node-id]
+                   (let [vi (get-value-info
+                             (assoc arg
+                                    :crdt (get children node-id)
+                                    :growing-path (conj growing-path node-id)
+                                    :schema child-schema))]
+                     (if (:exists? vi)
+                       (conj acc (:value vi))
+                       acc)))
+                 []
+                 ordered-node-ids)]
           {:value v
            :exists? true
            :norm-path growing-path})))))

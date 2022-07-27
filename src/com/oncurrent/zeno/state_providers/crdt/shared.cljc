@@ -14,12 +14,12 @@
 (def node-id-schema l/string-schema)
 
 (def add-op-types
-  #{:add-array-edge
+  #{:add-array-node
     :add-container
     :add-value})
 
 (def delete-op-types
-  #{:delete-array-edge
+  #{:delete-array-node
     :delete-container
     :delete-value})
 
@@ -28,10 +28,10 @@
    (keyword (namespace ::foo) "crdt-op-type")
    (seq (set/union add-op-types delete-op-types))))
 
-(l/def-record-schema crdt-array-edge-schema
-  [:add-id add-id-schema]
-  [:head-node-id node-id-schema]
-  [:tail-node-id node-id-schema])
+(l/def-record-schema crdt-array-node-info-schema
+  [:node-id node-id-schema]
+  [:parent-node-id node-id-schema]
+  [:peer-node-ids l/string-set-schema])
 
 (l/def-record-schema serializable-crdt-op-schema
   "Depending on the op-type, different fields will be used."

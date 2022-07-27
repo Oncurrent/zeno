@@ -12,7 +12,16 @@
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
 
+(def after-cmd-types #{:zeno/insert-after
+                       :zeno/insert-range-after})
+(def array-head-node-id "__HEAD__")
 (def container-types #{:array :map :record :union})
+(def insert-crdt-cmd-types #{:zeno/insert-after
+                             :zeno/insert-before
+                             :zeno/insert-range-after
+                             :zeno/insert-range-before})
+(def range-cmd-types #{:zeno/insert-range-after
+                       :zeno/insert-range-before})
 (def tx-info-prefix "_TX-INFO-FOR-TX-ID-")
 
 (defn schema->dispatch-type [schema]
