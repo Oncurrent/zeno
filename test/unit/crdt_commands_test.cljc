@@ -1551,15 +1551,15 @@
   (let [;; First, we set up an initial CRDT and ensure it's correct.
         schema (l/array-schema l/string-schema)
         ; data (prefixed-uuids 3 "zeroth-")
-        prefix0 "0" ; "zeroth"
-        prefix1 "1" ; "first"
-        prefix2 "2" ; "second"
-        prefix3 "3" ; "third"
+        prefix0 #_"0"  "zeroth"
+        prefix1 #_"1"  "first"
+        prefix2 #_"2"  "second"
+        prefix3 #_"3"  "third"
         delimiter "-"
-        data [(str prefix0 delimiter "a")
-              #_"zeroth-1xxvagjenwgvzbqkh1rmvkxcwd"
-              #_"zeroth-9akvybdp9rj388bhjq65qx0451"
-              #_"zeroth-669nha6hw2gzmaab4xw4jxw4wd"]
+        data [#_(str prefix0 delimiter "a")
+              "zeroth-1xxvagjenwgvzbqkh1rmvkxcwd"
+              "zeroth-9akvybdp9rj388bhjq65qx0451"
+              "zeroth-669nha6hw2gzmaab4xw4jxw4wd"]
         *id (atom 0)
         make-id (fn []
                   (let [id @*id]
@@ -1572,10 +1572,10 @@
              :schema schema
              :make-id make-id}
         {:keys [crdt crdt-ops]} (commands/process-cmds arg)
-        ; acrdt (ops->crdt crdt-ops schema)
-        ; _ (is (= data
-        ;          (->value crdt [] schema)
-        ;          (->value acrdt [] schema)))
+        acrdt (ops->crdt crdt-ops schema)
+        _ (is (= data
+                 (->value crdt [] schema)
+                 (->value acrdt [] schema)))
         ;; Next, we generate two sets of random commands concurrently (they
         ;; have no knowledge of each other).
         ; cmds1 (rand-cmds-from-coll-of-strs data "first-")
@@ -1583,52 +1583,52 @@
         ; cmds3 (rand-cmds-from-coll-of-strs data "third-")
         cmds1 [#:zeno{:op :zeno/insert-range-before
                       :path [0]
-                      :arg [(str prefix1 delimiter "a")
-                            #_"first-82bzy3z8w0kvyaf6d9307kzy48"
-                            #_"first-78kkvbt568jpe9pdwyvpm9yy5q"
-                            #_"first-114gxat3r6jrx8vw29bdeaawvb"
-                            #_"first-36hj8ehvswjnz8awxyx20pvvdb"
-                            #_"first-860sa340xrkjva6zq3fx95zmyc"]}
+                      :arg [#_(str prefix1 delimiter "a")
+                            "first-82bzy3z8w0kvyaf6d9307kzy48"
+                            "first-78kkvbt568jpe9pdwyvpm9yy5q"
+                            "first-114gxat3r6jrx8vw29bdeaawvb"
+                            "first-36hj8ehvswjnz8awxyx20pvvdb"
+                            "first-860sa340xrkjva6zq3fx95zmyc"]}
                #:zeno{:op :zeno/insert-after
                       :path [1]
-                      :arg (str prefix1 delimiter "b") #_"first-01nqybma9eg6ebag41e8m6y4jz"}
+                      :arg #_(str prefix1 delimiter "b") "first-01nqybma9eg6ebag41e8m6y4jz"}
                #:zeno{:op :zeno/insert-range-after
                       :path [2]
-                      :arg [(str prefix1 delimiter "c")
-                            #_"first-bm9sfe9r16hc5b8z3mkgwzzyh6"
-                            #_"first-avgcjpd82ej5dbt8afcbnjxp6t"
-                            #_"first-b41xjtz8a6ggmb8ehvbxtwcxmm"
-                            #_"first-0zjazgzcr4jp496cg6raw80jm1"
-                            #_"first-96hnx0h58ygc586c66ykj6pj4e"]}]
+                      :arg [#_(str prefix1 delimiter "c")
+                            "first-bm9sfe9r16hc5b8z3mkgwzzyh6"
+                            "first-avgcjpd82ej5dbt8afcbnjxp6t"
+                            "first-b41xjtz8a6ggmb8ehvbxtwcxmm"
+                            "first-0zjazgzcr4jp496cg6raw80jm1"
+                            "first-96hnx0h58ygc586c66ykj6pj4e"]}]
         cmds2 [#:zeno{:op :zeno/insert-range-after
                       :path [0]
-                      :arg [(str prefix2 delimiter "a")
-                            #_"second-en2bmdgprmhtgbzm0kzakg7s0d"
-                            #_"second-25v9bj6v0tg17bcy1ehm6jcstw"
-                            #_"second-922bz80e4wght95np90p0rtsgr"
-                            #_"second-fj34agdrvcjxxbd9ksjf836es0"
-                            #_"second-eh102et83ek169cmyx8wasys3h"]}
+                      :arg [#_(str prefix2 delimiter "a")
+                            "second-en2bmdgprmhtgbzm0kzakg7s0d"
+                            "second-25v9bj6v0tg17bcy1ehm6jcstw"
+                            "second-922bz80e4wght95np90p0rtsgr"
+                            "second-fj34agdrvcjxxbd9ksjf836es0"
+                            "second-eh102et83ek169cmyx8wasys3h"]}
                #:zeno{:op :zeno/insert-after
                       :path [1]
-                      :arg (str prefix2 delimiter "b") #_"second-62r7y3t7pgjrv8ctrc7rm9382j"}
+                      :arg #_(str prefix2 delimiter "b") "second-62r7y3t7pgjrv8ctrc7rm9382j"}
                #:zeno{:op :zeno/insert-range-before
                       :path [2]
-                      :arg [(str prefix2 delimiter "c")
-                            #_"second-975q32239whqr8egpsx60fevv8"
-                            #_"second-3c8jhwjr76jg2b2zsrjhmmeaf8"
-                            #_"second-dk2txhjp54jwyb63hk7k6hy4jq"
-                            #_"second-f6rvmtprp2jj2a9212nzdgsd3f"
-                            #_"second-4ejrxged0rh2x8t8hq2j5zn4bh"]}]
+                      :arg [#_(str prefix2 delimiter "c")
+                            "second-975q32239whqr8egpsx60fevv8"
+                            "second-3c8jhwjr76jg2b2zsrjhmmeaf8"
+                            "second-dk2txhjp54jwyb63hk7k6hy4jq"
+                            "second-f6rvmtprp2jj2a9212nzdgsd3f"
+                            "second-4ejrxged0rh2x8t8hq2j5zn4bh"]}]
         cmds3 [#:zeno{:op :zeno/remove
                       :path [0]}
                #:zeno{:op :zeno/insert-range-after
                       :path [1]
-                      :arg [(str prefix3 delimiter "a")
-                            #_"third-6eezfx1xzrk48by16pqz7c0peb"
-                            #_"third-eacbe6zje8gkg96hage370s2rp"
-                            #_"third-atmg391fxtgyhb01bzt5sbpqyy"
-                            #_"third-cgjj58zxcmk1v8k0hn9p2hjdx8"
-                            #_"third-2jz1pdba1rgvrbvdv34nx5fcha"]}]
+                      :arg [#_(str prefix3 delimiter "a")
+                            "third-6eezfx1xzrk48by16pqz7c0peb"
+                            "third-eacbe6zje8gkg96hage370s2rp"
+                            "third-atmg391fxtgyhb01bzt5sbpqyy"
+                            "third-cgjj58zxcmk1v8k0hn9p2hjdx8"
+                            "third-2jz1pdba1rgvrbvdv34nx5fcha"]}]
         ;; Process each set of commands and extract the value from the
         ;; resulting CRDTs as well as construct CRDTs from the returned ops.
         {crdt1 :crdt crdt-ops1 :crdt-ops} (commands/process-cmds
@@ -1637,19 +1637,19 @@
                                            (assoc arg :cmds cmds2 :crdt crdt))
         {crdt3 :crdt crdt-ops3 :crdt-ops} (commands/process-cmds
                                            (assoc arg :cmds cmds3 :crdt crdt))
-        ; acrdt1 (ops->crdt (set/union crdt-ops crdt-ops1) schema)
-        ; acrdt2 (ops->crdt (set/union crdt-ops crdt-ops2) schema)
-        ; acrdt3 (ops->crdt (set/union crdt-ops crdt-ops3) schema)
+        acrdt1 (ops->crdt (set/union crdt-ops crdt-ops1) schema)
+        acrdt2 (ops->crdt (set/union crdt-ops crdt-ops2) schema)
+        acrdt3 (ops->crdt (set/union crdt-ops crdt-ops3) schema)
         data1 (->value crdt1 [] schema)
         data2 (->value crdt2 [] schema)
         data3 (->value crdt3 [] schema)
         ;; Some consistency checks for each CRDT individually.
-        ; _ (is (= data1
-        ;          (->value acrdt1 [] schema)))
-        ; _ (is (= data2
-        ;          (->value acrdt2 [] schema)))
-        ; _ (is (= data3
-        ;          (->value acrdt3 [] schema)))
+        _ (is (= data1
+                 (->value acrdt1 [] schema)))
+        _ (is (= data2
+                 (->value acrdt2 [] schema)))
+        _ (is (= data3
+                 (->value acrdt3 [] schema)))
         ;; Create the combined CRDT both ways, extract value, and assert
         ;; equality.
         ; _ (log/info "BEFORE")
@@ -1661,53 +1661,52 @@
                               :schema schema
                               :make-id make-id})
         ; _ (log/info "AFTER")
-        ; mcrdt (-> (apply-ops/apply-ops {:crdt crdt
-        ;                                 :crdt-ops (set/union crdt-ops1
-        ;                                                      crdt-ops2
-        ;                                                      crdt-ops3)
-        ;                                 :schema schema})
-        ;           (:crdt))
-        ; data-all (->value acrdt-all [] schema)
-        ; _ (is (= data-all (->value mcrdt [] schema)))
+        mcrdt (-> (apply-ops/apply-ops {:crdt crdt
+                                        :crdt-ops (set/union crdt-ops1
+                                                             crdt-ops2
+                                                             crdt-ops3)
+                                        :schema schema})
+                  (:crdt))
+        data-all (->value acrdt-all [] schema)
+        _ (is (= data-all (->value mcrdt [] schema)))
         ; ;; Because the values are UUIDs we can use sets instead of vectors
         ; ;; for the next two parts
-        ; set1 (into #{} data1)
-        ; set2 (into #{} data2)
-        ; set3 (into #{} data3)
-        ; set-all (into #{} data-all)
-        ; ;; Test that all not-deleted things are present post merge.
-        ; _ (is (= set1 (set/intersection set-all set1)))
-        ; _ (is (= set2 (set/intersection set-all set2)))
-        ; _ (is (= set3 (set/intersection set-all set3)))
+        set1 (into #{} data1)
+        set2 (into #{} data2)
+        set3 (into #{} data3)
+        set-all (into #{} data-all)
         ; ;; Test that deleted things are not present post merge.
-        ; deleted1 (get-deleted-values-as-set data cmds1)
-        ; deleted2 (get-deleted-values-as-set data cmds2)
-        ; deleted3 (get-deleted-values-as-set data cmds3)
-        ; _ (is (empty? (set/intersection set-all deleted1)))
-        ; _ (is (empty? (set/intersection set-all deleted2)))
-        ; _ (is (empty? (set/intersection set-all deleted3)))
+        deleted1 (get-deleted-values-as-set data cmds1)
+        deleted2 (get-deleted-values-as-set data cmds2)
+        deleted3 (get-deleted-values-as-set data cmds3)
+        deleted-all (set/union deleted1 deleted2 deleted3)
+        _ (is (empty? (set/intersection set-all deleted-all)))
+        ; ;; Test that all not-deleted things are present post merge.
+        _ (is (= (set/difference set1 deleted-all) (set/intersection set-all set1)))
+        _ (is (= (set/difference set2 deleted-all) (set/intersection set-all set2)))
+        _ (is (= (set/difference set3 deleted-all) (set/intersection set-all set3)))
         ; ;; Test that all zeroth things are in the correct order, cmds can't
         ; ;; rearrage without deleting and readding but we aren't doing that
         ; ;; since each new insertion is a new UUID.
-        ; data-post-merge-expected (filter-out-values
-        ;                           (set/union deleted1 deleted2 deleted3) data)
-        ; data-post-merge-actual (keep-by-prefix prefix0 data-all)
-        ; _ (is (= data-post-merge-expected data-post-merge-actual))
+        data-post-merge-expected (filter-out-values
+                                  (set/union deleted1 deleted2 deleted3) data)
+        data-post-merge-actual (keep-by-prefix prefix0 data-all)
+        _ (is (= data-post-merge-expected data-post-merge-actual))
         ; ;; Test that at any given position, i.e. before or after an element
         ; ;; of the original array, there is not interleaving and that
         ; ;; whichever comes first at in one position comes first in all
         ; ;; positions. We start by creating partitions of all prefixes between
         ; ;; all original elements.
-        ; partitioned (->> data-all
-        ;                  (partition-by-prefix prefix0 delimiter)
-        ;                  (drop-partitions-by-prefix prefix0)
-        ;                  (map #(partition-by-prefixes delimiter %)))
-        ; *came-first (atom nil)
-        ; *came-second (atom nil)
-        ; *came-last (atom nil)
+        partitioned (->> data-all
+                         (partition-by-prefix prefix0 delimiter)
+                         (drop-partitions-by-prefix prefix0)
+                         (map #(partition-by-prefixes delimiter %)))
+        *came-first (atom nil)
+        *came-second (atom nil)
+        *came-last (atom nil)
         ]
-    (is (= true true)) ; You have to assert something or the test fails.
-    #_(doseq [p partitioned]
+    ; (is (= true true)) ; You have to assert something or the test fails.
+    (doseq [p partitioned]
       (case (count p)
         0 nil ; Not a problem, perhaps no commands were generated.
         1 nil ; Not a problem, testing would only be testing partition-by.
