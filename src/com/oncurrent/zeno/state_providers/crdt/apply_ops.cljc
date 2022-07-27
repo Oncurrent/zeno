@@ -209,7 +209,7 @@
             (recur new-node-id new-out))
         (reduce (fn [acc child-node-info]
                   (let [child-node-id (:node-id child-node-info)
-                        new-out (if (deleted-node-ids child-node-id)
+                        new-out (if (get deleted-node-ids child-node-id)
                                   acc
                                   (conj acc child-node-id))]
                     (causal-traversal (assoc arg
