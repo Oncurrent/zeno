@@ -250,7 +250,7 @@
                           :schema (l/child-schema schema)
                           :shrinking-path []))
         parent-node-id (get-parent-node-id arg)
-        peer-node-ids (->> (get-in crdt [:node-id-to-child-nodes
+        peer-node-ids (->> (get-in crdt [:node-id-to-child-infos
                                          parent-node-id])
                            (map :node-id)
                            (set))
@@ -290,7 +290,7 @@
                                       range-parent-node-id)
                      peer-node-ids (if (pos? i)
                                      #{}
-                                     (->> (get-in crdt [:node-id-to-child-nodes
+                                     (->> (get-in crdt [:node-id-to-child-infos
                                                         parent-node-id])
                                           (map :node-id)
                                           (set)))
