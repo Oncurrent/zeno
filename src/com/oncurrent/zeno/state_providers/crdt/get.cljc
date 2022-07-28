@@ -20,10 +20,10 @@
                        (->> (vals add-id-to-value-info)
                             (sort-by :sys-time-ms)
                             (reverse)
-                            (first)))
-          {:value (:value value-info)
-           :exists? (boolean value-info)
-           :norm-path growing-path}])))
+                            (first)))]
+      {:value (:value value-info)
+       :exists? (boolean value-info)
+       :norm-path growing-path})))
 
 (defn get-child-value-info
   [{:keys [crdt growing-path schema shrinking-path] :as arg}]

@@ -180,7 +180,7 @@
             (range (count member-schemas)))))
 
 (defmethod process-cmd* :zeno/set
-  [{:keys [data-schema crdt] :as arg}]
+  [{:keys [crdt] :as arg}]
   (let [crdt-ops (set/union (get-delete-ops arg)
                             (get-add-ops arg))
         crdt (apply-ops/apply-ops (assoc arg :crdt-ops crdt-ops))]
