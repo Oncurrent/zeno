@@ -91,13 +91,13 @@
                    (->snapshot-k log-info))
           ba (au/<? (bulk-storage/<get bulk-storage snap-k))]
       (when ba
-        (au/<? (common/<ba->snapshot (assoc arg :ba ba)))))))
+        nil #_(au/<? (common/<ba->snapshot (assoc arg :ba ba)))))))
 
 (defn <get-tx-infos-for-tx-ids [{:keys [tx-ids] :as arg}]
   (au/go
     (when (seq tx-ids)
-      (let [stis (au/<? (common/<get-serializable-tx-infos arg))]
-        (au/<? (common/<serializable-tx-infos->tx-infos
+      (let [stis nil #_(au/<? (common/<get-serializable-tx-infos arg))]
+        nil #_(au/<? (common/<serializable-tx-infos->tx-infos
                 (assoc arg :serializable-tx-infos stis)))))))
 
 (defn <get-crdt-ops-and-updated-paths-for-tx-ids [arg]
@@ -242,7 +242,7 @@
     :as arg}]
   (au/go
     (au/<? (<store-tx-infos! (u/sym-map serializable-tx-infos storage)))
-    (let [tx-infos (au/<? (common/<serializable-tx-infos->tx-infos
+    (let [tx-infos nil #_(au/<? (common/<serializable-tx-infos->tx-infos
                            (u/sym-map <request-schema schema
                                       serializable-tx-infos storage)))
           crdt-ops (reduce (fn [acc tx-info]
@@ -280,7 +280,7 @@
   ;; TODO: Consider security implications. Can anyone get any tx-info?
   [{:keys [*storage] :as fn-arg}]
   (fn [{:keys [arg] :as h-arg}]
-    (common/<get-serializable-tx-infos (assoc fn-arg
+    nil #_(common/<get-serializable-tx-infos (assoc fn-arg
                                               :storage @*storage
                                               :tx-ids (:tx-ids arg)))))
 
@@ -459,7 +459,7 @@
       (doseq [tx-info tx-infos-to-log]
         (let [{:keys [tx-id]} tx-info
               tx-info-k (common/tx-id->tx-info-k tx-id)
-              ser-tx-info (au/<? (common/<tx-info->serializable-tx-info
+              ser-tx-info nil #_(au/<? (common/<tx-info->serializable-tx-info
                                   (u/sym-map schema storage tx-info)))
               branch-log-k (->branch-log-k (u/sym-map branch))]
           (au/<? (storage/<swap! storage tx-info-k
@@ -480,7 +480,7 @@
     :as mus-arg}]
   (fn [{:zeno/keys [actor-id branch cmds] :as us-arg}]
     (au/go
-      (let [tx-info-base (common/make-update-state-tx-info-base
+      (let [tx-info-base nil #_(common/make-update-state-tx-info-base
                           (assoc us-arg :make-tx-id make-tx-id))]
         (swap! *branch->crdt-info update branch
                (fn [{:keys [repair-crdt-ops
@@ -514,7 +514,7 @@
 
 (defn make-<get-state [{:keys [*branch->crdt-info root schema]}]
   (fn [{:zeno/keys [branch path] :as gs-arg}]
-    (au/go
+    nil #_(au/go
       (common/get-value-info (assoc gs-arg
                                     :crdt (some-> @*branch->crdt-info
                                                   (get branch)

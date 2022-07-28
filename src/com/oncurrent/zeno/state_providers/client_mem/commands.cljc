@@ -74,23 +74,21 @@
                path-tail
                path)))))
 
-(defmulti eval-cmd (fn [state {:zeno/keys [op]} root]
+(defmulti eval-cmd* (fn [state {:zeno/keys [op]} root]
                      (if (insert-ops op)
                        :zeno/insert*
                        op)))
 
-(defmethod eval-cmd :zeno/set
+(defmethod eval-cmd* :zeno/set
   [state {:zeno/keys [path op arg]} root]
   (let [{:keys [norm-path]} (get-in-state state path root)
-        state-path (if root
-                     (u/chop-root norm-path root)
-                     norm-path)
+        state-path (u/chop-root norm-path root)
         new-state (if (seq state-path)
                     (assoc-in state state-path arg)
                     arg)]
     {:state new-state}))
 
-(defmethod eval-cmd :zeno/remove
+(defmethod eval-cmd* :zeno/remove
   [state {:zeno/keys [path op]} root]
   (let [parent-path (butlast path)
         k (last path)
@@ -115,9 +113,7 @@
                                          value "` is out of bounds.")
                                     (u/sym-map norm-i path
                                                norm-path))))))
-        state-path (if root
-                     (u/chop-root norm-path root)
-                     norm-path)
+        state-path (u/chop-root norm-path root)
         new-state (cond
                     (nil? new-parent)
                     state
@@ -129,8 +125,8 @@
                     (assoc-in state state-path new-parent))]
     {:state new-state}))
 
-(defmethod eval-cmd :zeno/insert*
-  [state {:zeno/keys [arg op path]} root]
+(defmethod eval-cmd* :zeno/insert*
+  [state {:zeno/keys [arg op path] :as cmd} root]
   (let [parent-path (butlast path)
         i (last path)
         _ (when-not (int? i)
@@ -157,13 +153,22 @@
                   (inc clamped-i))
         [h t] (split-at split-i value)
         new-parent (vec (concat h (if range? arg [arg]) t))
-        state-path (if root
-                     (u/chop-root norm-path root)
-                     norm-path)
+        state-path (u/chop-root norm-path root)
         new-state (if (empty? state-path)
                     new-parent
                     (assoc-in state state-path new-parent))]
     {:state new-state}))
+
+(defn eval-cmd [state {:zeno/keys [arg op path] :as cmd} root]
+  (when-not (keyword? root)
+    (throw (ex-info (str "Bad `:root` arg in call to `eval-cmd`. Got: `"
+                         (or root "nil") "`.")
+                    (u/sym-map cmd root))))
+  (when-not (= root (first path))
+    (throw (ex-info (str "Command path root `" (first path)
+                         "` does not match given root `" root "`.")
+                    (u/sym-map root path cmd))))
+  (eval-cmd* state cmd root))
 
 (defn eval-cmds [initial-state cmds root]
   (reduce (fn [{:keys [state] :as acc} cmd]

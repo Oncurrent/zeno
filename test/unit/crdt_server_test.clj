@@ -24,7 +24,7 @@
   (au/go
     (let [{:keys [crdt-ops updated-paths]} (commands/process-cmds
                                             (u/sym-map cmds schema root))
-          ser-ops (au/<? (common/<crdt-ops->serializable-crdt-ops
+          ser-ops nil #_(au/<? (common/<crdt-ops->serializable-crdt-ops
                           (u/sym-map crdt-ops schema storage)))]
       {:actor-id actor-id
        :client-id client-id
@@ -93,7 +93,7 @@
                gcsi-ret-2 (au/<? (server/<get-consumer-sync-info arg))
                _ (is (= 1 (:snapshot-tx-index gcsi-ret-2)))
                _ (is (= [] (:tx-ids-since-snapshot gcsi-ret-2)))
-               snapshot (au/<? (common/<get-snapshot-from-url
+               snapshot nil #_(au/<? (common/<get-snapshot-from-url
                                 (assoc arg :url (:snapshot-url gcsi-ret-2))))
                _ (is (= [book-id] (-> snapshot :crdt :children :books
                                       :children keys)))])

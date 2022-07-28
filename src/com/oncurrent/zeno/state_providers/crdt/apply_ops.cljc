@@ -39,8 +39,9 @@
   (if (some-> (:deleted-add-ids crdt)
               (get add-id))
     crdt
-    (let [value (or (:value arg)
-                    (c/deserialize-op-value arg))
+    (let [value (if (contains? arg :value)
+                  (:value arg)
+                  (c/deserialize-op-value arg))
           value-info (u/sym-map sys-time-ms value)]
       (update crdt :add-id-to-value-info assoc add-id value-info))))
 

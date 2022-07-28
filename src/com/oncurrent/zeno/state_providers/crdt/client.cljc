@@ -11,6 +11,7 @@
    [com.oncurrent.zeno.state-providers.crdt.apply-ops :as apply-ops]
    [com.oncurrent.zeno.state-providers.crdt.commands :as commands]
    [com.oncurrent.zeno.state-providers.crdt.common :as common]
+   [com.oncurrent.zeno.state-providers.crdt.get :as get]
    [com.oncurrent.zeno.state-providers.crdt.shared :as shared]
    [com.oncurrent.zeno.storage :as storage]
    [com.oncurrent.zeno.utils :as u]
@@ -59,7 +60,7 @@
       (doseq [tx-info tx-infos-to-log]
         (let [{:keys [tx-id]} tx-info
               tx-info-k (common/tx-id->tx-info-k tx-id)
-              ser-tx-info (au/<? (common/<tx-info->serializable-tx-info
+              ser-tx-info nil #_(au/<? (common/<tx-info->serializable-tx-info
                                   (u/sym-map schema storage tx-info)))]
           (au/<? (storage/<swap! storage
                                  tx-info-k
@@ -86,7 +87,7 @@
     (au/go
       (au/<? (<wait-for-init mus-arg))
       (let [actor-id @*actor-id
-            tx-info-base (common/make-update-state-tx-info-base
+            tx-info-base nil #_(common/make-update-state-tx-info-base
                           (assoc mus-arg
                                  :actor-id actor-id
                                  :cmds cmds))
@@ -137,7 +138,7 @@
               tx-ids (get aid->tx-ids actor-id)
               batch (set (take 10 tx-ids))
               ser-tx-infos (when (seq tx-ids)
-                             (au/<? (common/<get-serializable-tx-infos
+                             nil #_(au/<? (common/<get-serializable-tx-infos
                                      {:storage storage
                                       :tx-ids batch})))]
           (when (seq ser-tx-infos)
@@ -206,7 +207,7 @@
             last-tx-index (when snapshot-tx-index
                             (+ snapshot-tx-index
                                (count tx-ids-since-snapshot)))
-            snapshot (au/<? (common/<get-snapshot-from-url
+            snapshot nil #_(au/<? (common/<get-snapshot-from-url
                              (assoc arg
                                     :<request-schema <request-schema
                                     :url snapshot-url
@@ -216,7 +217,7 @@
                            (au/<? (<send-msg
                                    {:msg-type :get-tx-infos
                                     :arg {:tx-ids tx-ids-since-snapshot}})))
-            tx-infos (au/<? (common/<serializable-tx-infos->tx-infos
+            tx-infos nil #_(au/<? (common/<serializable-tx-infos->tx-infos
                              (assoc arg
                                     :<request-schema <request-schema
                                     :serializable-tx-infos ser-tx-infos
@@ -275,11 +276,11 @@
 
 (defn make-get-in-state [{:keys [*state-info schema]}]
   (fn get-in-state [{:keys [path root] :as gis-arg}]
-    (common/get-value-info (assoc gis-arg
-                                  :crdt (:crdt @*state-info)
-                                  :path (u/chop-root path root)
-                                  :norm-path [root]
-                                  :schema schema))))
+    (get/get-in-state (assoc gis-arg
+                             :crdt (:crdt @*state-info)
+                             :path path
+                             :root root
+                             :data-schema schema))))
 
 (defn ->state-provider
   [{::crdt/keys [authorizer schema root] :as config}]

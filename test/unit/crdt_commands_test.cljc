@@ -646,16 +646,14 @@
            (->value acrdt [] schema)))))
 
 (deftest test-crdt-array-insert-range-after-end
-  (let [schema (l/array-schema l/string-schema)
-        arg {:cmds [{:zeno/arg ["4" "5"]
-                     :zeno/op :zeno/set
-                     :zeno/path [:zeno/crdt]}
-                    {:zeno/arg ["1" "2" "3"]
-                     :zeno/op :zeno/insert-range-after
-                     :zeno/path [:zeno/crdt -1]}]
-             :root :zeno/crdt
-             :schema schema}
-        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+  (let [cmds [{:zeno/arg ["4" "5"]
+               :zeno/op :zeno/set
+               :zeno/path []}
+              {:zeno/arg ["1" "2" "3"]
+               :zeno/op :zeno/insert-range-after
+               :zeno/path [-1]}]
+        schema (l/array-schema l/string-schema)
+        {:keys [crdt crdt-ops]} (process-cmds cmds schema)
         acrdt (ops->crdt crdt-ops schema)
         expected-value ["4" "5" "1" "2" "3"]]
     (is (= expected-value
@@ -1308,12 +1306,10 @@
 (deftest test-array-insert-after
   (let [value "id"
         schema (l/array-schema l/string-schema)
-        arg {:cmds [{:zeno/arg value
-                     :zeno/op :zeno/insert-after
-                     :zeno/path [:zeno/crdt -1]}]
-             :root :zeno/crdt
-             :schema schema}
-        {:keys [crdt crdt-ops]} (commands/process-cmds arg)
+        cmds [{:zeno/arg value
+               :zeno/op :zeno/insert-after
+               :zeno/path [-1]}]
+        {:keys [crdt crdt-ops]} (process-cmds cmds schema)
         acrdt (ops->crdt crdt-ops schema)
         expected-value [value]]
     (is (= value
