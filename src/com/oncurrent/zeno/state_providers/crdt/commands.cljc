@@ -186,7 +186,8 @@
   (associative-get-add-info arg))
 
 (defmethod get-add-info :union
-  [{:keys [cmd-arg crdt growing-path schema shrinking-path] :as arg}]
+  [{:keys [cmd-arg crdt growing-path schema shrinking-path sys-time-ms]
+    :as arg}]
   (let [branch-info (if (seq shrinking-path)
                       (c/get-union-branch-and-schema-for-key
                        {:schema schema
@@ -195,11 +196,15 @@
                        {:schema schema
                         :v cmd-arg}))
         {:keys [union-branch member-schema]} branch-info
-        branch-k (keyword (str "branch-" union-branch))]
-    (get-add-info (assoc arg
-                         :crdt (get crdt branch-k)
-                         :growing-path (conj growing-path union-branch)
-                         :schema member-schema))))
+        branch-k (keyword (str "branch-" union-branch))
+        branch-time-k (keyword (str "branch-"  union-branch "-sys-time-ms"))]
+    (-> (get-add-info (assoc arg
+                             :crdt (get crdt branch-k)
+                             :growing-path (conj growing-path union-branch)
+                             :schema member-schema))
+
+        (update :crdt (fn [crdt*] {branch-time-k sys-time-ms
+                                   branch-k crdt*})))))
 
 (defmethod get-delete-info :union
   [{:keys [cmd-arg crdt growing-path schema shrinking-path] :as arg}]
