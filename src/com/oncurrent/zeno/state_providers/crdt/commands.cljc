@@ -85,14 +85,14 @@
   [{:keys [crdt growing-path shrinking-path schema]
     :as arg}]
   (let [container-info (get-delete-container-info arg)
-        record? (= :record (l/schema-type schema))]
+        is-record? (= :record (l/schema-type schema))]
     (if (empty? shrinking-path)
-      (let [child-ks (if record?
+      (let [child-ks (if is-record?
                        (map :name (:fields (l/edn schema)))
                        (-> container-info :crdt :children keys))]
         (reduce
          (fn [acc k]
-           (let [child-schema (if record?
+           (let [child-schema (if is-record?
                                 (l/child-schema schema k)
                                 (l/child-schema schema))
                  child-info (get-delete-info
@@ -106,7 +106,7 @@
          container-info
          child-ks))
       (let [[k & ks] shrinking-path
-            child-schema (if record?
+            child-schema (if is-record?
                            (l/child-schema schema k)
                            (l/child-schema schema))
             child-info (get-delete-info
@@ -131,10 +131,12 @@
   [{:keys [cmd-arg cmd-path cmd-type growing-path schema shrinking-path]
     :as arg}]
   (let [container-info (get-add-container-info arg)
-        record? (= :record (l/schema-type schema))]
+        is-record? (= :record (l/schema-type schema))]
     (if (empty? shrinking-path)
-      (let [child-ks (if record?
-                       (map :name (:fields (l/edn schema)))
+      (let [child-ks (if is-record?
+                       (->> (:fields (l/edn schema))
+                            (map :name)
+                            (filter (into #{} (keys cmd-arg))))
                        (keys cmd-arg))
             _ (when (and (= :zeno/set cmd-type)
                          (not (map? cmd-arg)))
@@ -146,7 +148,7 @@
                         (u/sym-map cmd-path cmd-arg))))]
         (reduce
          (fn [acc k]
-           (let [child-schema (if record?
+           (let [child-schema (if is-record?
                                 (l/child-schema schema k)
                                 (l/child-schema schema))
                  v (get cmd-arg k)
@@ -162,7 +164,7 @@
          container-info
          child-ks))
       (let [[k & ks] shrinking-path
-            child-schema (if record?
+            child-schema (if is-record?
                            (l/child-schema schema k)
                            (l/child-schema schema))
             child-info (get-add-info (assoc arg
@@ -239,8 +241,8 @@
   (let [[k & ks] shrinking-path
         _ (c/check-key (assoc arg :key k))
         info (get-add-container-info arg)
-        record? (= :record (l/schema-type schema))
-        child-schema (if record?
+        is-record? (= :record (l/schema-type schema))
+        child-schema (if is-record?
                        (l/child-schema schema k)
                        (l/child-schema schema))
         ret (process-cmd* (assoc arg

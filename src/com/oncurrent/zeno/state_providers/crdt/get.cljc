@@ -47,8 +47,8 @@
 (defn associative-get-value-info
   [{:keys [crdt growing-path schema shrinking-path] :as arg}]
   (let [{:keys [children container-add-ids]} crdt
-        record? (= :record (l/schema-type schema))
-        child-ks (if record?
+        is-record? (= :record (l/schema-type schema))
+        child-ks (if is-record?
                    (map :name (:fields (l/edn schema)))
                    (keys children))]
     (if (empty? container-add-ids)
@@ -63,7 +63,7 @@
                              (assoc arg
                                     :crdt (get children k)
                                     :growing-path (conj growing-path k)
-                                    :schema (if record?
+                                    :schema (if is-record?
                                               (l/child-schema schema k)
                                               (l/child-schema schema))))]
                      (if (and k (:exists? vi))

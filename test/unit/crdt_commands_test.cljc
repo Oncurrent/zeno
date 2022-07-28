@@ -1,5 +1,6 @@
 (ns unit.crdt-commands-test
   (:require
+   [clojure.data :as data]
    [clojure.set :as set]
    [clojure.test :as t :refer [deftest is]]
    [deercreeklabs.lancaster :as l]
@@ -62,8 +63,7 @@
   ([crdt-ops data-schema]
    (ops->crdt crdt-ops data-schema nil))
   ([crdt-ops data-schema {:keys [crdt]}]
-   (-> (apply-ops/apply-ops (u/sym-map crdt-ops data-schema root crdt))
-       (:crdt))))
+   (apply-ops/apply-ops (u/sym-map crdt-ops data-schema root crdt))))
 
 (defn ->value [crdt path data-schema]
   (let [path (concat [root] path)]
