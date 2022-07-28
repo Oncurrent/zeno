@@ -388,6 +388,14 @@
          :crdt-ops (set/union crdt-ops (:crdt-ops ret))}))))
 
 (defn process-cmd [{:keys [cmd crdt data-schema root] :as arg}]
+  (when-not (keyword? root)
+    (throw (ex-info (str "Bad `:root` arg in call to `process-cmd`. Got: `"
+                         (or root "nil") "`.")
+                    (u/sym-map cmd root))))
+  (when-not (l/schema? data-schema)
+    (throw (ex-info (str "Bad `:data-schema` arg in call to `process-cmd`. "
+                         "Got: `" (or data-schema "nil") "`.")
+                    (u/sym-map cmd data-schema))))
   (let [cmd-path (:zeno/path cmd)]
     (when-not (= root (first cmd-path))
       (throw (ex-info (str "Command path root `" (first cmd-path)
@@ -402,14 +410,6 @@
                          :shrinking-path (rest cmd-path)))))
 
 (defn process-cmds [{:keys [cmds crdt data-schema make-id root] :as arg}]
-  (when-not (keyword? root)
-    (throw (ex-info (str "Bad `:root` arg in call to `process-cmds`. Got: `"
-                         (or root "nil") "`.")
-                    (u/sym-map cmds root))))
-  (when-not (l/schema? data-schema)
-    (throw (ex-info (str "Bad `:data-schema` arg in call to `process-cmds`. "
-                         "Got: `" (or data-schema "nil") "`.")
-                    (u/sym-map cmds data-schema))))
   (let [make-id* (or make-id u/compact-random-uuid)
         sys-time-ms (or (:sys-time-ms arg) (u/current-time-ms))]
     (reduce (fn [acc cmd]
