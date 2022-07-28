@@ -204,6 +204,11 @@
       (case (count infos)
         0 out
         1 (let [new-node-id (-> infos first :node-id)
+                _ (when (= node-id new-node-id)
+                    (throw (ex-info "Node points to itself."
+                                    (u/sym-map node-id
+                                               node-id-to-child-infos
+                                               infos))))
                 new-out (if (get deleted-node-ids new-node-id)
                           out
                           (conj out new-node-id))]

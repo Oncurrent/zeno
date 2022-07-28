@@ -280,7 +280,6 @@
   (let [node-id (make-id)
         child-info (get-add-info
                     (assoc arg
-                           :crdt nil
                            :growing-path (conj growing-path node-id)
                            :schema (l/child-schema schema)
                            :shrinking-path []))
@@ -304,7 +303,7 @@
      :crdt-ops (conj (:crdt-ops child-info) node-op)}))
 
 (defn do-range-insert
-  [{:keys [cmd-arg cmd-path cmd-type crdt growing-path make-id norm-i schema]
+  [{:keys [cmd-arg cmd-path cmd-type growing-path make-id norm-i schema]
     :as arg}]
   (when-not (sequential? cmd-arg)
     (throw (ex-info (str "The `:zeno/arg` in a range insert command must be "
@@ -312,7 +311,9 @@
                     (u/sym-map cmd-arg cmd-type cmd-path))))
   (let [range-parent-node-id (get-parent-node-id arg)
         vs (vec cmd-arg)
-        node-ids (mapv (constantly make-id) vs)]
+        node-ids (mapv (fn [v]
+                         (make-id))
+                       vs)]
     (reduce
      (fn [acc i]
        (let [node-id (nth node-ids i)
@@ -320,10 +321,10 @@
              child-info (get-add-info
                          (assoc arg
                                 :cmd-arg (nth vs i)
-                                :crdt (:crdt acc)
                                 :growing-path new-growing-path
                                 :schema (l/child-schema schema)
                                 :shrinking-path []))
+             crdt (assoc-in (:crdt acc) [:children node-id] (:crdt child-info))
              parent-node-id (if (pos? i)
                               (nth node-ids (dec i))
                               range-parent-node-id)
@@ -344,13 +345,13 @@
                       :serialized-value sval
                       :value node-info}
              node-crdt (apply-ops/apply-op (assoc node-op
-                                                  :crdt (:crdt child-info)
+                                                  :crdt crdt
                                                   :schema schema))]
          (-> acc
-             (assoc-in [:crdt :children node-id] node-crdt)
+             (assoc :crdt node-crdt)
              (update :crdt-ops #(set/union % (conj (:crdt-ops child-info)
                                                    node-op))))))
-     {:crdt crdt
+     {:crdt (:crdt arg)
       :crdt-ops #{}}
      (range (count cmd-arg)))))
 
