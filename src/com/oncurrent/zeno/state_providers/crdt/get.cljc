@@ -8,6 +8,9 @@
 (defmulti get-value-info (fn [{:keys [schema]}]
                            (c/schema->dispatch-type schema)))
 
+(defn reverse-comparator [x y]
+  (* -1 (compare x y)))
+
 (defmethod get-value-info :single-value
   [{:keys [crdt growing-path shrinking-path]}]
   (if (seq shrinking-path)
@@ -18,8 +21,7 @@
                        0 nil
                        1 (-> add-id-to-value-info first second)
                        (->> (vals add-id-to-value-info)
-                            (sort-by :sys-time-ms)
-                            (reverse)
+                            (sort-by :sys-time-ms reverse-comparator)
                             (first)))]
       {:value (:value value-info)
        :exists? (boolean value-info)
@@ -131,8 +133,7 @@
                                         (get crdt))]
                             [(or ts 0) union-branch]))
                         (range (count member-schemas)))
-        [ts i] (-> (sort-by first ts-i-pairs)
-                   (reverse)
+        [ts i] (-> (sort-by first reverse-comparator ts-i-pairs)
                    (first))]
     (if (zero? ts)
       {:value nil

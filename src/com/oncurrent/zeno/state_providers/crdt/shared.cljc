@@ -28,6 +28,10 @@
    (keyword (namespace ::foo) "crdt-op-type")
    (seq (set/union add-op-types delete-op-types))))
 
+(l/def-record-schema serialized-value-schema
+  [:bytes l/bytes-schema]
+  [:fp schemas/fingerprint-schema])
+
 (l/def-record-schema crdt-array-node-info-schema
   [:node-id node-id-schema]
   [:parent-node-id node-id-schema]
@@ -38,7 +42,7 @@
   [:add-id add-id-schema]
   [:op-type crdt-op-type-schema]
   [:op-path schemas/path-schema]
-  [:serialized-value l/bytes-schema]
+  [:serialized-value serialized-value-schema]
   [:sys-time-ms schemas/timestamp-ms-schema])
 
 ;;;;;;;;;;;;;;;; Transaction & Log Schemas ;;;;;;;;;;;;;;;;;

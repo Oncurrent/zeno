@@ -15,182 +15,218 @@
                              [:zeno/insert* (c/schema->dispatch-type schema)]
                              op))))
 
-(defmulti get-delete-ops (fn [{:keys [schema]}]
-                           (c/schema->dispatch-type schema)))
+(defmulti get-delete-info (fn [{:keys [schema]}]
+                            (c/schema->dispatch-type schema)))
 
-(defmulti get-add-ops (fn [{:keys [schema]}]
-                        (c/schema->dispatch-type schema)))
+(defmulti get-add-info (fn [{:keys [schema]}]
+                         (c/schema->dispatch-type schema)))
 
-(defmethod get-delete-ops :single-value
-  [{:keys [crdt growing-path] :as arg}]
+(defmethod get-delete-info :single-value
+  [{:keys [crdt growing-path schema] :as arg}]
   (reduce (fn [acc add-id]
-            (conj acc {:add-id add-id
-                       :op-type :delete-value
-                       :op-path growing-path}))
-          #{}
+            (let [op {:add-id add-id
+                      :op-type :delete-value
+                      :op-path growing-path}]
+              (-> acc
+                  (assoc :crdt (apply-ops/apply-op (assoc op
+                                                          :crdt (:crdt acc)
+                                                          :schema schema)))
+                  (update :crdt-ops conj op))))
+          {:crdt crdt
+           :crdt-ops #{}}
           (keys (:add-id-to-value-info crdt))))
 
-(defmethod get-add-ops :single-value
-  [{:keys [cmd-arg make-id growing-path sys-time-ms schema] :as arg}]
-  #{{:add-id (make-id)
-     :op-type :add-value
-     :op-path growing-path
-     :serialized-value (l/serialize schema cmd-arg)
-     :sys-time-ms sys-time-ms
-     :value cmd-arg}})
+(defmethod get-add-info :single-value
+  [{:keys [cmd-arg crdt make-id growing-path sys-time-ms schema] :as arg}]
+  (let [op {:add-id (make-id)
+            :op-type :add-value
+            :op-path growing-path
+            :serialized-value {:bytes (l/serialize schema cmd-arg)
+                               :fp (l/fingerprint128 schema)}
+            :sys-time-ms sys-time-ms
+            :value cmd-arg}
+        crdt-ops #{op}
+        crdt (apply-ops/apply-op (assoc op
+                                        :crdt crdt
+                                        :schema schema))]
+    (u/sym-map crdt crdt-ops)))
 
-(defn get-delete-container-ops [{:keys [crdt growing-path]}]
+(defn get-delete-container-info [{:keys [crdt growing-path schema]}]
   (reduce (fn [acc add-id]
-            (conj acc {:add-id add-id
-                       :op-type :delete-container
-                       :op-path growing-path}))
-          #{}
+            (let [op {:add-id add-id
+                      :op-type :delete-container
+                      :op-path growing-path}]
+              (-> acc
+                  (assoc :crdt (apply-ops/apply-op (assoc op
+                                                          :crdt (:crdt acc)
+                                                          :schema schema)))
+                  (update :crdt-ops conj op))))
+          {:crdt crdt
+           :crdt-ops #{}}
           (:container-add-ids crdt)))
 
-(defn get-add-container-ops
-  [{:keys [crdt growing-path make-id sys-time-ms]}]
+(defn get-add-container-info
+  [{:keys [crdt growing-path make-id schema sys-time-ms]}]
   (let [{:keys [container-add-ids]} crdt]
     (if (seq container-add-ids)
-      #{}
-      #{{:add-id (make-id)
-         :op-path growing-path
-         :op-type :add-container
-         :sys-time-ms sys-time-ms}})))
+      {:crdt crdt
+       :crdt-ops #{}}
+      (let [op {:add-id (make-id)
+                :op-path growing-path
+                :op-type :add-container
+                :sys-time-ms sys-time-ms}
+            crdt-ops #{op}
+            crdt (apply-ops/apply-op (assoc op
+                                            :crdt crdt
+                                            :schema schema))]
+        (u/sym-map crdt crdt-ops)))))
 
-(defn associative-get-delete-ops
-  [{:keys [cmd-path cmd-type crdt growing-path shrinking-path schema]
+(defn associative-get-delete-info
+  [{:keys [crdt growing-path shrinking-path schema]
     :as arg}]
-  (let [record? (= :record (l/schema-type schema))
-        {:keys [children]} crdt]
-    (if (empty? shrinking-path)
-      (let [child-ks (if record?
-                       (map :name (:fields (l/edn schema)))
-                       (keys children))]
-        (reduce
-         (fn [acc k]
-           (let [child-schema (if record?
-                                (l/child-schema schema k)
-                                (l/child-schema schema))]
-             (set/union acc (get-delete-ops
-                             (assoc arg
-                                    :crdt (get children k)
-                                    :growing-path (conj growing-path k)
-                                    :schema child-schema)))))
-         (get-delete-container-ops arg)
-         child-ks))
-      (let [[k & ks] shrinking-path
-            child-schema (if record?
-                           (l/child-schema schema k)
-                           (l/child-schema schema))]
-        (get-delete-ops (assoc arg
-                               :crdt (get children k)
-                               :growing-path (conj growing-path k)
-                               :schema child-schema
-                               :shrinking-path ks))))))
-
-(defmethod get-delete-ops :map
-  [arg]
-  (associative-get-delete-ops arg))
-
-(defmethod get-delete-ops :record
-  [arg]
-  (associative-get-delete-ops arg))
-
-(defn associative-get-add-ops
-  [{:keys [cmd cmd-arg cmd-path cmd-type crdt growing-path
-           schema shrinking-path]
-    :as arg}]
-  (let [container-ops (get-add-container-ops arg)
+  (let [container-info (get-delete-container-info arg)
         record? (= :record (l/schema-type schema))]
     (if (empty? shrinking-path)
       (let [child-ks (if record?
                        (map :name (:fields (l/edn schema)))
-                       (keys cmd-arg))]
-        (when (and (= :zeno/set cmd-type)
-                   (not (map? cmd-arg)))
-          (throw (ex-info
-                  (str "The given `:zeno/path` (`" cmd-path "`) indicates a "
-                       (name (l/schema-type schema))
-                       ", but the given `zeno/arg` (`" (or cmd-arg "nil") "`) "
-                       "is not a map.")
-                  (u/sym-map cmd-path cmd-arg))))
+                       (-> container-info :crdt :children keys))]
         (reduce
          (fn [acc k]
            (let [child-schema (if record?
                                 (l/child-schema schema k)
                                 (l/child-schema schema))
-                 v (get cmd-arg k)]
-             (set/union acc (get-add-ops
+                 child-info (get-delete-info
                              (assoc arg
-                                    :cmd-arg v
-                                    :crdt (get-in crdt [:children k])
+                                    :crdt (get-in acc [:crdt :children k])
                                     :growing-path (conj growing-path k)
-                                    :schema child-schema)))))
-         container-ops
+                                    :schema child-schema))]
+             (-> acc
+                 (assoc-in [:crdt :children k] (:crdt child-info))
+                 (update :crdt-ops set/union (:crdt-ops child-info)))))
+         container-info
          child-ks))
       (let [[k & ks] shrinking-path
             child-schema (if record?
                            (l/child-schema schema k)
                            (l/child-schema schema))
-            add-ops (get-add-ops (assoc arg
-                                        :crdt (get-in crdt
-                                                      [:children k])
-                                        :growing-path (conj growing-path k)
-                                        :schema child-schema
-                                        :shrinking-path ks))]
-        (set/union container-ops add-ops)))))
+            child-info (get-delete-info
+                        (assoc arg
+                               :crdt (get-in container-info [:crdt :children k])
+                               :growing-path (conj growing-path k)
+                               :schema child-schema
+                               :shrinking-path ks))]
+        (-> container-info
+            (assoc :crdt (:crdt child-info))
+            (update :crdt-ops set/union (:crdt-ops child-info)))))))
 
-(defmethod get-add-ops :map
+(defmethod get-delete-info :map
   [arg]
-  (associative-get-add-ops arg))
+  (associative-get-delete-info arg))
 
-(defmethod get-add-ops :record
+(defmethod get-delete-info :record
   [arg]
-  (associative-get-add-ops arg))
+  (associative-get-delete-info arg))
 
-(defmethod get-add-ops :union
+(defn associative-get-add-info
+  [{:keys [cmd-arg cmd-path cmd-type growing-path schema shrinking-path]
+    :as arg}]
+  (let [container-info (get-add-container-info arg)
+        record? (= :record (l/schema-type schema))]
+    (if (empty? shrinking-path)
+      (let [child-ks (if record?
+                       (map :name (:fields (l/edn schema)))
+                       (keys cmd-arg))
+            _ (when (and (= :zeno/set cmd-type)
+                         (not (map? cmd-arg)))
+                (throw (ex-info
+                        (str "The given `:zeno/path` (`" cmd-path
+                             "`) indicates a " (name (l/schema-type schema))
+                             ", but the given `zeno/arg` (`" (or cmd-arg "nil")
+                             "`) is not a map.")
+                        (u/sym-map cmd-path cmd-arg))))]
+        (reduce
+         (fn [acc k]
+           (let [child-schema (if record?
+                                (l/child-schema schema k)
+                                (l/child-schema schema))
+                 v (get cmd-arg k)
+                 child-info (get-add-info
+                             (assoc arg
+                                    :cmd-arg v
+                                    :crdt (get-in acc [:crdt :children k])
+                                    :growing-path (conj growing-path k)
+                                    :schema child-schema))]
+             (-> acc
+                 (assoc-in [:crdt :children k] (:crdt child-info))
+                 (update :crdt-ops set/union (:crdt-ops child-info)))))
+         container-info
+         child-ks))
+      (let [[k & ks] shrinking-path
+            child-schema (if record?
+                           (l/child-schema schema k)
+                           (l/child-schema schema))
+            child-info (get-add-info (assoc arg
+                                            :crdt (get-in container-info
+                                                          [:crdt :children k])
+                                            :growing-path (conj growing-path k)
+                                            :schema child-schema
+                                            :shrinking-path ks))]
+        (-> container-info
+            (assoc :crdt (:crdt child-info))
+            (update :crdt-ops set/union (:crdt-ops child-info)))))))
+
+(defmethod get-add-info :map
+  [arg]
+  (associative-get-add-info arg))
+
+(defmethod get-add-info :record
+  [arg]
+  (associative-get-add-info arg))
+
+(defmethod get-add-info :union
   [{:keys [cmd-arg crdt growing-path schema shrinking-path] :as arg}]
-  (let [info (if (seq shrinking-path)
-               (c/get-union-branch-and-schema-for-key
-                {:schema schema
-                 :k (first shrinking-path)})
-               (c/get-union-branch-and-schema-for-value
-                {:schema schema
-                 :v cmd-arg}))
-        {:keys [union-branch member-schema]} info
+  (let [branch-info (if (seq shrinking-path)
+                      (c/get-union-branch-and-schema-for-key
+                       {:schema schema
+                        :k (first shrinking-path)})
+                      (c/get-union-branch-and-schema-for-value
+                       {:schema schema
+                        :v cmd-arg}))
+        {:keys [union-branch member-schema]} branch-info
         branch-k (keyword (str "branch-" union-branch))]
-    (get-add-ops (assoc arg
-                        :crdt (get crdt branch-k)
-                        :growing-path (conj growing-path union-branch)
-                        :schema member-schema))))
+    (get-add-info (assoc arg
+                         :crdt (get crdt branch-k)
+                         :growing-path (conj growing-path union-branch)
+                         :schema member-schema))))
 
-(defmethod get-delete-ops :union
+(defmethod get-delete-info :union
   [{:keys [cmd-arg crdt growing-path schema shrinking-path] :as arg}]
   (let [member-schemas (l/member-schemas schema)]
     (reduce (fn [acc union-branch]
               (let [branch-k (keyword (str "branch-" union-branch))
                     member-schema (nth member-schemas union-branch)
-                    ops (get-delete-ops
-                         (assoc arg
-                                :crdt (get crdt branch-k)
-                                :growing-path (conj growing-path union-branch)
-                                :schema member-schema))]
-                (set/union acc ops)))
-            #{}
+                    info (get-delete-info
+                          (assoc arg
+                                 :crdt (get-in acc [:crdt branch-k])
+                                 :growing-path (conj growing-path union-branch)
+                                 :schema member-schema))]
+                (-> acc
+                    (assoc :crdt (:crdt info))
+                    (update :crdt-ops set/union (:crdt-ops info)))))
+            {:crdt crdt
+             :crdt-ops #{}}
             (range (count member-schemas)))))
 
 (defmethod process-cmd* :zeno/set
   [{:keys [crdt] :as arg}]
-  (let [crdt-ops (set/union (get-delete-ops arg)
-                            (get-add-ops arg))
-        crdt (apply-ops/apply-ops (assoc arg :crdt-ops crdt-ops))]
-    (u/sym-map crdt crdt-ops)))
+  (let [delete-info (get-delete-info arg)
+        add-info (get-add-info (assoc arg :crdt (:crdt delete-info)))]
+    {:crdt (:crdt add-info)
+     :crdt-ops (set/union (:crdt-ops add-info) (:crdt-ops delete-info))}))
 
 (defmethod process-cmd* :zeno/remove
   [arg]
-  (let [crdt-ops (get-delete-ops arg)
-        crdt (apply-ops/apply-ops (assoc arg :crdt-ops crdt-ops))]
-    (u/sym-map crdt crdt-ops)))
+  (get-delete-info arg))
 
 (defn associative-do-insert
   [{:keys [cmd cmd-arg cmd-type growing-path schema shrinking-path] :as arg}]
@@ -202,20 +238,19 @@
                       (u/sym-map cmd growing-path shrinking-path)))))
   (let [[k & ks] shrinking-path
         _ (c/check-key (assoc arg :key k))
-        container-ops (get-add-container-ops arg)
-        crdt (apply-ops/apply-ops (assoc arg :crdt-ops container-ops))
+        info (get-add-container-info arg)
         record? (= :record (l/schema-type schema))
         child-schema (if record?
                        (l/child-schema schema k)
                        (l/child-schema schema))
-        child-crdt (get-in crdt [:children k])
         ret (process-cmd* (assoc arg
-                                 :crdt child-crdt
+                                 :crdt (get-in info [:crdt :children k])
                                  :growing-path (conj growing-path k)
                                  :schema child-schema
                                  :shrinking-path ks))]
-    {:crdt (assoc-in crdt [:children k] (:crdt ret))
-     :crdt-ops (set/union container-ops (:crdt-ops ret))}))
+    (-> info
+        (assoc-in [:crdt :children k] (:crdt ret))
+        (update :crdt-ops set/union (:crdt-ops ret)))))
 
 (defmethod process-cmd* [:zeno/insert* :map]
   [arg]
@@ -241,28 +276,32 @@
       (get-in crdt [:ordered-node-ids (dec norm-i)]))))
 
 (defn do-single-insert
-  [{:keys [cmd-type crdt growing-path make-id norm-i schema] :as arg}]
+  [{:keys [cmd-type growing-path make-id norm-i schema] :as arg}]
   (let [node-id (make-id)
-        child-ops (get-add-ops
-                   (assoc arg
-                          :crdt nil
-                          :growing-path (conj growing-path node-id)
-                          :schema (l/child-schema schema)
-                          :shrinking-path []))
+        child-info (get-add-info
+                    (assoc arg
+                           :crdt nil
+                           :growing-path (conj growing-path node-id)
+                           :schema (l/child-schema schema)
+                           :shrinking-path []))
+        crdt (assoc-in (:crdt arg) [:children node-id] (:crdt child-info))
         parent-node-id (get-parent-node-id arg)
         peer-node-ids (->> (get-in crdt [:node-id-to-child-infos
                                          parent-node-id])
                            (map :node-id)
                            (set))
         node-info (u/sym-map node-id parent-node-id peer-node-ids)
-        sval (l/serialize shared/crdt-array-node-info-schema node-info)
+        sval {:bytes (l/serialize shared/crdt-array-node-info-schema node-info)
+              :fp (l/fingerprint128 shared/crdt-array-node-info-schema)}
         node-op {:op-type :add-array-node
                  :op-path growing-path
                  :serialized-value sval
                  :value node-info}
-        ops (conj child-ops node-op)]
-    {:crdt (apply-ops/apply-ops (assoc arg :crdt-ops ops))
-     :crdt-ops ops}))
+        node-crdt (apply-ops/apply-op (assoc node-op
+                                             :crdt crdt
+                                             :schema schema))]
+    {:crdt node-crdt
+     :crdt-ops (conj (:crdt-ops child-info) node-op)}))
 
 (defn do-range-insert
   [{:keys [cmd-arg cmd-path cmd-type crdt growing-path make-id norm-i schema]
@@ -273,51 +312,58 @@
                     (u/sym-map cmd-arg cmd-type cmd-path))))
   (let [range-parent-node-id (get-parent-node-id arg)
         vs (vec cmd-arg)
-        node-ids (mapv (constantly make-id) vs)
-        ops (reduce
-             (fn [acc i]
-               (let [node-id (nth node-ids i)
-                     new-growing-path (conj growing-path node-id)
-                     child-ops (get-add-ops
-                                (assoc arg
-                                       :cmd-arg (nth vs i)
-                                       :crdt nil
-                                       :growing-path new-growing-path
-                                       :schema (l/child-schema schema)
-                                       :shrinking-path []))
-                     parent-node-id (if (pos? i)
-                                      (nth node-ids (dec i))
-                                      range-parent-node-id)
-                     peer-node-ids (if (pos? i)
-                                     #{}
-                                     (->> (get-in crdt [:node-id-to-child-infos
-                                                        parent-node-id])
-                                          (map :node-id)
-                                          (set)))
-                     node-info (u/sym-map node-id parent-node-id peer-node-ids)
-                     sval (l/serialize shared/crdt-array-node-info-schema
-                                       node-info)
-                     node-op {:op-type :add-array-node
-                              :op-path growing-path
-                              :serialized-value sval
-                              :value node-info}]
-                 (set/union acc (conj child-ops node-op))))
-             #{}
-             (range (count cmd-arg)))]
-    {:crdt (apply-ops/apply-ops (assoc arg :crdt-ops ops))
-     :crdt-ops ops}))
+        node-ids (mapv (constantly make-id) vs)]
+    (reduce
+     (fn [acc i]
+       (let [node-id (nth node-ids i)
+             new-growing-path (conj growing-path node-id)
+             child-info (get-add-info
+                         (assoc arg
+                                :cmd-arg (nth vs i)
+                                :crdt (:crdt acc)
+                                :growing-path new-growing-path
+                                :schema (l/child-schema schema)
+                                :shrinking-path []))
+             parent-node-id (if (pos? i)
+                              (nth node-ids (dec i))
+                              range-parent-node-id)
+             peer-node-ids (if (pos? i)
+                             #{}
+                             (->> (get-in crdt [:node-id-to-child-infos
+                                                parent-node-id])
+                                  (map :node-id)
+                                  (set)))
+             node-info (u/sym-map node-id parent-node-id peer-node-ids)
+             sval {:bytes (l/serialize
+                           shared/crdt-array-node-info-schema
+                           node-info)
+                   :fp (l/fingerprint128
+                        shared/crdt-array-node-info-schema)}
+             node-op {:op-type :add-array-node
+                      :op-path growing-path
+                      :serialized-value sval
+                      :value node-info}
+             node-crdt (apply-ops/apply-op (assoc node-op
+                                                  :crdt (:crdt child-info)
+                                                  :schema schema))]
+         (-> acc
+             (assoc-in [:crdt :children node-id] node-crdt)
+             (update :crdt-ops #(set/union % (conj (:crdt-ops child-info)
+                                                   node-op))))))
+     {:crdt crdt
+      :crdt-ops #{}}
+     (range (count cmd-arg)))))
 
 (defmethod process-cmd* [:zeno/insert* :array]
-  [{:keys [cmd-type cmd-path crdt growing-path schema shrinking-path] :as arg}]
-  (let [container-ops (get-add-container-ops arg)
-        {:keys [ordered-node-ids]} crdt
+  [{:keys [cmd-type cmd-path growing-path schema shrinking-path] :as arg}]
+  (let [{:keys [crdt crdt-ops]} (get-add-container-info arg)
         [i & sub-path] shrinking-path
         _ (when-not (int? i)
             (throw (ex-info (str "Array index must be an integer. Got: `"
                                  (or i "nil") "`.")
                             (u/sym-map cmd-type cmd-path growing-path
                                        i shrinking-path sub-path))))
-        array-len (count ordered-node-ids)
+        array-len (count (:ordered-node-ids crdt))
         norm-i (u/get-normalized-array-index (u/sym-map array-len i))]
     (when-not norm-i
       (throw (ex-info (str "Array index `" i "` is out of bounds for the "
@@ -331,16 +377,15 @@
                         :crdt (get-in crdt [:children k])
                         :growing-path (conj growing-path norm-i)
                         :schema (l/child-schema schema)
-                        :shrinking-path sub-path))
-            new-crdt (assoc-in crdt [:children k] (:crdt ret))]
-        {:crdt (:crdt ret)
-         :crdt-ops (set/union container-ops (:crdt-ops ret))})
+                        :shrinking-path sub-path))]
+        {:crdt (assoc-in crdt [:children k] (:crdt ret))
+         :crdt-ops (set/union crdt-ops (:crdt-ops ret))})
       (let [arg* (assoc arg :crdt crdt :norm-i norm-i)
             ret (if (c/range-cmd-types cmd-type)
                   (do-range-insert arg*)
                   (do-single-insert arg*))]
         {:crdt (:crdt ret)
-         :crdt-ops (set/union container-ops (:crdt-ops ret))}))))
+         :crdt-ops (set/union crdt-ops (:crdt-ops ret))}))))
 
 (defn process-cmd [{:keys [cmd crdt data-schema root] :as arg}]
   (let [cmd-path (:zeno/path cmd)]

@@ -35,7 +35,7 @@
         [sch-type op-type]))))
 
 (defmethod apply-op [:single-value :add-value]
-  [{:keys [add-id crdt op-path sys-time-ms] :as arg}]
+  [{:keys [add-id crdt sys-time-ms] :as arg}]
   (if (some-> (:deleted-add-ids crdt)
               (get add-id))
     crdt
@@ -191,8 +191,8 @@
 
 (defn causal-comparator [x y]
   (cond
-    ((:peer-node-ids x) (:node-id y)) 1
-    ((:peer-node-ids y) (:node-id x)) -1
+    ((:peer-node-ids x) (:node-id y)) -1
+    ((:peer-node-ids y) (:node-id x)) 1
     :else (compare (:node-id x) (:node-id y))))
 
 (defn causal-traversal
