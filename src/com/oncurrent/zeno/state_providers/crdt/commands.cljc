@@ -136,7 +136,7 @@
                                     :schema child-schema))]
              (cond-> acc
                (contains? (get-in acc [:crdt :children]) k)
-               (assoc-in acc [:crdt :children k] (:crdt child-info))
+               (assoc-in [:crdt :children k] (:crdt child-info))
                true (update :crdt-ops set/union (:crdt-ops child-info)))))
          container-info
          child-ks))
