@@ -838,9 +838,15 @@
                {:zeno/arg "ZL"
                 :zeno/op :zeno/insert-after
                 :zeno/path [-1]}]
-        {crdt1 :crdt crdt1-ops :crdt-ops} (process-cmds cmds1 schema {:crdt crdt0 :make-id make-id})
-        {crdt2 :crdt crdt2-ops :crdt-ops} (process-cmds cmds2 schema {:crdt crdt0 :make-id make-id})
-        {crdt3 :crdt crdt3-ops :crdt-ops} (process-cmds cmds3 schema {:crdt crdt0 :make-id make-id})
+        {crdt1 :crdt
+         crdt1-ops :crdt-ops} (process-cmds cmds1 schema
+                                            {:crdt crdt0 :make-id make-id})
+        {crdt2 :crdt
+         crdt2-ops :crdt-ops} (process-cmds cmds2 schema
+                                            {:crdt crdt0 :make-id make-id})
+        {crdt3 :crdt
+         crdt3-ops :crdt-ops} (process-cmds cmds3 schema
+                                            {:crdt crdt0 :make-id make-id})
         new-crdt-ops (set/union crdt1-ops crdt2-ops crdt3-ops)
         merged-crdt (ops->crdt new-crdt-ops schema {:crdt crdt0})
         expected-value ["XF" "YF" "ZF" "A" "B" "C" "XL" "YL" "ZL"]]
@@ -848,22 +854,36 @@
 
 (deftest test-nested-merge-conflict
   (let [schema pet-owner-schema
-        cmds0 [{:zeno/arg {:name "Bill"
-                           :pets [{:name "Pinky"
-                                   :species "Felis catus"}
-                                  {:name "Fishy"
-                                   :species "Carassius auratus"}]}
-                :zeno/op :zeno/set
-                :zeno/path []}]
-        {crdt0 :crdt crdt0-ops :crdt-ops} (process-cmds cmds0 schema)
-        cmds1 [{:zeno/arg "Goldy"
-                :zeno/op :zeno/set
-                :zeno/path [:pets -1 :name]}]
-        cmds2 [{:zeno/arg "Herman"
-                :zeno/op :zeno/set
-                :zeno/path [:pets -1 :name]}]
-        {crdt1 :crdt crdt1-ops :crdt-ops} (process-cmds cmds1 schema {:crdt crdt0})
-        {crdt2 :crdt crdt2-ops :crdt-ops} (process-cmds cmds2 schema {:crdt crdt0})
+        ret0 (commands/process-cmds
+              {:cmds [{:zeno/arg {:name "Bill"
+                                  :pets [{:name "Pinky"
+                                          :species "Felis catus"}
+                                         {:name "Fishy"
+                                          :species "Carassius auratus"}]}
+                       :zeno/op :zeno/set
+                       :zeno/path [root]}]
+               :data-schema schema
+               :root root
+               :sys-time-ms (u/str->long "1640205282840")})
+        {crdt0 :crdt crdt0-ops :crdt-ops} ret0
+        ret1 (commands/process-cmds
+              {:cmds [{:zeno/arg "Goldy"
+                       :zeno/op :zeno/set
+                       :zeno/path [root :pets -1 :name]}]
+               :crdt crdt0
+               :data-schema schema
+               :root root
+               :sys-time-ms (u/str->long "1640205282841")})
+        ret2 (commands/process-cmds
+              {:cmds [{:zeno/arg "Herman"
+                       :zeno/op :zeno/set
+                       :zeno/path [root :pets -1 :name]}]
+               :crdt crdt0
+               :data-schema schema
+               :root root
+               :sys-time-ms (u/str->long "1640205282842")})
+        {crdt1 :crdt crdt1-ops :crdt-ops} ret1
+        {crdt2 :crdt crdt2-ops :crdt-ops} ret2
         all-ops (set/union crdt1-ops crdt2-ops)
         merged-crdt (ops->crdt all-ops schema {:crdt crdt0})]
     ;; We expect "Herman" because its sys-time-ms is later

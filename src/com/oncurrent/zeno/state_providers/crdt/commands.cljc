@@ -84,13 +84,13 @@
         (u/sym-map crdt crdt-ops)))))
 
 (defn get-array-child-key
-  [{:keys [crdt cmd-type cmd-path growing-path i]}]
+  [{:keys [crdt cmd growing-path i]}]
   (let [{:keys [ordered-node-ids]} crdt
         _ (when-not (int? i)
             (throw (ex-info
                     (str "Array index must be an integer. Got: `"
                          (or i "nil") "`.")
-                    (u/sym-map cmd-type cmd-path growing-path i))))
+                    (u/sym-map cmd growing-path i))))
         array-len (count ordered-node-ids)
         norm-i (u/get-normalized-array-index (u/sym-map array-len i))]
     (if norm-i
@@ -98,10 +98,10 @@
       (throw (ex-info
               (str "Index `" i"` into array of length " array-len
                    " is out of bounds.")
-              (u/sym-map i norm-i array-len cmd-type cmd-path growing-path))))))
+              (u/sym-map i norm-i array-len cmd crdt growing-path))))))
 
 (defn associative-get-delete-info
-  [{:keys [crdt growing-path shrinking-path schema]
+  [{:keys [cmd crdt growing-path shrinking-path schema]
     :as arg}]
   (let [schema-type (l/schema-type schema)]
     (if (empty? shrinking-path)
@@ -132,9 +132,10 @@
             child-schema (if (= :record schema-type)
                            (l/child-schema schema k)
                            (l/child-schema schema))
+            child-crdt (get-in crdt [:children k])
             child-info (get-delete-info
                         (assoc arg
-                               :crdt (get-in crdt [:children k])
+                               :crdt child-crdt
                                :growing-path (conj growing-path k)
                                :schema child-schema
                                :shrinking-path ks))]
@@ -154,7 +155,7 @@
   (associative-get-delete-info arg))
 
 (defn associative-get-add-info
-  [{:keys [cmd-arg cmd-path cmd-type growing-path schema shrinking-path]
+  [{:keys [cmd cmd-arg cmd-path cmd-type growing-path schema shrinking-path]
     :as arg}]
   (let [container-info (get-add-container-info arg)
         schema-type (l/schema-type schema)]
@@ -236,8 +237,9 @@
         {:keys [union-branch member-schema]} branch-info
         branch-k (keyword (str "branch-" union-branch))
         branch-time-k (keyword (str "branch-"  union-branch "-sys-time-ms"))
+        branch-crdt (get crdt branch-k)
         ret (get-add-info (assoc arg
-                                 :crdt (get crdt branch-k)
+                                 :crdt branch-crdt
                                  :growing-path (conj growing-path union-branch)
                                  :schema member-schema))]
     {:crdt (-> crdt
@@ -246,22 +248,40 @@
      :crdt-ops (:crdt-ops ret)}))
 
 (defmethod get-delete-info :union
-  [{:keys [cmd-arg crdt growing-path schema shrinking-path] :as arg}]
+  [{:keys [crdt growing-path schema shrinking-path] :as arg}]
   (let [member-schemas (l/member-schemas schema)]
-    (reduce (fn [acc union-branch]
-              (let [branch-k (keyword (str "branch-" union-branch))
-                    member-schema (nth member-schemas union-branch)
-                    info (get-delete-info
-                          (assoc arg
-                                 :crdt (get-in acc [:crdt branch-k])
-                                 :growing-path (conj growing-path union-branch)
-                                 :schema member-schema))]
-                (-> acc
-                    (assoc :crdt (:crdt info))
-                    (update :crdt-ops set/union (:crdt-ops info)))))
-            {:crdt crdt
-             :crdt-ops #{}}
-            (range (count member-schemas)))))
+    (if (seq shrinking-path)
+      (let [branch-info (c/get-union-branch-and-schema-for-key
+                         {:schema schema
+                          :k (first shrinking-path)})
+            {:keys [union-branch member-schema]} branch-info
+            branch-k (keyword (str "branch-" union-branch))
+            branch-crdt (get crdt branch-k)
+            info (get-delete-info
+                  (assoc arg
+                         :crdt branch-crdt
+                         :growing-path (conj growing-path union-branch)
+                         :schema member-schema))]
+        {:crdt (assoc crdt branch-k (:crdt info))
+         :crdt-ops (:crdt-ops info)})
+      (reduce (fn [acc union-branch]
+                (let [branch-k (keyword (str "branch-" union-branch))
+                      branch-crdt (get-in acc [:crdt branch-k])]
+                  (if-not branch-crdt
+                    acc
+                    (let [member-schema (nth member-schemas union-branch)
+                          info (get-delete-info
+                                (assoc arg
+                                       :crdt branch-crdt
+                                       :growing-path (conj growing-path
+                                                           union-branch)
+                                       :schema member-schema))]
+                      (-> acc
+                          (assoc-in [:crdt branch-k] (:crdt info))
+                          (update :crdt-ops set/union (:crdt-ops info)))))))
+              {:crdt crdt
+               :crdt-ops #{}}
+              (range (count member-schemas))))))
 
 (defmethod process-cmd* :zeno/set
   [{:keys [crdt] :as arg}]
@@ -494,7 +514,7 @@
                     (u/sym-map cmd data-schema))))
   (let [cmd-path (:zeno/path cmd)]
     (when-not (= root (first cmd-path))
-      (throw (ex-info (str "Command path root `" (first cmd-path)
+      (throw (ex-info (str "Command path root `" (or (first cmd-path) "nil")
                            "` does not match given root `" root "`.")
                       (u/sym-map root cmd-path))))
     (process-cmd* (assoc arg
