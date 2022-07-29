@@ -102,7 +102,7 @@
               deser-arg (au/<? (common/<serialized-value->value
                                 {:<request-schema <request-schema
                                  :reader-schema arg-schema
-                                 :serialized-value (-> orig-arg :arg :arg)
+                                 :serialized-value arg
                                  :storage storage}))
               auth-info (some-> @*conn-id->auth-info
                                 (get conn-id))
@@ -289,7 +289,7 @@
       (let [root->cmds (reduce
                         (fn [acc {:zeno/keys [path] :as cmd}]
                           (let [[root & tail] path]
-                            (update acc root conj (assoc cmd :zeno/path tail))))
+                            (update acc root conj cmd)))
                         {}
                         cmds)]
         (doseq [[root cmds] root->cmds]
@@ -449,27 +449,29 @@
 (defn make-<get-state [{:keys [env-name env-sp-root->info]}]
   (fn [{:zeno/keys [path] :as fn-arg}]
     (au/go
-     (check-get-state-arg (assoc fn-arg :zeno/valid-path-roots
-                                 (into #{} (keys env-sp-root->info))))
-     (let [[root & tail] path
-           sp-info (env-sp-root->info root)
-           branch (or (:branch fn-arg)
-                      (:state-provider-branch sp-info)
-                      env-name)
-           <get-state* (-> sp-info :state-provider ::sp-impl/<get-state)
-           <get-state (fn [{p :path r :root}]
-                        (<get-state* #:zeno{:branch branch :path p :root r}))]
-       (first (au/<? (<get-value-and-expanded-paths
-                      {:path tail :root root :<get-state <get-state})))))))
+      (check-get-state-arg (assoc fn-arg :zeno/valid-path-roots
+                                  (into #{} (keys env-sp-root->info))))
+      (let [[root & tail] path
+            sp-info (env-sp-root->info root)
+            branch (or (:branch fn-arg)
+                       (:state-provider-branch sp-info)
+                       env-name)
+            <get-state* (-> sp-info :state-provider ::sp-impl/<get-state)
+            <get-state (fn [{p :path r :root}]
+                         (<get-state* #:zeno{:branch branch :path p :root r}))]
+        (first (au/<? (<get-value-and-expanded-paths
+                       {:path path :root root :<get-state <get-state})))))))
 
 (defn make-state-fns [arg]
   (let [<update-state! (make-<update-state! arg)
         <get-state (make-<get-state arg)
-        <set-state! (fn [{:zeno/keys [branch path value]}]
-                      (<update-state! #:zeno{:branch branch
-                                             :cmds [#:zeno{:arg value
-                                                           :op :zeno/set
-                                                           :path path}]}))]
+        <set-state! (fn [{:zeno/keys [branch path value] :as ss-arg}]
+                      (let [cmds [#:zeno{:arg value
+                                         :op :zeno/set
+                                         :path path}]
+                            us-arg #:zeno{:branch branch
+                                          :cmds cmds}]
+                        (<update-state! us-arg)))]
     (u/sym-map <get-state <set-state! <update-state!)))
 
 (defn <wait-for-connect [{:keys [*conn-id->connected? conn-id]}]

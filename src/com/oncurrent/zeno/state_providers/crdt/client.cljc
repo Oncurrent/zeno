@@ -13,6 +13,7 @@
    [com.oncurrent.zeno.state-providers.crdt.common :as common]
    [com.oncurrent.zeno.state-providers.crdt.get :as get]
    [com.oncurrent.zeno.state-providers.crdt.shared :as shared]
+   [com.oncurrent.zeno.state-providers.crdt.xf-schema :as xfs]
    [com.oncurrent.zeno.storage :as storage]
    [com.oncurrent.zeno.utils :as u]
    [taoensso.timbre :as log]))
@@ -301,9 +302,10 @@
                                              connected?
                                              update-subscriptions!))
                 (reset! *storage storage))
+        crdt-schema (xfs/->crdt-schema (u/sym-map data-schema))
         sync-arg (u/sym-map *actor-id *client-running? *connected?
                             *host-fns *env-name *state-info *storage
-                            root data-schema)
+                            crdt-schema data-schema root)
         psync-ret (u/start-task-loop!
                    {:loop-delay-ms 3000
                     :loop-name "<sync-producer-txs!"
@@ -317,7 +319,7 @@
         {stop-consumer-sync! :stop!
          signal-consumer-sync! :now!} csync-ret
         mus-arg (u/sym-map *actor-id *env-name *host-fns *state-info *storage
-                           authorizer client-id root data-schema
+                           authorizer client-id crdt-schema root data-schema
                            signal-producer-sync!)
         <wait-for-prod-sync (fn []
                               (au/go

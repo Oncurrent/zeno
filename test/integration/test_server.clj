@@ -44,18 +44,18 @@
 
 (defn <set-nested! [{:zeno/keys [<set-state! arg]}]
   (au/go
-   (au/<? (<set-state! {:zeno/path [:zeno/crdt :nested]
-                        :zeno/value arg}))
-   true))
+    (au/<? (<set-state! {:zeno/path [:zeno/crdt :nested]
+                         :zeno/value arg}))
+    true))
 
 (defn <get-crdt [{:zeno/keys [<get-state]}]
   (<get-state {:zeno/path [:zeno/crdt]}))
 
 (defn <set-crdt! [{:zeno/keys [<set-state! arg]}]
   (au/go
-   (au/<? (<set-state! {:zeno/path [:zeno/crdt]
-                        :zeno/value arg}))
-   true))
+    (au/<? (<set-state! {:zeno/path [:zeno/crdt]
+                         :zeno/value arg}))
+    true))
 
 (defn <remove-name!
   [{:zeno/keys [<update-state!]}]
@@ -66,9 +66,9 @@
 
 (defn <throw-if-even [{:zeno/keys [arg]}]
   (au/go
-   (if (even? arg)
-     (throw (ex-info "Even!" {}))
-     false)))
+    (if (even? arg)
+      (throw (ex-info "Even!" {}))
+      false)))
 
 (defn -main [port-str tls?-str]
   (let [tls? (#{"true" "1"} (str/lower-case tls?-str))
@@ -76,7 +76,7 @@
         crdt-sp (crdt-server/->state-provider
                  #::crdt{:authorizer (authz/->authorizer)
                          :s3-snapshot-bucket "oncurrent-test-snapshots"
-                         :schema c/crdt-schema
+                         :data-schema c/crdt-schema
                          :root :zeno/crdt})
         root->sp {:zeno/crdt crdt-sp}
         config #:zeno{:admin-password c/admin-password

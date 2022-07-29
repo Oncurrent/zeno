@@ -12,10 +12,10 @@
   (* -1 (compare x y)))
 
 (defmethod get-in-state* :single-value
-  [{:keys [crdt growing-path shrinking-path]}]
+  [{:keys [crdt growing-path path shrinking-path]}]
   (if (seq shrinking-path)
     (throw (ex-info "Can't index into a single-value CRDT."
-                    (u/sym-map growing-path shrinking-path)))
+                    (u/sym-map growing-path shrinking-path path)))
     (let [{:keys [add-id-to-value-info]} crdt
           value-info (case (count add-id-to-value-info)
                        0 nil
@@ -130,7 +130,7 @@
   (associative-get-in-state* arg))
 
 (defmethod get-in-state* :union
-  [{:keys [crdt growing-path schema] :as arg}]
+  [{:keys [crdt growing-path schema shrinking-path] :as arg}]
   (let [member-schemas (l/member-schemas schema)
         ts-i-pairs (map (fn [union-branch]
                           (let [ts (->> (str "branch-"  union-branch
@@ -145,10 +145,13 @@
       {:value nil
        :exists? false
        :norm-path growing-path}
-      (let [branch-k (keyword (str "branch-" i))]
+      (let [[k & ks] shrinking-path
+            branch-k (keyword (str "branch-" i))]
         (get-in-state* (assoc arg
                               :crdt (get crdt branch-k)
-                              :schema (nth member-schemas i)))))))
+                              :growing-path (conj growing-path k)
+                              :schema (nth member-schemas i)
+                              :shrinking-path ks))))))
 
 (defn get-in-state [{:keys [crdt data-schema path root] :as arg}]
   (let [fn-name (or (:fn-name arg)

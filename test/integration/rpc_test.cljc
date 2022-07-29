@@ -61,30 +61,29 @@
                          :rpcs c/rpcs}
            zc (zc/->zeno-client config)]
        (try
-        (let [the-name {:name "Bonzo"}
-              nested {:nested {:a {:aa 1}}}]
-          (is (= true (au/<? (zc/<rpc! zc :set-crdt nil))))
-          (is (= nil (au/<? (zc/<rpc! zc :get-crdt nil))))
+         (let [the-name {:name "Bonzo"}
+               nested {:nested {:a {:aa 1}}}]
+           (is (= true (au/<? (zc/<rpc! zc :set-crdt nil))))
+           (is (= nil (au/<? (zc/<rpc! zc :get-crdt nil))))
+           (is (= true (au/<? (zc/<rpc! zc :set-crdt the-name))))
+           (is (= the-name (au/<? (zc/<rpc! zc :get-crdt nil))))
+           (is (= true (au/<? (zc/<rpc! zc :remove-name nil))))
+           (is (= {} (au/<? (zc/<rpc! zc :get-crdt nil))))
 
-          (is (= true (au/<? (zc/<rpc! zc :set-crdt the-name))))
-          (is (= the-name (au/<? (zc/<rpc! zc :get-crdt nil))))
-          (is (= true (au/<? (zc/<rpc! zc :remove-name nil))))
-          (is (= {} (au/<? (zc/<rpc! zc :get-crdt nil))))
+           (is (= true (au/<? (zc/<rpc! zc :set-crdt nil))))
+           (is (= nil (au/<? (zc/<rpc! zc :get-crdt nil))))
 
-          (is (= true (au/<? (zc/<rpc! zc :set-crdt nil))))
-          (is (= nil (au/<? (zc/<rpc! zc :get-crdt nil))))
+           (is (= true (au/<? (zc/<rpc! zc :set-crdt nested))))
+           (is (= nested (au/<? (zc/<rpc! zc :get-crdt nil))))
 
-          (is (= true (au/<? (zc/<rpc! zc :set-crdt nested))))
-          (is (= nested (au/<? (zc/<rpc! zc :get-crdt nil))))
+           (is (= true (au/<? (zc/<rpc! zc :set-crdt nil))))
+           (is (= nil (au/<? (zc/<rpc! zc :get-crdt nil))))
 
-          (is (= true (au/<? (zc/<rpc! zc :set-crdt nil))))
-          (is (= nil (au/<? (zc/<rpc! zc :get-crdt nil))))
+           (is (= true (au/<? (zc/<rpc! zc :set-nested (:nested nested)))))
+           (is (= nested (au/<? (zc/<rpc! zc :get-crdt nil))))
 
-          (is (= true (au/<? (zc/<rpc! zc :set-nested (:nested nested)))))
-          (is (= nested (au/<? (zc/<rpc! zc :get-crdt nil))))
-
-          (is (= true (au/<? (zc/<rpc! zc :set-crdt nil))))
-          (is (= nil (au/<? (zc/<rpc! zc :get-crdt nil)))))
+           (is (= true (au/<? (zc/<rpc! zc :set-crdt nil))))
+           (is (= nil (au/<? (zc/<rpc! zc :get-crdt nil)))))
          (catch #?(:clj Exception :cljs js/Error) e
            (log/error (u/ex-msg-and-stacktrace e))
            (is (= :threw :but-should-not-have)))

@@ -244,14 +244,12 @@
              (fn [crdt-info]
                ;; TODO: Handle case where this retries due to a concurrent
                ;; update-state call and there was a snapshot.
-               (let [ret (apply-ops/apply-ops
-                          (assoc arg
-                                 :crdt (:crdt crdt-info)
-                                 :crdt-ops crdt-ops))]
+               (let [crdt (apply-ops/apply-ops
+                           (assoc arg
+                                  :crdt (:crdt crdt-info)
+                                  :crdt-ops crdt-ops))]
                  (-> crdt-info
-                     (assoc :crdt (:crdt ret))
-                     (update :repair-crdt-ops
-                             set/union (:repair-crdt-ops ret))))))
+                     (assoc :crdt crdt)))))
       (au/<? (<add-to-branch-log! (assoc arg :tx-infos tx-infos)))
       true)))
 
@@ -405,7 +403,8 @@
       )))
 
 (defn <load-branch!
-  [{:keys [*branch->crdt-info *bulk-storage branch data-schema storage] :as arg}]
+  [{:keys [*branch->crdt-info *bulk-storage branch data-schema root storage]
+    :as arg}]
   (au/go
     (let [branch-log-k (->branch-log-k (u/sym-map branch))
           bli (au/<? (storage/<get storage branch-log-k
@@ -425,7 +424,8 @@
                            #{}
                            tx-infos)
           crdt-info (apply-ops/apply-ops (assoc (u/sym-map crdt-ops data-schema)
-                                                :crdt (:crdt snapshot)))]
+                                                :crdt (:crdt snapshot)
+                                                :root root))]
       (swap! *branch->crdt-info
              (fn [m]
                (assoc m branch crdt-info))))))
@@ -464,26 +464,23 @@
                    (update info :tx-infos-to-log disj tx-info))))))))
 
 (defn make-<update-state!
-  [{:keys [*branch->crdt-info *bulk-storage *storage make-tx-id root data-schema]
+  [{:keys [*branch->crdt-info *bulk-storage *storage
+           data-schema make-tx-id root]
     :as mus-arg}]
   (fn [{:zeno/keys [actor-id branch cmds] :as us-arg}]
     (au/go
       (let [tx-info-base (c/make-update-state-tx-info-base
                           (assoc us-arg :make-tx-id make-tx-id))]
         (swap! *branch->crdt-info update branch
-               (fn [{:keys [repair-crdt-ops
-                            tx-infos-to-log] :as info}]
+               (fn [{:keys [tx-infos-to-log] :as info}]
                  (let [ret (commands/process-cmds {:cmds cmds
                                                    :crdt (:crdt info)
                                                    :data-schema data-schema
                                                    :root root})
                        {:keys [crdt crdt-ops]} ret
-                       tx-info (assoc tx-info-base :crdt-ops
-                                      (set/union crdt-ops
-                                                 repair-crdt-ops))]
+                       tx-info (assoc tx-info-base :crdt-ops (seq crdt-ops))]
                    (assoc info
                           :crdt crdt
-                          :repair-crdt-ops #{}
                           :tx-infos-to-log (conj (or tx-infos-to-log #{})
                                                  tx-info)))))
         (au/<? (<log-tx-infos! (assoc mus-arg
@@ -503,13 +500,16 @@
 (defn make-<get-state [{:keys [*branch->crdt-info root data-schema]}]
   (fn [{:zeno/keys [branch path] :as gs-arg}]
     (au/go
+      (log/info (str "<<<<<<<gs:\n"
+                     (u/pprint-str
+                      (u/sym-map path root))))
       (get/get-in-state (assoc gs-arg
                                :crdt (some-> @*branch->crdt-info
                                              (get branch)
                                              :crdt)
+                               :data-schema data-schema
                                :path path
-                               :norm-path []
-                               :data-schema data-schema)))))
+                               :root root)))))
 
 (defn ->state-provider
   [{::crdt/keys [authorizer data-schema s3-snapshot-bucket root]}]
@@ -521,7 +521,7 @@
   (when-not (l/schema? data-schema)
     (throw (ex-info (str "The `" ::crdt/data-schema "` in the argument to "
                          "`->state-provider` must be a valid Lancaster schema. "
-                         "Got: `" (or root "nil") "`.")
+                         "Got: `" (or data-schema "nil") "`.")
                     (u/sym-map data-schema))))
   (let [*<send-msg (atom nil)
         *branch->crdt-info (atom {})
