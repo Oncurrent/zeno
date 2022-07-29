@@ -235,14 +235,15 @@
                         :v cmd-arg}))
         {:keys [union-branch member-schema]} branch-info
         branch-k (keyword (str "branch-" union-branch))
-        branch-time-k (keyword (str "branch-"  union-branch "-sys-time-ms"))]
-    (-> (get-add-info (assoc arg
-                             :crdt (get crdt branch-k)
-                             :growing-path (conj growing-path union-branch)
-                             :schema member-schema))
-
-        (update :crdt (fn [crdt*] {branch-time-k sys-time-ms
-                                   branch-k crdt*})))))
+        branch-time-k (keyword (str "branch-"  union-branch "-sys-time-ms"))
+        ret (get-add-info (assoc arg
+                                 :crdt (get crdt branch-k)
+                                 :growing-path (conj growing-path union-branch)
+                                 :schema member-schema))]
+    {:crdt (-> crdt
+               (assoc branch-time-k sys-time-ms)
+               (assoc branch-k (:crdt ret)))
+     :crdt-ops (:crdt-ops ret)}))
 
 (defmethod get-delete-info :union
   [{:keys [cmd-arg crdt growing-path schema shrinking-path] :as arg}]
@@ -305,6 +306,23 @@
   [arg]
   (associative-do-insert arg))
 
+(defmethod process-cmd* [:zeno/insert* :union]
+  [{:keys [crdt growing-path schema shrinking-path sys-time-ms] :as arg}]
+  (let [branch-info (c/get-union-branch-and-schema-for-key
+                     {:schema schema
+                      :k (first shrinking-path)})
+        {:keys [union-branch member-schema]} branch-info
+        branch-k (keyword (str "branch-" union-branch))
+        branch-time-k (keyword (str "branch-"  union-branch "-sys-time-ms"))
+        ret (process-cmd* (assoc arg
+                                 :crdt (get crdt branch-k)
+                                 :growing-path (conj growing-path union-branch)
+                                 :schema member-schema))]
+    {:crdt (-> crdt
+               (assoc branch-time-k sys-time-ms)
+               (assoc branch-k (:crdt ret)))
+     :crdt-ops (:crdt-ops ret)}))
+
 (defmethod process-cmd* [:zeno/insert* :single-value]
   [{:keys [cmd cmd-type schema] :as arg}]
   (let [schema-type (l/schema-type schema)]
@@ -329,15 +347,18 @@
     (throw (ex-info (str "Bad `:norm-i` in call to `do-single-insert`. Got `"
                          (or norm-i "nil") "`.")
                     (u/sym-map norm-i))))
-  (let [node-id (make-id)
-        child-info (get-add-info
-                    (assoc arg
-                           :crdt nil
-                           :growing-path (conj growing-path node-id)
-                           :schema (l/child-schema schema)
-                           :shrinking-path []))
+  (let [arg* (dissoc arg :child-info :node-id)
+        node-id (or (:node-id arg)
+                    (make-id))
+        child-info (or (:child-info arg)
+                       (get-add-info
+                        (assoc arg*
+                               :crdt nil
+                               :growing-path (conj growing-path node-id)
+                               :schema (l/child-schema schema)
+                               :shrinking-path [])))
         crdt (assoc-in (:crdt arg) [:children node-id] (:crdt child-info))
-        parent-node-id (get-parent-node-id arg)
+        parent-node-id (get-parent-node-id arg*)
         peer-node-ids (->> (get-in crdt [:node-id-to-child-infos
                                          parent-node-id])
                            (map :node-id)
@@ -414,7 +435,8 @@
      (range (count cmd-arg)))))
 
 (defmethod process-cmd* [:zeno/insert* :array]
-  [{:keys [cmd-type cmd-path growing-path schema shrinking-path] :as arg}]
+  [{:keys [cmd cmd-type cmd-path growing-path make-id schema shrinking-path]
+    :as arg}]
   (let [{:keys [crdt crdt-ops]} (get-add-container-info arg)
         [i & sub-path] shrinking-path
         _ (when-not (int? i)
@@ -424,30 +446,36 @@
                                        i shrinking-path sub-path))))
         array-len (count (:ordered-node-ids crdt))
         norm-i (or (u/get-normalized-array-index (u/sym-map array-len i))
-                   ;; On empty arrays,
-                   ;;   - Allow insert before 0
-                   ;;   - Allow insert after -1
+                   ;; On empty arrays, allow insert if index is 0 or -1
                    (when (and (zero? array-len)
-                              (or (and (c/insert-before-cmd-types cmd-type)
-                                       (zero? i))
-                                  (and (c/insert-after-cmd-types cmd-type)
-                                       (= -1 i))))
+                              (or (zero? i)
+                                  (= -1 i)))
                      0))]
     (when-not norm-i
       (throw (ex-info (str "Array index `" i "` is out of bounds for the "
                            "indicated array, whose length is "
                            array-len".")
-                      (u/sym-map array-len i))))
+                      (u/sym-map array-len i cmd growing-path))))
     (if (seq sub-path)
-      (let [k (get-in crdt [:ordered-node-ids norm-i])
+      (let [k (if (pos? array-len)
+                (get-in crdt [:ordered-node-ids norm-i])
+                (make-id))
             ret (process-cmd*
                  (assoc arg
                         :crdt (get-in crdt [:children k])
-                        :growing-path (conj growing-path norm-i)
+                        :growing-path (conj growing-path k)
                         :schema (l/child-schema schema)
-                        :shrinking-path sub-path))]
-        {:crdt (assoc-in crdt [:children k] (:crdt ret))
-         :crdt-ops (set/union crdt-ops (:crdt-ops ret))})
+                        :shrinking-path sub-path))
+            info (if (pos? array-len)
+                   ret
+                   (do-single-insert (assoc arg
+                                            :child-info ret
+                                            :crdt crdt
+                                            :node-id k
+                                            :norm-i norm-i)))]
+        (-> info
+            (assoc-in [:crdt :children k] (:crdt ret))
+            (update :crdt-ops #(set/union % crdt-ops (:crdt-ops ret)))))
       (let [arg* (assoc arg :crdt crdt :norm-i norm-i)
             ret (if (c/range-cmd-types cmd-type)
                   (do-range-insert arg*)

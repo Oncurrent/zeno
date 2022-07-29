@@ -146,9 +146,9 @@
                 :zeno/op :zeno/set
                 :zeno/path []}]
         {crdt1 :crdt crdt1-ops :crdt-ops} (process-cmds cmds1 schema)
-         cmds2 [{:zeno/arg {}
-                 :zeno/op :zeno/set
-                 :zeno/path [:pet-owners]}]
+        cmds2 [{:zeno/arg {}
+                :zeno/op :zeno/set
+                :zeno/path [:pet-owners]}]
         {crdt2 :crdt crdt2-ops :crdt-ops} (process-cmds cmds2 schema {:crdt crdt1})
         all-ops (set/union crdt1-ops crdt2-ops)
         acrdt (ops->crdt all-ops schema)]
@@ -163,7 +163,7 @@
            (->value acrdt [:pet-owners nil] schema)))))
 
 (comment
- (krun #'test-set-record-with-empty-map-of-records))
+  (krun #'test-set-record-with-empty-map-of-records))
 (deftest test-set-record-with-empty-map-of-records
   (let [cmds [{:zeno/arg {:pet-owners {}}
                :zeno/op :zeno/set
@@ -663,7 +663,7 @@
                 :zeno/path []}]
         {crdt1 :crdt crdt1-ops :crdt-ops} (process-cmds cmds1 schema)
         cmds2 [{:zeno/op :zeno/remove
-                      :zeno/path [:zeno/crdt :pets 0]}]
+                :zeno/path [:zeno/crdt :pets 0]}]
         {crdt2 :crdt crdt2-ops :crdt-ops} (process-cmds cmds2 schema {:crdt crdt1})
         acrdt (ops->crdt (set/union crdt1-ops crdt2-ops) schema)
         expected-value {:name "Bill"
@@ -1035,7 +1035,7 @@
            (->value acrdt ["a"] schema)))))
 
 (comment
- (krun #'test-record-nested-negative-insert-after))
+  (krun #'test-record-nested-negative-insert-after))
 (deftest test-record-nested-negative-insert-after
   (let [value "id"
         schema (l/record-schema :r1
@@ -1104,29 +1104,40 @@
            (->value crdt [] schema)
            (->value acrdt [] schema)))))
 
+(deftest test-punch-through-insert
+  (let [data-schema (l/array-schema (l/array-schema l/int-schema))
+        path [root]
+        cmds [{:zeno/arg 1
+               :zeno/op :zeno/insert-before
+               :zeno/path [root 0 0]}]
+        {:keys [crdt]} (commands/process-cmds (u/sym-map cmds data-schema root))
+        v (get/get-in-state (u/sym-map crdt data-schema path root))]
+    (is (= [[1]] v))))
+
 (comment (krun #'test-deep-nested-negative-insert-after))
 (deftest test-deep-nested-negative-insert-after
   (let [value "id"
-        schema (l/record-schema
-                :r1 [[:a (l/map-schema
-                          (l/array-schema
-                           (l/map-schema
-                            (l/record-schema
-                             :r2 [[:d (l/array-schema
-                                       (l/array-schema
-                                        l/string-schema))]]))))]])
+        data-schema (l/record-schema
+                     :r1 [[:a (l/map-schema
+                               (l/array-schema
+                                (l/map-schema
+                                 (l/record-schema
+                                  :r2 [[:d (l/array-schema
+                                            (l/array-schema
+                                             l/string-schema))]]))))]])
         cmds [{:zeno/arg value
                :zeno/op :zeno/insert-after
-               :zeno/path [:a "b" 0 "c" :d 0 -1]}]
-        {:keys [crdt crdt-ops]} (commands/process-cmds cmds schema)
-        acrdt (ops->crdt crdt-ops schema)
+               :zeno/path [root :a "b" 0 "c" :d 0 -1]}]
+        {:keys [crdt crdt-ops]} (commands/process-cmds
+                                 (u/sym-map cmds data-schema root))
+        acrdt (ops->crdt crdt-ops data-schema)
         expected-value {:a {"b" [{"c" {:d [[value]]}}]}}]
     (is (= value
-           (->value crdt [:a "b" 0 "c" :d 0 -1] schema)
-           (->value acrdt [:a "b" 0 "c" :d 0 -1] schema)))
+           (->value crdt [:a "b" 0 "c" :d 0 -1] data-schema)
+           (->value acrdt [:a "b" 0 "c" :d 0 -1] data-schema)))
     (is (= expected-value
-           (->value crdt [] schema)
-           (->value acrdt [] schema)))))
+           (->value crdt [] data-schema)
+           (->value acrdt [] data-schema)))))
 
 (deftest test-recursive-schema
   (let [data {:value 42

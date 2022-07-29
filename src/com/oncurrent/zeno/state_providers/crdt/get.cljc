@@ -97,7 +97,7 @@
                           (str "Array index `" i "` is out of bounds for the "
                                "indicated array, whose length is "
                                array-len".")
-                          (u/sym-map array-len i))))
+                          (u/sym-map array-len path i growing-path))))
               k (get ordered-node-ids norm-i)]
           (get-value-info
            (assoc arg
