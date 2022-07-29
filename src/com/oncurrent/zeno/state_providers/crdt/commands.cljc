@@ -100,8 +100,22 @@
                    " is out of bounds.")
               (u/sym-map i norm-i array-len cmd crdt growing-path))))))
 
+(defn get-record-field-names [schema]
+  (->>  (l/edn schema)
+        (:fields)
+        (map :name)
+        (set)))
+
+(defn check-missing-child [{:keys [cmd cmd-path growing-path k schema]}]
+  (let [fields (get-record-field-names schema)]
+    (when-not (fields k)
+      (throw (ex-info
+              (str "Path element `" k "` in path `" cmd-path
+                   "` is not a valid key for indicated record.")
+              (u/sym-map k cmd cmd-path growing-path))))))
+
 (defn associative-get-delete-info
-  [{:keys [cmd crdt growing-path shrinking-path schema]
+  [{:keys [cmd cmd-path crdt growing-path shrinking-path schema]
     :as arg}]
   (let [schema-type (l/schema-type schema)]
     (if (empty? shrinking-path)
@@ -133,6 +147,9 @@
                            (l/child-schema schema k)
                            (l/child-schema schema))
             child-crdt (get-in crdt [:children k])
+            _ (when (and (not child-crdt)
+                         (= :record schema-type))
+                (check-missing-child (assoc arg :k k)))
             child-info (get-delete-info
                         (assoc arg
                                :crdt child-crdt
@@ -200,6 +217,9 @@
                 (get-array-child-key (assoc arg :i i-or-k))
                 i-or-k)
             child-crdt (get-in container-info [:crdt :children k])
+            _ (when (and (not child-crdt)
+                         (= :record schema-type))
+                (check-missing-child (assoc arg :k k)))
             child-schema (if (= :record schema-type)
                            (l/child-schema schema k)
                            (l/child-schema schema))

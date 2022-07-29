@@ -56,7 +56,9 @@
   ([cmds data-schema]
    (process-cmds cmds data-schema nil))
   ([cmds data-schema {:keys [crdt make-id]}]
-   (let [cmds (map #(update % :zeno/path (partial concat [root])) cmds)]
+   (let [cmds (map (fn [cmd]
+                     (update cmd :zeno/path #(vec (cons root %))))
+                   cmds)]
      (commands/process-cmds (u/sym-map cmds data-schema root crdt make-id)))))
 
 (defn ops->crdt
@@ -663,8 +665,9 @@
                 :zeno/path []}]
         {crdt1 :crdt crdt1-ops :crdt-ops} (process-cmds cmds1 schema)
         cmds2 [{:zeno/op :zeno/remove
-                :zeno/path [:zeno/crdt :pets 0]}]
-        {crdt2 :crdt crdt2-ops :crdt-ops} (process-cmds cmds2 schema {:crdt crdt1})
+                :zeno/path [:pets 0]}]
+        {crdt2 :crdt crdt2-ops :crdt-ops} (process-cmds
+                                           cmds2 schema {:crdt crdt1})
         acrdt (ops->crdt (set/union crdt1-ops crdt2-ops) schema)
         expected-value {:name "Bill"
                         :pets [{:name "Fishy"
@@ -719,7 +722,8 @@
                                    :species "Carassius auratus"}]}
                 :zeno/op :zeno/set
                 :zeno/path []}]
-        {crdt0 :crdt crdt-ops :crdt-ops} (process-cmds cmds0 schema {:make-id make-id})
+        {crdt0 :crdt
+         crdt-ops :crdt-ops} (process-cmds cmds0 schema {:make-id make-id})
         cmds1 [{:zeno/arg {:name "Chris"
                            :species "Canis familiaris"}
                 :zeno/op :zeno/insert-before
@@ -728,8 +732,12 @@
                            :species "Canis familiaris"}
                 :zeno/op :zeno/insert-before
                 :zeno/path [:pets 0]}]
-        {crdt1 :crdt crdt1-ops :crdt-ops} (process-cmds cmds1 schema {:crdt crdt0 :make-id make-id})
-        {crdt2 :crdt crdt2-ops :crdt-ops} (process-cmds cmds2 schema {:crdt crdt0 :make-id make-id})
+        {crdt1 :crdt
+         crdt1-ops :crdt-ops} (process-cmds cmds1 schema
+                                            {:crdt crdt0 :make-id make-id})
+        {crdt2 :crdt
+         crdt2-ops :crdt-ops} (process-cmds cmds2 schema
+                                            {:crdt crdt0 :make-id make-id})
         new-crdt-ops (set/union crdt1-ops crdt2-ops)
         merged-crdt (ops->crdt new-crdt-ops schema {:crdt crdt0})
         expected-value [{:name "Chris"
@@ -750,7 +758,8 @@
         cmds0 [{:zeno/arg ["A" "B"]
                 :zeno/op :zeno/set
                 :zeno/path []}]
-        {crdt0 :crdt crdt0-ops :crdt-ops} (process-cmds cmds0 schema {:make-id make-id})
+        {crdt0 :crdt
+         crdt0-ops :crdt-ops} (process-cmds cmds0 schema {:make-id make-id})
         cmds1 [{:zeno/arg "1"
                 :zeno/op :zeno/insert-before
                 :zeno/path [0]}]
@@ -760,16 +769,22 @@
         cmds3 [{:zeno/arg "3"
                 :zeno/op :zeno/insert-before
                 :zeno/path [0]}]
-        {crdt1 :crdt crdt1-ops :crdt-ops} (process-cmds cmds1 schema {:crdt crdt0 :make-id make-id})
-        {crdt2 :crdt crdt2-ops :crdt-ops} (process-cmds cmds2 schema {:crdt crdt0 :make-id make-id})
-        {crdt3 :crdt crdt3-ops :crdt-ops} (process-cmds cmds3 schema {:crdt crdt0 :make-id make-id})
+        {crdt1 :crdt
+         crdt1-ops :crdt-ops} (process-cmds
+                               cmds1 schema {:crdt crdt0 :make-id make-id})
+        {crdt2 :crdt
+         crdt2-ops :crdt-ops} (process-cmds
+                               cmds2 schema {:crdt crdt0 :make-id make-id})
+        {crdt3 :crdt
+         crdt3-ops :crdt-ops} (process-cmds
+                               cmds3 schema {:crdt crdt0 :make-id make-id})
         new-crdt-ops (set/union crdt1-ops crdt2-ops crdt3-ops)
         merged-crdt (ops->crdt new-crdt-ops schema {:crdt crdt0})
         ;; Order of the first three items is determined by their add-ids.
-        ;; Any ordering would be fine, as long as it is deterministic.
+        ;; Any ordering is fine, as long as it is deterministic.
         ;; The important part is that all three appear before the original
         ;; sequence (["A" "B"]).
-        expected-value ["2" "3" "1" "A" "B"]]
+        expected-value ["3" "1" "2" "A" "B"]]
     (is (= expected-value (->value merged-crdt [] schema)))))
 
 (deftest test-merge-3-way-array-conflict-multiple-peer-cmds
@@ -895,7 +910,7 @@
                :zeno/path []}]]
     (is (thrown-with-msg?
          #?(:clj ExceptionInfo :cljs js/Error)
-         #"arg is not sequential"
+         #"must be sequential"
          (process-cmds cmds (l/array-schema l/string-schema))))))
 
 (comment (krun #'test-set-map-of-two-arrays))
