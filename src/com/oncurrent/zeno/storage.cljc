@@ -64,13 +64,13 @@
 
 (defn <schema->fp*
   ([raw-storage schema]
-   (<schema->fp* raw-storage schema (l/fingerprint256 schema)))
+   (<schema->fp* raw-storage schema (l/fingerprint128 schema)))
   ([raw-storage schema fp]
    (au/go
-    (let [k (make-fp->schema-k fp)]
-      (when-not (au/<? (<read-k raw-storage k))
-        (au/<? (<store-fp->schema raw-storage fp schema)))
-      fp))))
+     (let [k (make-fp->schema-k fp)]
+       (when-not (au/<? (<read-k raw-storage k))
+         (au/<? (<store-fp->schema raw-storage fp schema)))
+       fp))))
 
 (defn <read-chunks [raw-storage chunk-ids]
   (au/go
@@ -231,24 +231,24 @@
 
   (<fp->schema [this fp]
     (au/go
-     (if-let [schema (get @*fp->schema-cache (fp->str fp))]
-       schema
-       (let [schema (au/<? (<fp->schema* raw-storage fp))]
-         (swap! *fp->schema-cache assoc (fp->str fp) schema)
-         schema))))
+      (if-let [schema (get @*fp->schema-cache (fp->str fp))]
+        schema
+        (let [schema (au/<? (<fp->schema* raw-storage fp))]
+          (swap! *fp->schema-cache assoc (fp->str fp) schema)
+          schema))))
 
   (<get [this k schema]
     (<get* this k schema))
 
   (<schema->fp [this schema]
     (au/go
-     (let [fp (l/fingerprint256 schema)]
-       (if-let [has? (boolean (get @*fp->schema-cache (fp->str fp)))]
-         fp
-         (do
-          (swap! *fp->schema-cache assoc (fp->str fp) schema)
-          (au/<? (<store-fp->schema raw-storage fp schema))
-          fp)))))
+      (let [fp (l/fingerprint128 schema)]
+        (if-let [has? (boolean (get @*fp->schema-cache (fp->str fp)))]
+          fp
+          (do
+            (swap! *fp->schema-cache assoc (fp->str fp) schema)
+            (au/<? (<store-fp->schema raw-storage fp schema))
+            fp)))))
 
   (<swap! [this reference-k schema update-fn]
     (<swap!* this reference-k schema update-fn)))

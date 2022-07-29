@@ -2,8 +2,8 @@
   (:require
    [clojure.core.async :as ca]
    [clojure.set :as set]
-   [clojure.edn :as edn]
    [deercreeklabs.async-utils :as au]
+   [deercreeklabs.baracus :as ba]
    [deercreeklabs.lancaster :as l]
    [deercreeklabs.lancaster.utils :as lu]
    [com.oncurrent.zeno.common :as common]
@@ -63,8 +63,16 @@
 (defn tx-id->tx-info-k [tx-id]
   (str tx-info-prefix tx-id))
 
-(defn deserialize-op-value [arg]
-  (throw (ex-info "Implement me." {})))
+(defn deserialize-op-value [{:keys [schema serialized-value] :as arg}]
+  ;; TODO: Improve this to respect reader & writer schemas
+  (let [{:keys [bytes fp]} serialized-value
+        reader-fp (l/fingerprint128 schema)]
+    (when-not (ba/equivalent-byte-arrays? fp reader-fp)
+      (throw (ex-info "Schemas are not identical"
+                      {:reader-fp reader-fp
+                       :writer-fp fp
+                       :bytes bytes})))
+    (l/deserialize-same schema bytes)))
 
 (defn edn-schema->pred [edn-schema]
   (-> (lu/get-avro-type edn-schema)
@@ -164,18 +172,15 @@
                       []
                       tx-ids))))))))
 
-(defn <ba->snapshot [{:keys [ba schema storage] :as arg}]
+(defn <ba->snapshot [{:keys [ba crdt-schema storage] :as arg}]
   (au/go
     (when ba
-      #_
       (let [serialized-value (l/deserialize-same schemas/serialized-value-schema
-                                                 ba)
-            sv->v-arg (assoc arg
-                             :reader-schema shared/serializable-snapshot-schema
-                             :serialized-value serialized-value)
-            ser-snap (au/<? (common/<serialized-value->value sv->v-arg))
-            crdt-info (edn/read-string (:edn-crdt-info ser-snap))]
-        crdt-info))))
+                                                 ba)]
+        (au/<? (common/<serialized-value->value
+                (assoc arg
+                       :reader-schema crdt-schema
+                       :serialized-value serialized-value)))))))
 
 (defn <get-snapshot-from-url [{:keys [url] :as arg}]
   (au/go

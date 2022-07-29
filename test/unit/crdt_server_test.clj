@@ -6,8 +6,10 @@
    [com.oncurrent.zeno.bulk-storage :as bulk-storage]
    [com.oncurrent.zeno.state-providers.crdt.commands :as commands]
    [com.oncurrent.zeno.state-providers.crdt.common :as common]
+   [com.oncurrent.zeno.state-providers.crdt.get :as get]
    [com.oncurrent.zeno.state-providers.crdt.shared :as shared]
    [com.oncurrent.zeno.state-providers.crdt.server :as server]
+   [com.oncurrent.zeno.state-providers.crdt.xf-schema :as xfs]
    [com.oncurrent.zeno.storage :as storage]
    [com.oncurrent.zeno.utils :as u]
    [deercreeklabs.async-utils :as au]
@@ -33,8 +35,7 @@
        :updated-paths updated-paths})))
 
 (defn <log-tx!
-  [{:keys [actor-id client-id cmds make-tx-id root data-schema]
-    :as arg}]
+  [{:keys [make-tx-id] :as arg}]
   (au/go
     (let [tx-id (make-tx-id)
           tx-info (au/<? (<make-tx-info (assoc arg :tx-id tx-id)))]
@@ -53,6 +54,7 @@
                branch "test-branch"
                branch-log-k (server/->branch-log-k (u/sym-map branch))
                data-schema tc/crdt-schema
+               crdt-schema (xfs/->crdt-schema (u/sym-map data-schema))
                storage (storage/make-storage)
                authorizer (auth/->authorizer)
                root :my-root
@@ -62,8 +64,8 @@
                *tx-id (atom 0)
                make-tx-id #(str "tx-" (swap! *tx-id inc))
                arg (u/sym-map *branch->crdt-info actor-id authorizer branch
-                              bulk-storage client-id make-tx-id root data-schema
-                              snapshot-interval storage)
+                              bulk-storage client-id crdt-schema data-schema
+                              make-tx-id root snapshot-interval storage)
                book  {:title "Tall Tales"
                       :nums [3 6 9]}
                book-id "book-id"
@@ -94,8 +96,10 @@
                _ (is (= [] (:tx-ids-since-snapshot gcsi-ret-2)))
                snapshot (au/<? (common/<get-snapshot-from-url
                                 (assoc arg :url (:snapshot-url gcsi-ret-2))))
-               ;; TODO: Enable this test
-               #_ (is (= [book-id] (-> snapshot :crdt :children :books
-                                       :children keys)))])
+               v (get/get-value {:crdt snapshot
+                                 :data-schema data-schema
+                                 :path [root :books book-id]
+                                 :root root})
+               _ (is (= book v))])
          (finally
            (bulk-storage/<stop-server! bulk-storage)))))))

@@ -237,7 +237,8 @@
   (if (seq shrinking-path)
     (apply-op-to-child (assoc arg :string-array-keys? true))
     (let [value (or (:value arg)
-                    (c/deserialize-op-value arg))
+                    (c/deserialize-op-value
+                     (assoc arg :schema shared/crdt-array-node-info-schema)))
           {:keys [parent-node-id]} value
           new-crdt (update-in crdt [:node-id-to-child-infos parent-node-id]
                               (fn [child-infos]

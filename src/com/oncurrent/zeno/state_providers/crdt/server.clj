@@ -13,6 +13,7 @@
    [com.oncurrent.zeno.state-providers.crdt.common :as c]
    [com.oncurrent.zeno.state-providers.crdt.get :as get]
    [com.oncurrent.zeno.state-providers.crdt.shared :as shared]
+   [com.oncurrent.zeno.state-providers.crdt.xf-schema :as xfs]
    [com.oncurrent.zeno.storage :as storage]
    [com.oncurrent.zeno.utils :as u]
    [deercreeklabs.async-utils :as au]
@@ -88,12 +89,11 @@
 
 (defn <get-snapshot [{:keys [bulk-storage log-info] :as arg}]
   (au/go
-    #_
     (let [snap-k (when (:snapshot-txs-hash log-info)
                    (->snapshot-k log-info))
           ba (au/<? (bulk-storage/<get bulk-storage snap-k))]
       (when ba
-        nil #_(au/<? (c/<ba->snapshot (assoc arg :ba ba)))))))
+        (au/<? (c/<ba->snapshot (assoc arg :ba ba)))))))
 
 (defn <get-crdt-ops-and-updated-paths-for-tx-ids [arg]
   (au/go
@@ -107,23 +107,21 @@
               tx-infos))))
 
 (defn <add-to-snapshot!
-  [{:keys [bulk-storage log-info root data-schema storage tx-ids] :as arg}]
+  [{:keys [bulk-storage log-info root crdt-schema data-schema storage tx-ids]
+    :as arg}]
   (au/go
-    #_
     (if (empty? tx-ids)
       (:snapshot-txs-hash log-info)
       (let [old-hash (:snapshot-txs-hash log-info)
             snapshot-txs-hash (add-tx-ids-to-hash (u/sym-map old-hash tx-ids))
             old-snapshot (au/<? (<get-snapshot arg))
             info (au/<? (<get-crdt-ops-and-updated-paths-for-tx-ids arg))
-            crdt-info (apply-ops/apply-ops {:crdt (:crdt old-snapshot)
-                                            :crdt-ops (:crdt-ops info)
-                                            :data-schema data-schema})
-            edn-crdt-info (pr-str crdt-info)
-            sv {:bytes (l/serialize shared/snapshot-schema
-                                    (u/sym-map edn-crdt-info))
-                :fp (au/<? (storage/<schema->fp
-                            storage shared/snapshot-schema))}
+            crdt (apply-ops/apply-ops {:crdt (:crdt old-snapshot)
+                                       :crdt-ops (:crdt-ops info)
+                                       :data-schema data-schema
+                                       :root root})
+            sv {:bytes (l/serialize crdt-schema crdt)
+                :fp (au/<? (storage/<schema->fp storage crdt-schema))}
             ba (l/serialize schemas/serialized-value-schema sv)
             snap-k (->snapshot-k (u/sym-map snapshot-txs-hash))]
         ;; TODO: Use S3 HeadObject instead of GetObject for this existence check
@@ -444,7 +442,6 @@
       (catch Exception e
         (log/error (str "Exception in <load-state!:\n"
                         (u/ex-msg-and-stacktrace e)))))))
-
 (defn <log-tx-infos!
   [{:keys [*branch->crdt-info branch data-schema storage] :as arg}]
   (au/go
@@ -452,12 +449,10 @@
       (doseq [tx-info tx-infos-to-log]
         (let [{:keys [tx-id]} tx-info
               tx-info-k (c/tx-id->tx-info-k tx-id)
-              ser-tx-info nil #_(au/<? (c/<tx-info->tx-info
-                                        (u/sym-map data-schema storage tx-info)))
               branch-log-k (->branch-log-k (u/sym-map branch))]
           (au/<? (storage/<swap! storage tx-info-k
                                  shared/tx-info-schema
-                                 (constantly ser-tx-info)))
+                                 (constantly tx-info)))
           (au/<? (storage/<swap! storage branch-log-k
                                  shared/branch-log-info-schema
                                  #(update-branch-log-info!
@@ -473,8 +468,8 @@
     :as mus-arg}]
   (fn [{:zeno/keys [actor-id branch cmds] :as us-arg}]
     (au/go
-      (let [tx-info-base nil #_(c/make-update-state-tx-info-base
-                                (assoc us-arg :make-tx-id make-tx-id))]
+      (let [tx-info-base (c/make-update-state-tx-info-base
+                          (assoc us-arg :make-tx-id make-tx-id))]
         (swap! *branch->crdt-info update branch
                (fn [{:keys [repair-crdt-ops
                             tx-infos-to-log] :as info}]
@@ -533,8 +528,10 @@
         *storage (atom nil)
         *bulk-storage (atom nil)
         snapshot-interval 10
+        crdt-schema (xfs/->crdt-schema (u/sym-map data-schema))
         arg (u/sym-map *branch->crdt-info *bulk-storage *storage
-                       *<send-msg authorizer root data-schema snapshot-interval)
+                       *<send-msg authorizer crdt-schema data-schema
+                       root snapshot-interval)
         msg-handlers {:get-consumer-sync-info
                       (make-get-consumer-sync-info-handler arg)
 
