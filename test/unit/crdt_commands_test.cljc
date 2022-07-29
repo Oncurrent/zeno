@@ -645,7 +645,7 @@
         make-id #(let [n (swap! *next-id-num inc)]
                    (str "I" n))
         schema pet-owner-schema
-        {:keys [crdt crdt-ops]} (commands/process-cmds cmds schema {:make-id make-id})
+        {:keys [crdt crdt-ops]} (process-cmds cmds schema {:make-id make-id})
         acrdt (ops->crdt crdt-ops schema)
         expected-value {:name "Bill"
                         :pets [{:name "Fishy"
@@ -695,11 +695,10 @@
                            :species "Canis familiaris"}
                 :zeno/op :zeno/insert-after
                 :zeno/path [:pets -1]}]
-        ret1 (commands/process-cmds cmds1 schema {:crdt crdt0})
-        ret2 (commands/process-cmds cmds2 schema {:crdt crdt0})
+        ret1 (process-cmds cmds1 schema {:crdt crdt0})
+        ret2 (process-cmds cmds2 schema {:crdt crdt0})
         new-crdt-ops (set/union (:crdt-ops ret1) (:crdt-ops ret2))
-        {merged-crdt :crdt
-         rc-ops :repair-crdt-ops} (ops->crdt new-crdt-ops schema {:crdt crdt0})
+        merged-crdt (ops->crdt new-crdt-ops schema {:crdt crdt0})
         expected-value [{:name "Chris"
                          :species "Canis familiaris"}
                         {:name "Pinky"
@@ -1063,7 +1062,7 @@
         cmds [{:zeno/arg value
                :zeno/op :zeno/set
                :zeno/path ["a"]}]
-        {:keys [crdt crdt-ops]} (commands/process-cmds cmds schema)
+        {:keys [crdt crdt-ops]} (process-cmds cmds schema)
         acrdt (ops->crdt crdt-ops schema)]
     (is (= value
            (->value crdt ["a"] schema)
