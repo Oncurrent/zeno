@@ -510,9 +510,9 @@
         schema (l/array-schema l/string-schema)
         {:keys [crdt crdt-ops]} (process-cmds cmds schema)
         acrdt (ops->crdt crdt-ops schema)
-        _ (is (= {:norm-path [0] :value "Hello!" :exists? true}
-                 (->value crdt [-1] schema)
-                 (->value acrdt [-1] schema)))
+        _ (is (= "Hello!"
+               (->value crdt [-1] schema)
+               (->value acrdt [-1] schema)))
         expected-value ["Hello!"]]
     (is (= expected-value
            (->value crdt [] schema)
@@ -794,7 +794,8 @@
         cmds0 [{:zeno/arg ["A" "B"]
                 :zeno/op :zeno/set
                 :zeno/path []}]
-        {crdt0 :crdt crdt0-ops :crdt-ops} (process-cmds cmds0 schema {:make-id make-id})
+        {crdt0 :crdt
+         crdt0-ops :crdt-ops} (process-cmds cmds0 schema {:make-id make-id})
         cmds1 [{:zeno/arg "X1"
                 :zeno/op :zeno/insert-before
                 :zeno/path [0]}
@@ -813,9 +814,15 @@
                {:zeno/arg "Z2"
                 :zeno/op :zeno/insert-after
                 :zeno/path [0]}]
-        {crdt1 :crdt crdt1-ops :crdt-ops} (process-cmds cmds1 schema {:crdt crdt0 :make-id make-id})
-        {crdt2 :crdt crdt2-ops :crdt-ops} (process-cmds cmds2 schema {:crdt crdt0 :make-id make-id})
-        {crdt3 :crdt crdt3-ops :crdt-ops} (process-cmds cmds3 schema {:crdt crdt0 :make-id make-id})
+        {crdt1 :crdt
+         crdt1-ops :crdt-ops} (process-cmds
+                               cmds1 schema {:crdt crdt0 :make-id make-id})
+        {crdt2 :crdt
+         crdt2-ops :crdt-ops} (process-cmds
+                               cmds2 schema {:crdt crdt0 :make-id make-id})
+        {crdt3 :crdt
+         crdt3-ops :crdt-ops} (process-cmds
+                               cmds3 schema {:crdt crdt0 :make-id make-id})
         new-crdt-ops (set/union crdt1-ops crdt2-ops crdt3-ops)
         merged-crdt (ops->crdt new-crdt-ops schema {:crdt crdt0})
         ;; Order of the first three pairs of items is determined by their
@@ -833,7 +840,8 @@
         cmds0 [{:zeno/arg ["A" "B" "C"]
                 :zeno/op :zeno/set
                 :zeno/path []}]
-        {crdt0 :crdt crdt0-ops :crdt-ops} (process-cmds cmds0 schema {:make-id make-id})
+        {crdt0 :crdt
+         crdt0-ops :crdt-ops} (process-cmds cmds0 schema {:make-id make-id})
         cmds1 [{:zeno/arg "XF"
                 :zeno/op :zeno/insert-before
                 :zeno/path [0]}
@@ -863,7 +871,7 @@
                                             {:crdt crdt0 :make-id make-id})
         new-crdt-ops (set/union crdt1-ops crdt2-ops crdt3-ops)
         merged-crdt (ops->crdt new-crdt-ops schema {:crdt crdt0})
-        expected-value ["XF" "YF" "ZF" "A" "B" "C" "XL" "YL" "ZL"]]
+        expected-value ["YF" "ZF" "XF" "A" "B" "C" "XL" "YL" "ZL"]]
     (is (= expected-value (->value merged-crdt [] schema)))))
 
 (deftest test-nested-merge-conflict
