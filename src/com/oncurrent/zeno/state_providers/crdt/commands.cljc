@@ -134,9 +134,10 @@
                                     :crdt (get-in acc [:crdt :children k])
                                     :growing-path (conj growing-path k)
                                     :schema child-schema))]
-             (-> acc
-                 (assoc-in [:crdt :children k] (:crdt child-info))
-                 (update :crdt-ops set/union (:crdt-ops child-info)))))
+             (cond-> acc
+               (contains? (get-in acc [:crdt :children]) k)
+               (assoc-in acc [:crdt :children k] (:crdt child-info))
+               true (update :crdt-ops set/union (:crdt-ops child-info)))))
          container-info
          child-ks))
       (let [[i-or-k & ks] shrinking-path
@@ -192,9 +193,8 @@
                           (u/sym-map cmd-path cmd-arg))))
               child-ks (case schema-type
                          :map (keys cmd-arg)
-                         :record (->> (:fields (l/edn schema))
-                                      (map :name)
-                                      (filter (into #{} (keys cmd-arg)))))]
+                         :record (-> (get-record-field-names schema)
+                                     (set/intersection (set (keys cmd-arg)))))]
           (reduce
            (fn [acc k]
              (let [child-schema (if (= :record schema-type)
