@@ -130,7 +130,7 @@
   (associative-get-in-state* arg))
 
 (defmethod get-in-state* :union
-  [{:keys [crdt growing-path schema shrinking-path] :as arg}]
+  [{:keys [crdt growing-path schema] :as arg}]
   (let [member-schemas (l/member-schemas schema)
         ts-i-pairs (map (fn [union-branch]
                           (let [ts (->> (str "branch-"  union-branch
@@ -145,13 +145,10 @@
       {:value nil
        :exists? false
        :norm-path growing-path}
-      (let [[k & ks] shrinking-path
-            branch-k (keyword (str "branch-" i))]
+      (let [branch-k (keyword (str "branch-" i))]
         (get-in-state* (assoc arg
                               :crdt (get crdt branch-k)
-                              :growing-path (conj growing-path k)
-                              :schema (nth member-schemas i)
-                              :shrinking-path ks))))))
+                              :schema (nth member-schemas i)))))))
 
 (defn get-in-state [{:keys [crdt data-schema path root] :as arg}]
   (let [fn-name (or (:fn-name arg)
