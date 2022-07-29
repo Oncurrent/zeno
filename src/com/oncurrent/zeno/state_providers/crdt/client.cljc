@@ -50,8 +50,10 @@
           (ca/<! (ca/timeout 50))
           (recur))))))
 
-(defn <log-tx-infos! [{:keys [*actor-id *env-name *state-info *storage schema]}]
+(defn <log-tx-infos!
+  [{:keys [*actor-id *env-name *state-info *storage data-schema]}]
   (au/go
+    #_
     (let [actor-id @*actor-id
           storage @*storage
           env-name @*env-name
@@ -61,7 +63,7 @@
         (let [{:keys [tx-id]} tx-info
               tx-info-k (common/tx-id->tx-info-k tx-id)
               ser-tx-info nil #_(au/<? (common/<tx-info->serializable-tx-info
-                                  (u/sym-map schema storage tx-info)))]
+                                        (u/sym-map data-schema storage tx-info)))]
           (au/<? (storage/<swap! storage
                                  tx-info-k
                                  shared/serializable-tx-info-schema
@@ -78,7 +80,7 @@
                                        disj tx-info))))))))
 
 (defn make-<update-state!
-  [{:keys [*actor-id *state-info authorizer client-id make-tx-id schema
+  [{:keys [*actor-id *state-info authorizer client-id make-tx-id data-schema
            signal-producer-sync!]
     :as mus-arg}]
   (fn [{:zeno/keys [cmds]
@@ -87,7 +89,7 @@
     (au/go
       (au/<? (<wait-for-init mus-arg))
       (let [actor-id @*actor-id
-            tx-info-base nil #_(common/make-update-state-tx-info-base
+            tx-info-base (common/make-update-state-tx-info-base
                           (assoc mus-arg
                                  :actor-id actor-id
                                  :cmds cmds))
@@ -99,18 +101,15 @@
 
           (do
             (swap! *state-info
-                   (fn [{:keys [repair-crdt-ops
-                                tx-infos-to-log] :as state-info}]
+                   (fn [{:keys [tx-infos-to-log] :as state-info}]
                      (let [ret (commands/process-cmds {:cmds cmds
                                                        :crdt (:crdt state-info)
-                                                       :schema schema
+                                                       :data-schema data-schema
                                                        :root root})
                            {:keys [crdt crdt-ops]} ret
-                           tx-info (assoc tx-info-base :crdt-ops
-                                          (set/union crdt-ops repair-crdt-ops))]
+                           tx-info (assoc tx-info-base :crdt-ops crdt-ops)]
                        (assoc state-info
                               :crdt crdt
-                              :repair-crdt-ops #{}
                               :tx-infos-to-log (conj (or tx-infos-to-log #{})
                                                      tx-info)))))
             (au/<? (<log-tx-infos! mus-arg))
@@ -131,6 +130,7 @@
            actor-id storage sync-whole-log? unsynced-log-k]}]
   (let [{:keys [<send-msg]} @*host-fns]
     (au/go
+      #_
       (loop []
         (let [aid->tx-ids (au/<? (storage/<get storage
                                                unsynced-log-k
@@ -139,8 +139,8 @@
               batch (set (take 10 tx-ids))
               ser-tx-infos (when (seq tx-ids)
                              nil #_(au/<? (common/<get-serializable-tx-infos
-                                     {:storage storage
-                                      :tx-ids batch})))]
+                                           {:storage storage
+                                            :tx-ids batch})))]
           (when (seq ser-tx-infos)
             (au/<? (<send-msg {:msg-type :log-producer-tx-batch
                                :arg ser-tx-infos
@@ -193,65 +193,65 @@
     :as arg}]
   ;; TODO: Don't re-apply own txns
   (au/go
+    #_
     (au/<? (<wait-for-init arg))
-    (when @*connected?
-      (let [actor-id @*actor-id
-            storage @*storage
-            {:keys [<request-schema <send-msg update-subscriptions!]} @*host-fns
-            msg {:msg-type :get-consumer-sync-info
-                 :arg (select-keys @*state-info [:last-tx-index])}
-            sync-info (when @*connected? (au/<? (<send-msg msg)))
-            {:keys [snapshot-url
-                    snapshot-tx-index
-                    tx-ids-since-snapshot]} sync-info
-            last-tx-index (when snapshot-tx-index
-                            (+ snapshot-tx-index
-                               (count tx-ids-since-snapshot)))
-            snapshot nil #_(au/<? (common/<get-snapshot-from-url
-                             (assoc arg
-                                    :<request-schema <request-schema
-                                    :url snapshot-url
-                                    :storage storage)))
-            ser-tx-infos (when (and @*connected?
-                                    (seq tx-ids-since-snapshot))
-                           (au/<? (<send-msg
-                                   {:msg-type :get-tx-infos
-                                    :arg {:tx-ids tx-ids-since-snapshot}})))
-            tx-infos nil #_(au/<? (common/<serializable-tx-infos->tx-infos
-                             (assoc arg
-                                    :<request-schema <request-schema
-                                    :serializable-tx-infos ser-tx-infos
-                                    :storage storage)))
-            tx-agg-info (reduce (fn [acc {:keys [crdt-ops updated-paths]}]
-                                  (-> acc
-                                      (update :crdt-ops
-                                              set/union crdt-ops)
-                                      (update :updated-paths
-                                              concat updated-paths)))
-                                {:crdt-ops #{}
-                                 :updated-paths []}
-                                tx-infos)
-            {:keys [crdt-ops updated-paths]} tx-agg-info]
-        (swap! *state-info
-               (fn [state-info]
-                 ;; TODO: Handle case where this retries due to a concurrent
-                 ;; update-state call and there was a snapshot.
-                 (let [ret (apply-ops/apply-ops
-                            (assoc arg
-                                   :crdt (:crdt (or snapshot state-info))
-                                   :crdt-ops crdt-ops))]
-                   (-> state-info
-                       (assoc :crdt (:crdt ret))
-                       (assoc :last-tx-index (or last-tx-index
-                                                 (:last-tx-index state-info)))
-                       (update :repair-crdt-ops
-                               set/union (:repair-crdt-ops ret))))))
-        (cond
-          snapshot
-          (update-subscriptions! {:updated-paths [[root]]})
+    #_(when @*connected?
+        (let [actor-id @*actor-id
+              storage @*storage
+              {:keys [<request-schema <send-msg update-subscriptions!]} @*host-fns
+              msg {:msg-type :get-consumer-sync-info
+                   :arg (select-keys @*state-info [:last-tx-index])}
+              sync-info (when @*connected? (au/<? (<send-msg msg)))
+              {:keys [snapshot-url
+                      snapshot-tx-index
+                      tx-ids-since-snapshot]} sync-info
+              last-tx-index (when snapshot-tx-index
+                              (+ snapshot-tx-index
+                                 (count tx-ids-since-snapshot)))
+              snapshot nil #_(au/<? (common/<get-snapshot-from-url
+                                     (assoc arg
+                                            :<request-schema <request-schema
+                                            :url snapshot-url
+                                            :storage storage)))
+              ser-tx-infos (when (and @*connected?
+                                      (seq tx-ids-since-snapshot))
+                             (au/<? (<send-msg
+                                     {:msg-type :get-tx-infos
+                                      :arg {:tx-ids tx-ids-since-snapshot}})))
+              tx-infos nil #_(au/<? (common/<serializable-tx-infos->tx-infos
+                                     (assoc arg
+                                            :<request-schema <request-schema
+                                            :serializable-tx-infos ser-tx-infos
+                                            :storage storage)))
+              tx-agg-info (reduce (fn [acc {:keys [crdt-ops updated-paths]}]
+                                    (-> acc
+                                        (update :crdt-ops
+                                                set/union crdt-ops)
+                                        (update :updated-paths
+                                                concat updated-paths)))
+                                  {:crdt-ops #{}
+                                   :updated-paths []}
+                                  tx-infos)
+              {:keys [crdt-ops updated-paths]} tx-agg-info]
+          (swap! *state-info
+                 (fn [state-info]
+                   ;; TODO: Handle case where this retries due to a concurrent
+                   ;; update-state call and there was a snapshot.
+                   (let [crdt (apply-ops/apply-ops
+                               (assoc arg
+                                      :crdt (:crdt (or snapshot state-info))
+                                      :crdt-ops crdt-ops))]
+                     (-> state-info
+                         (assoc :crdt crdt)
+                         (assoc :last-tx-index
+                                (or last-tx-index
+                                    (:last-tx-index state-info)))))))
+          (cond
+            snapshot
+            (update-subscriptions! {:updated-paths [[root]]})
 
-          (seq tx-infos)
-          (update-subscriptions! (u/sym-map updated-paths)))))))
+            (seq tx-infos)
+            (update-subscriptions! (u/sym-map updated-paths)))))))
 
 ;; TODO: Flesh this out, make sure it completes before any
 ;; other state updates are processed. Wait in the <init! process?
@@ -274,16 +274,16 @@
                  "keywords, symbols, and strings are valid path keys.")
             (u/sym-map k path)))))
 
-(defn make-get-in-state [{:keys [*state-info schema]}]
+(defn make-get-in-state [{:keys [*state-info data-schema]}]
   (fn get-in-state [{:keys [path root] :as gis-arg}]
     (get/get-in-state (assoc gis-arg
                              :crdt (:crdt @*state-info)
                              :path path
                              :root root
-                             :data-schema schema))))
+                             :data-schema data-schema))))
 
 (defn ->state-provider
-  [{::crdt/keys [authorizer schema root] :as config}]
+  [{::crdt/keys [authorizer data-schema root] :as config}]
   ;; TODO: Check args
   ;; TODO: Load initial state from IDB
   (when-not authorizer
@@ -291,9 +291,9 @@
                          "configuration.")
                     config)))
 
-  (when-not schema
-    (throw (ex-info (str "No schema was specified in the state provider "
-                         "configuration.")
+  (when-not data-schema
+    (throw (ex-info (str "No `:data-schema` was specified in the state "
+                         "provider configuration.")
                     config)))
   (let [*actor-id (atom u/unauthenticated-actor-id)
         *client-running? (atom true)
@@ -313,7 +313,7 @@
                 (reset! *storage storage))
         sync-arg (u/sym-map *actor-id *client-running? *connected?
                             *host-fns *env-name *state-info *storage
-                            root schema)
+                            root data-schema)
         psync-ret (u/start-task-loop!
                    {:loop-delay-ms 3000
                     :loop-name "<sync-producer-txs!"
@@ -327,7 +327,7 @@
         {stop-consumer-sync! :stop!
          signal-consumer-sync! :now!} csync-ret
         mus-arg (u/sym-map *actor-id *env-name *host-fns *state-info *storage
-                           authorizer client-id root schema
+                           authorizer client-id root data-schema
                            signal-producer-sync!)
         <wait-for-prod-sync (fn []
                               (au/go
@@ -377,7 +377,8 @@
     (load-local-data! lld-arg)
     #::sp-impl{:<update-state! (make-<update-state! mus-arg)
                :<wait-for-sync <wait-for-sync
-               :get-in-state (make-get-in-state (u/sym-map *state-info schema))
+               :get-in-state (make-get-in-state
+                              (u/sym-map *state-info data-schema))
                :init! init!
                :msg-handlers {:notify-consumer-log-sync
                               (fn [arg]

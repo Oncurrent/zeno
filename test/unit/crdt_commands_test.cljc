@@ -69,7 +69,7 @@
 
 (defn ->value [crdt path data-schema]
   (let [path (concat [root] path)]
-    (get/get-in-state (u/sym-map crdt path data-schema root))))
+    (get/get-value (u/sym-map crdt path data-schema root))))
 
 (comment (krun #'test-empty-map-of-records))
 (deftest test-empty-map-of-records
@@ -511,8 +511,8 @@
         {:keys [crdt crdt-ops]} (process-cmds cmds schema)
         acrdt (ops->crdt crdt-ops schema)
         _ (is (= "Hello!"
-               (->value crdt [-1] schema)
-               (->value acrdt [-1] schema)))
+                 (->value crdt [-1] schema)
+                 (->value acrdt [-1] schema)))
         expected-value ["Hello!"]]
     (is (= expected-value
            (->value crdt [] schema)
@@ -1153,7 +1153,7 @@
                :zeno/op :zeno/insert-before
                :zeno/path [root 0 0]}]
         {:keys [crdt]} (commands/process-cmds (u/sym-map cmds data-schema root))
-        v (get/get-in-state (u/sym-map crdt data-schema path root))]
+        v (get/get-value (u/sym-map crdt data-schema path root))]
     (is (= [[1]] v))))
 
 (comment (krun #'test-deep-nested-negative-insert-after))

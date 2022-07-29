@@ -48,7 +48,7 @@
     (doseq [crdt-ops (combo/permutations crdt-ops*)]
       (let [crdt (apply-ops/apply-ops
                   (u/sym-map crdt-ops data-schema root))
-            v (get/get-in-state (u/sym-map crdt data-schema path root))]
+            v (get/get-value (u/sym-map crdt data-schema path root))]
         (is (= expected-v v))))))
 
 (deftest test-union-crdt-basic-ops
@@ -76,7 +76,7 @@
     (doseq [crdt-ops (combo/permutations crdt-ops*)]
       (let [crdt (apply-ops/apply-ops
                   (u/sym-map crdt-ops data-schema root))
-            v (get/get-in-state (u/sym-map crdt data-schema path root))]
+            v (get/get-value (u/sym-map crdt data-schema path root))]
         (is (= expected-v v))))))
 
 (deftest test-map-crdt-basic-ops
@@ -109,7 +109,7 @@
     (doseq [crdt-ops (repeatedly 500 #(shuffle crdt-ops*))]
       (let [crdt (apply-ops/apply-ops
                   (u/sym-map crdt-ops data-schema root))
-            v (get/get-in-state (u/sym-map crdt data-schema path root))]
+            v (get/get-value (u/sym-map crdt data-schema path root))]
         (is (= expected-v v))))))
 
 (deftest test-nested-map-crdts
@@ -164,7 +164,7 @@
     (doseq [crdt-ops (repeatedly 500 #(shuffle crdt-ops*))]
       (let [crdt (apply-ops/apply-ops
                   (u/sym-map crdt-ops data-schema root))
-            v (get/get-in-state (u/sym-map crdt data-schema path root))]
+            v (get/get-value (u/sym-map crdt data-schema path root))]
         (is (= expected-v v))))))
 
 (deftest test-record-crdt-basic-ops
@@ -202,7 +202,7 @@
     (doseq [crdt-ops (repeatedly 500 #(shuffle crdt-ops*))]
       (let [crdt (apply-ops/apply-ops
                   (u/sym-map crdt-ops data-schema root))
-            v (get/get-in-state (u/sym-map crdt data-schema path root))]
+            v (get/get-value (u/sym-map crdt data-schema path root))]
         (is (= expected-v v))))))
 
 (deftest test-record-crdt-conflict
@@ -233,10 +233,10 @@
                              :value 42}]
                  :data-schema data-schema
                  :root root})
-        v (get/get-in-state {:crdt crdt-2
-                             :data-schema data-schema
-                             :path [root]
-                             :root root})
+        v (get/get-value {:crdt crdt-2
+                          :data-schema data-schema
+                          :path [root]
+                          :root root})
         expected-v {:foo/a 42}]
     (is (= expected-v v))))
 
@@ -284,11 +284,11 @@
     (doseq [crdt-ops (repeatedly 500 #(shuffle crdt-ops*))]
       (let [crdt (apply-ops/apply-ops
                   (u/sym-map crdt-ops data-schema root))
-            v (get/get-in-state (u/sym-map crdt data-schema path root))
-            nested-v (get/get-in-state {:crdt crdt
-                                        :data-schema data-schema
-                                        :path [root "b" :bar/b]
-                                        :root root})]
+            v (get/get-value (u/sym-map crdt data-schema path root))
+            nested-v (get/get-value {:crdt crdt
+                                     :data-schema data-schema
+                                     :path [root "b" :bar/b]
+                                     :root root})]
         (is (= expected-v v))
         (is (= "there" nested-v))))))
 
@@ -299,5 +299,5 @@
         path [root]
         crdt  (apply-ops/apply-ops
                (u/sym-map crdt-ops data-schema root))
-        v (get/get-in-state (u/sym-map crdt data-schema path root))
+        v (get/get-value (u/sym-map crdt data-schema path root))
         _ (is (= nil v))]))

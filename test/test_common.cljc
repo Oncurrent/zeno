@@ -81,8 +81,8 @@
                                  #::cm{:initial-state initial-client-state})
                    :zeno/crdt (crdt-client/->state-provider
                                #::crdt{:authorizer (aa/->authorizer)
-                                       :schema (or crdt-schema*
-                                                   crdt-schema)
+                                       :data-schema (or crdt-schema*
+                                                        crdt-schema)
                                        :root :zeno/crdt})}]
      (zc/->zeno-client
       #:zeno{:env-lifetime-mins 1
@@ -94,7 +94,7 @@
    (let [client-mem-sp (cm-client/->state-provider)
          crdt-sp (crdt-client/->state-provider
                   #::crdt{:authorizer (aa/->authorizer)
-                          :schema crdt-schema
+                          :data-schema crdt-schema
                           :root :zeno/crdt})
          root->sp {:zeno/client client-mem-sp :zeno/crdt crdt-sp}
          config #:zeno{:env-lifetime-mins env-lifetime-mins

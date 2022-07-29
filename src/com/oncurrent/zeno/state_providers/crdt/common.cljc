@@ -121,3 +121,12 @@
 
           :else
           (recur (inc union-branch)))))))
+
+(defn make-update-state-tx-info-base
+  [{:keys [actor-id client-id cmds make-tx-id]}]
+  (let [tx-id (if make-tx-id
+                (make-tx-id)
+                (u/compact-random-uuid))
+        sys-time-ms (u/current-time-ms)
+        updated-paths (map :zeno/path cmds)]
+    (u/sym-map actor-id client-id sys-time-ms tx-id updated-paths)))
