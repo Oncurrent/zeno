@@ -161,7 +161,8 @@
                     (u/sym-map data-schema))))
   (when-not (= root (first path))
     (throw (ex-info (str "Mismatched root in `:path` arg. Should be `" root
-                         "`. Got: `" (or (first path) "nil") "`."))))
+                         "`. Got: `" (or (first path) "nil") "`.")
+                    (u/sym-map root path))))
   (-> (get-value-info (assoc arg
                              :growing-path [root]
                              :schema data-schema
