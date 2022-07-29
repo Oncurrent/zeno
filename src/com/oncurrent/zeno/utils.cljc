@@ -393,16 +393,16 @@
   "Translates relative indexing (e.g. using negative numbers to index from the
    end) into absolute indexing. Returns nil if out of bounds."
   [{:keys [array-len i]}]
-  (let [max-i (if (pos? array-len)
-                (dec array-len)
-                0)
-        norm-i (if (nat-int? i)
-                 i
-                 (+ array-len i))]
-    (cond
-      (neg? norm-i) nil
-      (> norm-i max-i) nil
-      :else norm-i)))
+  (if (zero? array-len)
+    nil
+    (let [max-i (dec array-len)
+          norm-i (if (nat-int? i)
+                   i
+                   (+ array-len i))]
+      (cond
+        (neg? norm-i) nil
+        (> norm-i max-i) nil
+        :else norm-i))))
 
 (defn get-clamped-array-index
   "Translates relative indexing (e.g. using negative numbers to index from the

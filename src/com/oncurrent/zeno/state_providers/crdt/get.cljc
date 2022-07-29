@@ -92,6 +92,12 @@
                                              i shrinking-path sub-path))))
               array-len (count ordered-node-ids)
               norm-i (u/get-normalized-array-index (u/sym-map array-len i))
+              _ (when-not norm-i
+                  (throw (ex-info
+                          (str "Array index `" i "` is out of bounds for the "
+                               "indicated array, whose length is "
+                               array-len".")
+                          (u/sym-map array-len i))))
               k (get ordered-node-ids norm-i)]
           (get-value-info
            (assoc arg

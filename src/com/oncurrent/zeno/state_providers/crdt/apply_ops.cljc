@@ -60,7 +60,10 @@
   (let [[k & ks] shrinking-path
         new-growing-path (conj growing-path k)
         is-record? (= :record (l/schema-type schema))]
-    (c/check-key (assoc arg :key k :path new-growing-path))
+    (c/check-key (assoc arg
+                        :key k
+                        :path new-growing-path
+                        :string-array-keys? true))
     (update-in crdt [:children k]
                (fn [child-crdt]
                  (apply-op (assoc arg
