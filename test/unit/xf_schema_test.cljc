@@ -41,6 +41,18 @@
    (l/record-schema :r [[:a l/int-schema]])
    {}))
 
+; (let [s (l/record-schema :r [[:a l/int-schema]])]
+;   (->> {:a nil}
+;        (l/serialize s)
+;        (l/deserialize-same s)))
+
+;; TODO: Lancaster drops the key?
+; (comment (kaocha.repl/run #'test-set-nil {:color? false}))
+; (deftest test-set-nil
+;   (test-xf-schema
+;    (l/record-schema :r [[:a l/int-schema]])
+;    {:a nil}))
+
 (deftest test-deep-nested
   (test-xf-schema
    (l/record-schema
