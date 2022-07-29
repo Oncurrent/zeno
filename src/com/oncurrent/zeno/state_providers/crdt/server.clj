@@ -500,9 +500,6 @@
 (defn make-<get-state [{:keys [*branch->crdt-info root data-schema]}]
   (fn [{:zeno/keys [branch path] :as gs-arg}]
     (au/go
-      (log/info (str "<<<<<<<gs:\n"
-                     (u/pprint-str
-                      (u/sym-map path root))))
       (get/get-in-state (assoc gs-arg
                                :crdt (some-> @*branch->crdt-info
                                              (get branch)
