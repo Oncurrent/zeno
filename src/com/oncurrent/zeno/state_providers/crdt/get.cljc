@@ -11,11 +11,22 @@
 (defn reverse-comparator [x y]
   (* -1 (compare x y)))
 
+(defmethod get-in-state* :null
+  [{:keys [path shrinking-path growing-path]}]
+  (log/info (u/sym-map path shrinking-path growing-path))
+  {:value nil
+   :exists? true
+   :norm-path ()})
+
 (defmethod get-in-state* :single-value
-  [{:keys [crdt growing-path path shrinking-path]}]
+  [{:keys [crdt growing-path path shrinking-path schema]}]
   (if (seq shrinking-path)
-    (throw (ex-info "Can't index into a single-value CRDT."
-                    (u/sym-map growing-path shrinking-path path)))
+    (if (= :null (l/schema-type schema))
+      {:value nil
+       :exists? true
+       :norm-path growing-path}
+      (throw (ex-info "Can't index into a single-value CRDT."
+                      (u/sym-map growing-path shrinking-path path))))
     (let [{:keys [add-id-to-value-info]} crdt
           value-info (case (count add-id-to-value-info)
                        0 nil

@@ -27,9 +27,11 @@
            zc (zc/->zeno-client config)]
        (try
          (let [arg [1 3 6]
-               ret (au/<? (zc/<rpc! zc :add-nums arg))
                expected (apply + arg)
                the-name "Bonzo"]
+           (is (= expected (au/<? (zc/<rpc! zc :add-nums arg))))
+           (is (= true (au/<? (zc/<rpc! zc :set-crdt {}))))
+           (is (= nil (au/<? (zc/<rpc! zc :get-name nil))))
            (is (= true (au/<? (zc/<rpc! zc :set-crdt nil))))
            (is (= nil (au/<? (zc/<rpc! zc :get-name nil))))
            (is (= true (au/<? (zc/<rpc! zc :set-name the-name))))
