@@ -83,6 +83,23 @@
                                             :schema schema))]
         (u/sym-map crdt crdt-ops)))))
 
+(defn get-array-child-key
+  [{:keys [crdt cmd-type cmd-path growing-path i]}]
+  (let [{:keys [ordered-node-ids]} crdt
+        _ (when-not (int? i)
+            (throw (ex-info
+                    (str "Array index must be an integer. Got: `"
+                         (or i "nil") "`.")
+                    (u/sym-map cmd-type cmd-path growing-path i))))
+        array-len (count ordered-node-ids)
+        norm-i (u/get-normalized-array-index (u/sym-map array-len i))]
+    (if norm-i
+      (nth ordered-node-ids norm-i)
+      (throw (ex-info
+              (str "Index `" i"` into array of length " array-len
+                   " is out of bounds.")
+              (u/sym-map i norm-i array-len cmd-type cmd-path growing-path))))))
+
 (defn associative-get-delete-info
   [{:keys [crdt growing-path shrinking-path schema]
     :as arg}]
@@ -110,7 +127,7 @@
          child-ks))
       (let [[i-or-k & ks] shrinking-path
             k (if (= :array schema-type)
-                (-> crdt :ordered-node-ids (nth i-or-k))
+                (get-array-child-key (assoc arg :i i-or-k))
                 i-or-k)
             child-schema (if (= :record schema-type)
                            (l/child-schema schema k)
@@ -179,7 +196,7 @@
            child-ks)))
       (let [[i-or-k & ks] shrinking-path
             k (if (= :array schema-type)
-                (-> container-info :crdt :ordered-node-ids (nth i-or-k))
+                (get-array-child-key (assoc arg :i i-or-k))
                 i-or-k)
             child-crdt (get-in container-info [:crdt :children k])
             child-schema (if (= :record schema-type)
