@@ -10,7 +10,8 @@
    [com.oncurrent.zeno.state-providers.crdt :as crdt]
    [com.oncurrent.zeno.state-providers.crdt.apply-ops :as apply-ops]
    [com.oncurrent.zeno.state-providers.crdt.commands :as commands]
-   [com.oncurrent.zeno.state-providers.crdt.common :as common]
+   [com.oncurrent.zeno.state-providers.crdt.common :as c]
+   [com.oncurrent.zeno.state-providers.crdt.get :as get]
    [com.oncurrent.zeno.state-providers.crdt.shared :as shared]
    [com.oncurrent.zeno.storage :as storage]
    [com.oncurrent.zeno.utils :as u]
@@ -87,22 +88,16 @@
 
 (defn <get-snapshot [{:keys [bulk-storage log-info] :as arg}]
   (au/go
+    #_
     (let [snap-k (when (:snapshot-txs-hash log-info)
                    (->snapshot-k log-info))
           ba (au/<? (bulk-storage/<get bulk-storage snap-k))]
       (when ba
-        nil #_(au/<? (common/<ba->snapshot (assoc arg :ba ba)))))))
-
-(defn <get-tx-infos-for-tx-ids [{:keys [tx-ids] :as arg}]
-  (au/go
-    (when (seq tx-ids)
-      (let [stis nil #_(au/<? (common/<get-serializable-tx-infos arg))]
-        nil #_(au/<? (common/<serializable-tx-infos->tx-infos
-                (assoc arg :serializable-tx-infos stis)))))))
+        nil #_(au/<? (c/<ba->snapshot (assoc arg :ba ba)))))))
 
 (defn <get-crdt-ops-and-updated-paths-for-tx-ids [arg]
   (au/go
-    (let [tx-infos (au/<? (<get-tx-infos-for-tx-ids arg))]
+    (let [tx-infos (au/<? (c/<get-tx-infos arg))]
       (reduce (fn [acc {:keys [crdt-ops updated-paths]}]
                 (-> acc
                     (update :crdt-ops set/union crdt-ops)
@@ -112,8 +107,9 @@
               tx-infos))))
 
 (defn <add-to-snapshot!
-  [{:keys [bulk-storage log-info root schema storage tx-ids] :as arg}]
+  [{:keys [bulk-storage log-info root data-schema storage tx-ids] :as arg}]
   (au/go
+    #_
     (if (empty? tx-ids)
       (:snapshot-txs-hash log-info)
       (let [old-hash (:snapshot-txs-hash log-info)
@@ -122,12 +118,12 @@
             info (au/<? (<get-crdt-ops-and-updated-paths-for-tx-ids arg))
             crdt-info (apply-ops/apply-ops {:crdt (:crdt old-snapshot)
                                             :crdt-ops (:crdt-ops info)
-                                            :schema schema})
+                                            :data-schema data-schema})
             edn-crdt-info (pr-str crdt-info)
-            sv {:bytes (l/serialize shared/serializable-snapshot-schema
+            sv {:bytes (l/serialize shared/snapshot-schema
                                     (u/sym-map edn-crdt-info))
                 :fp (au/<? (storage/<schema->fp
-                            storage shared/serializable-snapshot-schema))}
+                            storage shared/snapshot-schema))}
             ba (l/serialize schemas/serialized-value-schema sv)
             snap-k (->snapshot-k (u/sym-map snapshot-txs-hash))]
         ;; TODO: Use S3 HeadObject instead of GetObject for this existence check
@@ -226,26 +222,23 @@
                                       :tx-infos tx-infos)))))))
 
 ;; TODO: Write these in parallel?
-(defn <store-tx-infos! [{:keys [serializable-tx-infos storage]}]
+(defn <store-tx-infos! [{:keys [tx-infos storage]}]
   (au/go
-    (doseq [{:keys [tx-id] :as serializable-tx-info} serializable-tx-infos]
-      (let [k (common/tx-id->tx-info-k tx-id)]
+    (doseq [{:keys [tx-id] :as tx-info} tx-infos]
+      (let [k (c/tx-id->tx-info-k tx-id)]
         ;; Use <swap! instead of <add! so we can handle repeated idempotent
         ;; syncs. Consider properly comparing the byte arrays.
-        (au/<? (storage/<swap! storage k shared/serializable-tx-info-schema
-                               (constantly serializable-tx-info)))))
+        (au/<? (storage/<swap! storage k shared/tx-info-schema
+                               (constantly tx-info)))))
     true))
 
 (defn <log-producer-tx-batch!
   [{:keys [*branch->crdt-info <request-schema branch bulk-storage
-           schema serializable-tx-infos schema storage]
+           data-schema tx-infos storage]
     :as arg}]
   (au/go
-    (au/<? (<store-tx-infos! (u/sym-map serializable-tx-infos storage)))
-    (let [tx-infos nil #_(au/<? (common/<serializable-tx-infos->tx-infos
-                           (u/sym-map <request-schema schema
-                                      serializable-tx-infos storage)))
-          crdt-ops (reduce (fn [acc tx-info]
+    (au/<? (<store-tx-infos! (u/sym-map tx-infos storage)))
+    (let [crdt-ops (reduce (fn [acc tx-info]
                              (set/union acc (:crdt-ops tx-info)))
                            #{}
                            tx-infos)]
@@ -273,16 +266,16 @@
               :<request-schema <request-schema
               :branch branch
               :bulk-storage @*bulk-storage
-              :serializable-tx-infos (vec (:arg h-arg))
+              :tx-infos (vec (:arg h-arg))
               :storage @*storage)))))
 
 (defn make-get-tx-infos-handler
   ;; TODO: Consider security implications. Can anyone get any tx-info?
   [{:keys [*storage] :as fn-arg}]
   (fn [{:keys [arg] :as h-arg}]
-    nil #_(common/<get-serializable-tx-infos (assoc fn-arg
-                                              :storage @*storage
-                                              :tx-ids (:tx-ids arg)))))
+    (c/<get-tx-infos (assoc fn-arg
+                            :storage @*storage
+                            :tx-ids (:tx-ids arg)))))
 
 (defn <log-info->sync-info
   [{:keys [branch-tx-ids bulk-storage last-tx-index log-info] :as arg}]
@@ -320,7 +313,7 @@
 (defn make-log-info-for-actor-id
   [{:keys [authorizer branch-tx-ids snapshot-interval]
     :as arg}]
-  (let [tx-infos (au/<?? (<get-tx-infos-for-tx-ids
+  (let [tx-infos (au/<?? (c/<get-tx-infos
                           (assoc arg :tx-ids branch-tx-ids)))
         tx-indices (reduce
                     (fn [acc tx-index]
@@ -414,7 +407,7 @@
       )))
 
 (defn <load-branch!
-  [{:keys [*branch->crdt-info *bulk-storage branch schema storage] :as arg}]
+  [{:keys [*branch->crdt-info *bulk-storage branch data-schema storage] :as arg}]
   (au/go
     (let [branch-log-k (->branch-log-k (u/sym-map branch))
           bli (au/<? (storage/<get storage branch-log-k
@@ -427,20 +420,20 @@
                                   :bulk-storage @*bulk-storage
                                   :log-info log-info)))
           tx-ids (mapv #(nth branch-tx-ids* %)
-                      (:branch-log-tx-indices-since-snapshot log-info))
-          tx-infos (au/<? (<get-tx-infos-for-tx-ids (assoc arg :tx-ids tx-ids)))
+                       (:branch-log-tx-indices-since-snapshot log-info))
+          tx-infos (au/<? (c/<get-tx-infos (assoc arg :tx-ids tx-ids)))
           crdt-ops (reduce (fn [acc tx-info]
                              (set/union acc (:crdt-ops tx-info)))
                            #{}
                            tx-infos)
-          crdt-info (apply-ops/apply-ops (assoc (u/sym-map crdt-ops schema)
-                                           :crdt (:crdt snapshot)))]
+          crdt-info (apply-ops/apply-ops (assoc (u/sym-map crdt-ops data-schema)
+                                                :crdt (:crdt snapshot)))]
       (swap! *branch->crdt-info
              (fn [m]
                (assoc m branch crdt-info))))))
 
 (defn <load-state!
-  [{:keys [*branch->crdt-info *storage schema branches] :as arg}]
+  [{:keys [*branch->crdt-info *storage data-schema branches] :as arg}]
   (ca/go
     (try
       (let [storage @*storage]
@@ -453,17 +446,17 @@
                         (u/ex-msg-and-stacktrace e)))))))
 
 (defn <log-tx-infos!
-  [{:keys [*branch->crdt-info branch schema storage] :as arg}]
+  [{:keys [*branch->crdt-info branch data-schema storage] :as arg}]
   (au/go
     (let [{:keys [tx-infos-to-log]} (get @*branch->crdt-info branch)]
       (doseq [tx-info tx-infos-to-log]
         (let [{:keys [tx-id]} tx-info
-              tx-info-k (common/tx-id->tx-info-k tx-id)
-              ser-tx-info nil #_(au/<? (common/<tx-info->serializable-tx-info
-                                  (u/sym-map schema storage tx-info)))
+              tx-info-k (c/tx-id->tx-info-k tx-id)
+              ser-tx-info nil #_(au/<? (c/<tx-info->tx-info
+                                        (u/sym-map data-schema storage tx-info)))
               branch-log-k (->branch-log-k (u/sym-map branch))]
           (au/<? (storage/<swap! storage tx-info-k
-                                 shared/serializable-tx-info-schema
+                                 shared/tx-info-schema
                                  (constantly ser-tx-info)))
           (au/<? (storage/<swap! storage branch-log-k
                                  shared/branch-log-info-schema
@@ -476,18 +469,18 @@
                    (update info :tx-infos-to-log disj tx-info))))))))
 
 (defn make-<update-state!
-  [{:keys [*branch->crdt-info *bulk-storage *storage make-tx-id root schema]
+  [{:keys [*branch->crdt-info *bulk-storage *storage make-tx-id root data-schema]
     :as mus-arg}]
   (fn [{:zeno/keys [actor-id branch cmds] :as us-arg}]
     (au/go
-      (let [tx-info-base nil #_(common/make-update-state-tx-info-base
-                          (assoc us-arg :make-tx-id make-tx-id))]
+      (let [tx-info-base nil #_(c/make-update-state-tx-info-base
+                                (assoc us-arg :make-tx-id make-tx-id))]
         (swap! *branch->crdt-info update branch
                (fn [{:keys [repair-crdt-ops
                             tx-infos-to-log] :as info}]
                  (let [ret (commands/process-cmds {:cmds cmds
                                                    :crdt (:crdt info)
-                                                   :schema schema
+                                                   :data-schema data-schema
                                                    :root root})
                        {:keys [crdt crdt-ops]} ret
                        tx-info (assoc tx-info-base :crdt-ops
@@ -512,36 +505,36 @@
                  "keywords, symbols, and strings are valid path keys.")
             (u/sym-map k path)))))
 
-(defn make-<get-state [{:keys [*branch->crdt-info root schema]}]
+(defn make-<get-state [{:keys [*branch->crdt-info root data-schema]}]
   (fn [{:zeno/keys [branch path] :as gs-arg}]
-    nil #_(au/go
-      (common/get-value-info (assoc gs-arg
-                                    :crdt (some-> @*branch->crdt-info
-                                                  (get branch)
-                                                  :crdt)
-                                    :path path
-                                    :norm-path []
-                                    :schema schema)))))
+    (au/go
+      (get/get-in-state (assoc gs-arg
+                               :crdt (some-> @*branch->crdt-info
+                                             (get branch)
+                                             :crdt)
+                               :path path
+                               :norm-path []
+                               :data-schema data-schema)))))
 
 (defn ->state-provider
-  [{::crdt/keys [authorizer schema s3-snapshot-bucket root]}]
+  [{::crdt/keys [authorizer data-schema s3-snapshot-bucket root]}]
   (when-not (keyword? root)
     (throw (ex-info (str "The `" ::crdt/root "` in the argument to "
                          "`->state-provider` must be a keyword. Got: `"
                          (or root "nil") "`.")
                     (u/sym-map root))))
-  (when-not (l/schema? schema)
-    (throw (ex-info (str "The `" ::crdt/schema "` in the argument to "
+  (when-not (l/schema? data-schema)
+    (throw (ex-info (str "The `" ::crdt/data-schema "` in the argument to "
                          "`->state-provider` must be a valid Lancaster schema. "
                          "Got: `" (or root "nil") "`.")
-                    (u/sym-map schema))))
+                    (u/sym-map data-schema))))
   (let [*<send-msg (atom nil)
         *branch->crdt-info (atom {})
         *storage (atom nil)
         *bulk-storage (atom nil)
         snapshot-interval 10
         arg (u/sym-map *branch->crdt-info *bulk-storage *storage
-                       *<send-msg authorizer root schema snapshot-interval)
+                       *<send-msg authorizer root data-schema snapshot-interval)
         msg-handlers {:get-consumer-sync-info
                       (make-get-consumer-sync-info-handler arg)
 

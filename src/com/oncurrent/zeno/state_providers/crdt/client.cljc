@@ -66,7 +66,7 @@
                                         (u/sym-map data-schema storage tx-info)))]
           (au/<? (storage/<swap! storage
                                  tx-info-k
-                                 shared/serializable-tx-info-schema
+                                 shared/tx-info-schema
                                  (constantly ser-tx-info)))
           (au/<? (storage/<swap! storage unsynced-log-k
                                  shared/unsynced-log-schema

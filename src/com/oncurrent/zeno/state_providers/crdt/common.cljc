@@ -130,3 +130,55 @@
         sys-time-ms (u/current-time-ms)
         updated-paths (map :zeno/path cmds)]
     (u/sym-map actor-id client-id sys-time-ms tx-id updated-paths)))
+
+(defn <get-tx-info [{:keys [storage tx-id]}]
+  (let [k (tx-id->tx-info-k tx-id)]
+    (storage/<get storage k shared/tx-info-schema)))
+
+(defn <get-tx-infos [{:keys [storage tx-ids]}]
+  (au/go
+    (if (zero? (count tx-ids))
+      []
+      (let [<get (fn [tx-id]
+                   (au/go
+                     (let [info (au/<? (<get-tx-info
+                                        (u/sym-map storage tx-id)))]
+                       [tx-id info])))
+            chs (map <get tx-ids)
+            ret-ch (ca/merge chs)
+            last-i (dec (count tx-ids))]
+        (loop [i 0
+               out {}]
+          (let [ret (au/<? ret-ch)
+                new-out (if ret
+                          (assoc out (first ret) (second ret))
+                          out)]
+            (if (not= last-i i)
+              (recur (inc i) new-out)
+              (reduce (fn [acc tx-id]
+                        (if-let [info (get new-out tx-id)]
+                          (conj acc info)
+                          (throw (ex-info (str "tx-info for tx-id `" tx-id
+                                               "` was not found in storage.")
+                                          (u/sym-map tx-id)))))
+                      []
+                      tx-ids))))))))
+
+(defn <ba->snapshot [{:keys [ba schema storage] :as arg}]
+  (au/go
+    (when ba
+      #_
+      (let [serialized-value (l/deserialize-same schemas/serialized-value-schema
+                                                 ba)
+            sv->v-arg (assoc arg
+                             :reader-schema shared/serializable-snapshot-schema
+                             :serialized-value serialized-value)
+            ser-snap (au/<? (common/<serialized-value->value sv->v-arg))
+            crdt-info (edn/read-string (:edn-crdt-info ser-snap))]
+        crdt-info))))
+
+(defn <get-snapshot-from-url [{:keys [url] :as arg}]
+  (au/go
+    (when url
+      (let [ba (au/<? (u/<http-get {:url url}))]
+        (au/<? (<ba->snapshot (assoc arg :ba ba)))))))
