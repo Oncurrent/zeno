@@ -56,7 +56,7 @@
   ([cmds data-schema]
    (process-cmds cmds data-schema nil))
   ([cmds data-schema {:keys [crdt make-id]}]
-   (let [cmds (map #(update % :zeno/path concat [root]) cmds)]
+   (let [cmds (map #(update % :zeno/path (partial concat [root])) cmds)]
      (commands/process-cmds (u/sym-map cmds data-schema root crdt make-id)))))
 
 (defn ops->crdt
@@ -117,8 +117,7 @@
            (->value crdt [:pet-owners nil] schema)
            (->value acrdt [:pet-owners nil] schema)))))
 
-(comment
- (krun #'test-set-then-reset-empty-record-with-empty-map-of-records))
+(comment (krun #'test-set-then-reset-empty-record-with-empty-map-of-records))
 (deftest test-set-then-reset-empty-record-with-empty-map-of-records
   (let [schema pet-school-schema
         cmds1 [{:zeno/arg {}
@@ -140,22 +139,22 @@
            (->value crdt2 [:pet-owners nil] schema)
            (->value acrdt [:pet-owners nil] schema)))))
 
-(comment
- (krun #'test-set-empty-record-then-path-set-with-empty-map-of-records))
+(comment (krun #'test-set-empty-record-then-path-set-with-empty-map-of-records))
 (deftest test-set-empty-record-then-path-set-with-empty-map-of-records
   (let [schema pet-school-schema
         cmds1 [{:zeno/arg {}
                 :zeno/op :zeno/set
                 :zeno/path []}]
         {crdt1 :crdt crdt1-ops :crdt-ops} (process-cmds cmds1 schema)
-        cmds2 [{:zeno/arg {}
-                :zeno/op :zeno/set
-                :zeno/path [:pet-owners]}]
+         cmds2 [{:zeno/arg {}
+                 :zeno/op :zeno/set
+                 :zeno/path [:pet-owners]}]
         {crdt2 :crdt crdt2-ops :crdt-ops} (process-cmds cmds2 schema {:crdt crdt1})
         all-ops (set/union crdt1-ops crdt2-ops)
         acrdt (ops->crdt all-ops schema)]
-    (is (= {} (->value crdt2 [:pet-owners] schema)))
-    (is (= {} (->value acrdt [:pet-owners] schema)))
+    (is (= {}
+           (->value crdt2 [:pet-owners] schema)
+           (->value acrdt [:pet-owners] schema)))
     (is (= nil
            (->value crdt2 [:pet-owners "a"] schema)
            (->value acrdt [:pet-owners "a"] schema)))
@@ -245,6 +244,7 @@
            (->value crdt [] schema)
            (->value acrdt [] schema)))))
 
+;; TODO: Broken
 (comment (krun #'test-crdt-record-set-and-reset))
 (deftest test-crdt-record-set-and-reset
   (let [cmds [{:zeno/arg "Lamby"
