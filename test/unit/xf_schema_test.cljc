@@ -5,6 +5,7 @@
    [com.oncurrent.zeno.state-providers.crdt.commands :as commands]
    [com.oncurrent.zeno.state-providers.crdt.xf-schema :as xfs]
    [com.oncurrent.zeno.utils :as u]
+   [unit.crdt-commands-test :as ct]
    #?(:clj [kaocha.repl])
    [taoensso.timbre :as log]))
 
@@ -21,7 +22,8 @@
         rt-crdt (->> crdt
                      (l/serialize crdt-schema)
                      (l/deserialize-same crdt-schema))]
-    (is (= crdt rt-crdt))))
+    (is (= (ct/->value crdt [] data-schema)
+           (ct/->value rt-crdt [] data-schema)))))
 
 (deftest test-most-basic
   (test-xf-schema l/int-schema 1))
@@ -41,17 +43,10 @@
    (l/record-schema :r [[:a l/int-schema]])
    {}))
 
-; (let [s (l/record-schema :r [[:a l/int-schema]])]
-;   (->> {:a nil}
-;        (l/serialize s)
-;        (l/deserialize-same s)))
-
-;; TODO: Lancaster drops the key?
-; (comment (kaocha.repl/run #'test-set-nil {:color? false}))
-; (deftest test-set-nil
-;   (test-xf-schema
-;    (l/record-schema :r [[:a l/int-schema]])
-;    {:a nil}))
+(deftest test-set-nil
+  (test-xf-schema
+   (l/record-schema :r [[:a l/int-schema]])
+   {:a nil}))
 
 (deftest test-deep-nested
   (test-xf-schema
