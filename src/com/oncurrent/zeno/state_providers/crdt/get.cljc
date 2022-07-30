@@ -3,17 +3,24 @@
    [com.oncurrent.zeno.state-providers.crdt.common :as c]
    [com.oncurrent.zeno.utils :as u]
    [deercreeklabs.lancaster :as l]
-   [taoensso.timbre :as log]))
+   [taoensso.timbre :as log])
+  #?(:cljs
+     (:import
+      (goog.math Long))))
 
 (defmulti get-in-state* (fn [{:keys [schema]}]
-                           (c/schema->dispatch-type schema)))
+                          (c/schema->dispatch-type schema)))
+
+(def zero-long
+  ^Long #?(:clj (long 0)
+           :cljs (.getZero Long)))
 
 (defn reverse-comparator [x y]
-  (* -1 (compare x y)))
+  (* -1 #?(:clj (compare x y)
+           :cljs (.compare ^Long x y))))
 
 (defmethod get-in-state* :null
   [{:keys [path shrinking-path growing-path]}]
-  (log/info (u/sym-map path shrinking-path growing-path))
   {:value nil
    :exists? true
    :norm-path ()})
@@ -57,34 +64,43 @@
 
 (defn associative-get-in-state*
   [{:keys [crdt growing-path schema shrinking-path] :as arg}]
-  (let [{:keys [children container-add-ids]} crdt
-        is-record? (= :record (l/schema-type schema))
-        child-ks (if is-record?
-                   (map :name (:fields (l/edn schema)))
-                   (keys children))]
-    (if (empty? container-add-ids)
-      {:value nil
-       :exists? false
-       :norm-path growing-path}
-      (if (seq shrinking-path)
-        (get-child-value-info arg)
-        (let [v (reduce
-                 (fn [acc k]
-                   (let [vi (get-in-state*
-                             (assoc arg
-                                    :crdt (get children k)
-                                    :growing-path (conj growing-path k)
-                                    :schema (if is-record?
-                                              (l/child-schema schema k)
-                                              (l/child-schema schema))))]
-                     (if (and k (:exists? vi))
-                       (assoc acc k (:value vi))
-                       acc)))
-                 {}
-                 child-ks)]
-          {:value v
-           :exists? true
-           :norm-path growing-path})))))
+  (if (empty? (:container-add-ids crdt))
+    {:value nil
+     :exists? false
+     :norm-path growing-path}
+    (if (seq shrinking-path)
+      (get-child-value-info arg)
+      (let [{:keys [children]} crdt
+            is-record? (= :record (l/schema-type schema))
+            child-ks (if is-record?
+                       (map :name (:fields (l/edn schema)))
+                       (keys children))
+            v (reduce
+               (fn [acc k]
+                 (let [child-schema (if is-record?
+                                      (l/child-schema schema k)
+                                      (l/child-schema schema))
+                       vi (get-in-state*
+                           (assoc arg
+                                  :crdt (get children k)
+                                  :growing-path (conj growing-path k)
+                                  :schema child-schema))]
+                   (if (and k (:exists? vi))
+                     (assoc acc k (:value vi))
+                     acc)))
+               {}
+               child-ks)]
+        {:value v
+         :exists? true
+         :norm-path growing-path}))))
+
+(defmethod get-in-state* :map
+  [arg]
+  (associative-get-in-state* arg))
+
+(defmethod get-in-state* :record
+  [arg]
+  (associative-get-in-state* arg))
 
 (defmethod get-in-state* :array
   [{:keys [crdt growing-path path schema shrinking-path] :as arg}]
@@ -132,14 +148,6 @@
            :exists? true
            :norm-path growing-path})))))
 
-(defmethod get-in-state* :map
-  [arg]
-  (associative-get-in-state* arg))
-
-(defmethod get-in-state* :record
-  [arg]
-  (associative-get-in-state* arg))
-
 (defmethod get-in-state* :union
   [{:keys [crdt growing-path schema] :as arg}]
   (let [member-schemas (l/member-schemas schema)
@@ -148,11 +156,11 @@
                                              "-sys-time-ms")
                                         (keyword)
                                         (get crdt))]
-                            [(or ts 0) union-branch]))
+                            [(or ts zero-long) union-branch]))
                         (range (count member-schemas)))
         [ts i] (-> (sort-by first reverse-comparator ts-i-pairs)
                    (first))]
-    (if (zero? ts)
+    (if (= zero-long ts)
       {:value nil
        :exists? false
        :norm-path growing-path}

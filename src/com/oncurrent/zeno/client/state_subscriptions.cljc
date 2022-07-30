@@ -10,9 +10,7 @@
    [taoensso.timbre :as log]
    [weavejester.dependency :as dep]))
 
-(defn get-in-state [{root :root
-                     zc :zc
-                     :as arg}]
+(defn get-in-state [{:keys [path root zc] :as arg}]
   (let [{:keys [root->state-provider]} zc
         state-provider (root->state-provider root)
         _ (when-not state-provider
@@ -20,9 +18,8 @@
                                  "for root `" (or root "nil")
                                  "`.")
                             {:root root
-                             :known-roots (keys root->state-provider)})))
-        {::sp-impl/keys [get-in-state]} state-provider]
-    (get-in-state arg)))
+                             :known-roots (keys root->state-provider)})))]
+    ((::sp-impl/get-in-state state-provider) arg)))
 
 (defn get-non-numeric-part [path]
   (take-while #(not (number? %)) path))
