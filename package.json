@@ -3,7 +3,7 @@
         "fake-indexeddb": "3.1.8",
         "react": "16.14.0",
         "react-dom": "16.14.0",
-        "shadow-cljs": "2.19.4",
+        "shadow-cljs": "2.19.8",
         "source-map-support": "0.5.21"
     }
 }
