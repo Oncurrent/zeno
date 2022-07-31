@@ -18,7 +18,7 @@
                          (->crdt-schema*
                           (assoc arg :schema (l/child-schema schema))))
         sch-name (->> (l/fingerprint128 schema)
-                      (ba/byte-array->hex-str)
+                      (ba/byte-array->b16-alpha-str)
                       (str "array-crdt-")
                       (keyword (namespace ::foo)))
         fields [[:children children-schema]
@@ -36,7 +36,7 @@
                          (->crdt-schema*
                           (assoc arg :schema (l/child-schema schema))))
         sch-name (->> (l/fingerprint128 schema)
-                      (ba/byte-array->hex-str)
+                      (ba/byte-array->b16-alpha-str)
                       (str "map-crdt-")
                       (keyword (namespace ::foo)))
         fields [[:children children-schema]
@@ -57,7 +57,7 @@
                                                  schema field)))])
                                (:fields edn)))
         sch-name (->> (l/fingerprint128 schema)
-                      (ba/byte-array->hex-str)
+                      (ba/byte-array->b16-alpha-str)
                       (str "record-crdt-")
                       (keyword (namespace ::foo)))
         fields [[:children children-schema]
@@ -68,14 +68,14 @@
 (defmethod ->crdt-schema* :single-value
   [{:keys [schema] :as arg}]
   (let [fp-str (->> (l/fingerprint128 schema)
-                    (ba/byte-array->hex-str))
+                    (ba/byte-array->b16-alpha-str))
         aitvi-schema (l/map-schema
                       (l/record-schema
                        (keyword (namespace ::foo) (str "value-info-" fp-str))
                        [[:value schema]
                         [:sys-time-ms schemas/timestamp-ms-schema]]))
         sch-name (->> (l/fingerprint128 schema)
-                      (ba/byte-array->hex-str)
+                      (ba/byte-array->b16-alpha-str)
                       (str "value-crdt-")
                       (keyword (namespace ::foo)))
         fields [[:add-id-to-value-info aitvi-schema]
@@ -85,7 +85,7 @@
 (defmethod ->crdt-schema* :union
   [{:keys [schema] :as arg}]
   (let [sch-name (->> (l/fingerprint128 schema)
-                      (ba/byte-array->hex-str)
+                      (ba/byte-array->b16-alpha-str)
                       (str "union-crdt-")
                       (keyword (namespace ::foo)))
         member-schemas (l/member-schemas schema)
